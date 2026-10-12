@@ -10,6 +10,12 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from test.unit_test.rag.llm.conftest import _install_rag_llm_stub
+
+# Reuse the provider tests' bootstrap before importing real embedding code;
+# standalone collection must not depend on another suite loading it first.
+_install_rag_llm_stub()
+
 from common import settings
 from common.token_utils import num_tokens_from_string, truncate
 from rag.llm.embedding_model import AstraflowEmbed
