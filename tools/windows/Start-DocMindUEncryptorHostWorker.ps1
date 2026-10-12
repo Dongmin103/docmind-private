@@ -647,7 +647,7 @@ do {
                     # A failed document with confirmed cleanup and status ACK
                     # must not throttle unrelated work. Infrastructure failures
                     # still reach the outer backoff.
-                    if (-not $finalized) { throw }
+                    if (-not $finalized -or $_.Exception.Message -notin @('NONZERO_EXIT', 'OUTPUT_MISSING', 'OUTPUT_EMPTY', 'PREVIEW_INPUT_TOO_LARGE')) { throw }
                     $safeCode = $_.Exception.Message
                     if ($safeCode -notmatch '^[A-Z0-9_]+$') { $safeCode = 'HOST_WORKER_ERROR' }
                     Write-Warning ("Host document job failed: {0}" -f $safeCode)

@@ -188,8 +188,17 @@ namespace DocMind
                 {
                     if (scan)
                     {
-                        List<object[]> pending = Query("SELECT generation FROM pending WHERE source=? AND path_key=?", source, key);
-                        if (pending.Count != 0) { generation = (long)pending[0][0]; return; }
+                        List<object[]> pending = Query("SELECT generation,state FROM pending WHERE source=? AND path_key=?", source, key);
+                        if (pending.Count != 0)
+                        {
+                            generation = (long)pending[0][0];
+                            // A previously acknowledged server deferral may be
+                            // recoverable after configuration changes. Preserve
+                            // event identity and evidence, but allow a fresh try.
+                            if ((long)pending[0][1] == 1)
+                                Query("UPDATE pending SET state=0,dirty_sent=0,due_at=MAX(due_at,?) WHERE source=? AND path_key=? AND NOT EXISTS(SELECT 1 FROM outbox_item WHERE source=? AND path_key=?)", now, source, key, source, key);
+                            return;
+                        }
                     }
                     Query("UPDATE counter SET generation=generation+1 WHERE id=1");
                     generation = (long)Query("SELECT generation FROM counter WHERE id=1")[0][0];

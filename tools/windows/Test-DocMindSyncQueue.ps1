@@ -110,6 +110,13 @@ try {
     $queue.Delay($second, 5000000, 10000, 1)
     $null = $queue.EnqueueScan('priority', 'first.pdf', 5000001)
     Assert-True ($queue.Due('priority', 5010000, 1)[0].RelativePath -eq 'second.pdf') 'Due second observation was starved by first observations.'
+    $heldGeneration=$queue.EnqueueScan('held-scan','unconfigured.pdf',6000000)
+    $held=$queue.Due('held-scan',6000000,1)[0]
+    Assert-True ($queue.Freeze('held-scan',1,1,'held-first','{}',[DocMind.SyncEntry[]]@($held))) 'Held recovery fixture failed.'
+    $queue.Acknowledge('held-scan','held-first',[int[]]@(3),6000001)
+    Assert-True ($queue.Due('held-scan',6000002,1).Length -eq 0) 'Held fixture was still selectable.'
+    Assert-True ($queue.EnqueueScan('held-scan','unconfigured.pdf',6000002) -eq $heldGeneration) 'Recovery scan replaced held event generation.'
+    Assert-True ($queue.Due('held-scan',6000002,1).Length -eq 1) 'Recovery scan could not retry an acknowledged held file.'
     Write-Output 'PASS: durable queue, autosaves, created-file timing, 120s/10s/2s timing, immutable outbox, generation-safe ACK and restart.'
 } finally {
     if ($null -ne $queue) { $queue.Dispose() }

@@ -14,7 +14,7 @@ $base=[Uri]::new([string]$config.api_base_uri)
 if (-not $base.IsLoopback -or @('http','https') -notcontains $base.Scheme -or $base.UserInfo) { throw 'HOST_API_NOT_LOOPBACK' }
 $secret=Read-DocMindSharedSecret -LiteralPath ([IO.Path]::GetFullPath([string]$config.shared_secret_file))
 $stateRoot=[IO.Path]::GetFullPath([string]$config.sync_state_root).TrimEnd('\','/')
-$roots=@{};$sessions=@{};$renewed=@{};$watchers=@{};$nonces=@{};$scans=@{};$scanRetryAt=@{}
+$roots=@{};$sessions=@{};$renewed=@{};$watchers=@{};$nonces=@{};$scans=@{};$scanRetryAt=@{};$sourceRetryAt=@{}
 foreach($source in @(Select-DocMindConfiguredSources -Sources @($config.sources) -SourceId $SourceId)) {
     $id=[string]$source.source_id;Assert-DocMindIdentifier -Value $id -Name source_id
     $root=[IO.Path]::GetFullPath([string]$source.root).TrimEnd('\','/')
@@ -182,7 +182,7 @@ function Process-Due {
 }
 function Process-SourceChanges {
     param([string]$Id)
-    $clock=[Diagnostics.Stopwatch]::StartNew();$progress=$false
+    $progress=$false
     if($null -ne $queue.Outbox($Id)){
         Send-Outbox -Id $Id
         if(-not $sessions.ContainsKey($Id) -or $null -ne $queue.Outbox($Id)){return $false}
@@ -193,9 +193,11 @@ function Process-SourceChanges {
     $dirty=@($queue.Dirty($Id,250))
     if($dirty.Count){
         $items=@($dirty|ForEach-Object{[ordered]@{kind='dirty';relative_path=$_.RelativePath;generation=$_.Generation;observation_id=('obs-dirty-'+[Guid]::NewGuid().ToString('n'))}})
-        if(-not (Freeze-And-Send -Id $Id -Entries ([DocMind.SyncEntry[]]$dirty) -Items $items)){return $progress}
-        $progress=$true
+        if(Freeze-And-Send -Id $Id -Entries ([DocMind.SyncEntry[]]$dirty) -Items $items){$progress=$true}
+        elseif(-not $sessions.ContainsKey($Id) -or $null -ne $queue.Outbox($Id)){return $progress}
     }
+    # Delivery latency must not consume the entire stability-check budget.
+    $clock=[Diagnostics.Stopwatch]::StartNew()
     for($i=0;$i -lt 32 -and $clock.ElapsedMilliseconds -lt 1000;$i++){
         if(-not $sessions.ContainsKey($Id) -or $null -ne $queue.Outbox($Id)){break}
         if(-not (Process-Due -Id $Id)){break}
@@ -209,12 +211,13 @@ try {
         $watchers[$id]=[DocMind.SyncCollector]::new($queue,$id,$roots[$id])
     }
     foreach($id in @($roots.Keys)){
-        try{Open-Session -Id $id;if(-not $Once -and -not $SkipStartupScan){$null=Launch-Scan -Id $id -Reason startup}}catch{Write-Warning ('SYNC_SESSION_RETRY '+$_.Exception.GetType().Name)}
+        try{Open-Session -Id $id;if(-not $Once -and -not $SkipStartupScan){$null=Launch-Scan -Id $id -Reason startup}}catch{$sourceRetryAt[$id]=[DateTimeOffset]::UtcNow.AddSeconds($PollSeconds);Write-Warning ('SYNC_SESSION_RETRY '+$_.Exception.GetType().Name)}
     }
     $lastMidnight=''
     do {
         $progress=$false
         foreach($id in @($roots.Keys)){
+            if($sourceRetryAt.ContainsKey($id) -and [DateTimeOffset]::UtcNow -lt $sourceRetryAt[$id]){continue}
             try {
                 if($scans.ContainsKey($id) -and $scans[$id].HasExited){
                     if($scans[$id].ExitCode -ne 0){$queue.EnqueueScope($id,'',$null,'recovery');$scanRetryAt[$id]=[DateTimeOffset]::UtcNow.AddMinutes(5)}
@@ -224,8 +227,11 @@ try {
                 elseif([DateTimeOffset]::UtcNow -ge $renewed[$id].AddSeconds(30)){Open-Session -Id $id -Renew}
                 Process-Scope -Id $id
                 if(Process-SourceChanges -Id $id){$progress=$true}
+                if(-not $sessions.ContainsKey($id)){$sourceRetryAt[$id]=[DateTimeOffset]::UtcNow.AddSeconds($PollSeconds)}
+                else{$sourceRetryAt.Remove($id)}
                 if($watchers[$id].Faulted){$watchers[$id].Faulted=$false;$queue.EnqueueScope($id,'',$null,'recovery')}
             } catch {
+                $sourceRetryAt[$id]=[DateTimeOffset]::UtcNow.AddSeconds($PollSeconds)
                 if($_.Exception.Message -match '^SESSION_HTTP_409_SESSION_(EXPIRED|FENCED)'){$sessions.Remove($id)}
                 Write-Warning ('SYNC_SOURCE_RETRY '+$_.Exception.GetType().Name)
             }

@@ -17,13 +17,14 @@ $base=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../.local/sync-through
 $testRoot=Join-Path $base ([Guid]::NewGuid().ToString('n'))
 $queue=[DocMind.SyncQueue]::new((Join-Path $testRoot 'queue.sqlite'))
 $sessions=@{};$ownerId='owner-test';$config=[pscustomobject]@{worker_id='worker-test'};$changesUri='/changes'
-$script:requests=[Collections.Generic.List[object]]::new();$script:deliveryMode='ok';$script:readDelay=0
+$script:requests=[Collections.Generic.List[object]]::new();$script:deliveryMode='ok';$script:readDelay=0;$script:dirtyDelay=0
 $script:roots=@{};$script:badPath=''
 function New-TestSession([string]$Id){$sessions[$Id]=[pscustomobject]@{epoch=1L;last_sequence=0L}}
 function Send-SignedJson {
     param($Path,$Json)
     $request=$Json|ConvertFrom-Json
     $script:requests.Add($request)
+    if($script:dirtyDelay -and $request.items[0].kind -eq 'dirty'){Start-Sleep -Milliseconds $script:dirtyDelay}
     if($script:deliveryMode -eq 'retry'){return [pscustomobject]@{Status=503;Body=[pscustomobject]@{error='UNAVAILABLE'}}}
     if($script:deliveryMode -eq 'fenced'){return [pscustomobject]@{Status=409;Body=[pscustomobject]@{error='SESSION_FENCED'}}}
     $results=@($request.items|ForEach-Object{[pscustomobject]@{observation_id=$_.observation_id;state='INDEX_CURRENT'}})
@@ -75,6 +76,39 @@ try {
     $before=$script:requests.Count;$null=Process-SourceChanges -Id budget
     $budgetFirst=@($script:requests|Select-Object -Skip $before|ForEach-Object{$_.items}|Where-Object{$_.kind -eq 'upsert'})
     Assert-True ($budgetFirst.Count -ge 1 -and $budgetFirst.Count -le 2) 'Source visit ignored one-second budget.'
+    $script:readDelay=0;New-TestSession 'slow-dirty';$script:dirtyDelay=1100
+    $null=$queue.EnqueueScan('slow-dirty','waiting.pdf',$now)
+    $before=$script:requests.Count;$null=Process-SourceChanges -Id slow-dirty
+    Assert-True (@($script:requests|Select-Object -Skip $before|ForEach-Object{$_.items}|Where-Object{$_.kind -eq 'upsert'}).Count -eq 1) 'Slow dirty ACK starved stability observations.'
+    $script:dirtyDelay=0;New-TestSession 'stale-dirty'
+    $null=$queue.EnqueueScan('stale-dirty','stable.pdf',$now)
+    $null=Process-SourceChanges -Id stale-dirty
+    $stable=$queue.Due('stale-dirty',$now+60000,1)[0];$queue.Delay($stable,$now,0,1)
+    $null=$queue.EnqueueScan('stale-dirty','changing.pdf',$now)
+    $originalFreeze=(Get-Command Freeze-And-Send).ScriptBlock
+    function Freeze-And-Send {
+        param($Id,$Entries,$Items)
+        if($Id -eq 'stale-dirty' -and $Items[0].kind -eq 'dirty'){
+            $null=$queue.Enqueue($Id,'changing.pdf','upsert',$null,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+        }
+        & $originalFreeze -Id $Id -Entries $Entries -Items $Items
+    }
+    $before=$script:requests.Count;$null=Process-SourceChanges -Id stale-dirty
+    Assert-True (@($script:requests|Select-Object -Skip $before|ForEach-Object{$_.items}|Where-Object{$_.observation_id -like '*-second-*'}).Count -eq 1) 'Stale dirty snapshot starved an unrelated due recheck.'
+
+    function Test-SourceBackoff {
+        $loop=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.DoWhileStatementAst]},$true))[-1].Extent.Text
+        $roots=@{broken='unused';healthy='unused'};$scans=@{};$sessions=@{healthy=[pscustomobject]@{epoch=1}}
+        $renewed=@{healthy=[DateTimeOffset]::UtcNow.AddDays(1)};$watchers=@{broken=[pscustomobject]@{Faulted=$false};healthy=[pscustomobject]@{Faulted=$false}}
+        $scanRetryAt=@{};$sourceRetryAt=@{};$lastMidnight='';$Once=$false;$PollSeconds=2
+        $script:sessionAttempts=0;$script:healthyVisits=0
+        function Open-Session {param($Id,[switch]$Renew) $script:sessionAttempts++;throw 'SESSION_UNAVAILABLE'}
+        function Process-Scope {param($Id)}
+        function Process-SourceChanges {param($Id) $script:healthyVisits++;if($script:healthyVisits -ge 20){Set-Variable -Name Once -Value $true -Scope 1};return $true}
+        Invoke-Expression $loop
+        Assert-True ($script:healthyVisits -eq 20 -and $script:sessionAttempts -eq 1) 'Busy healthy source bypassed failed-source retry backoff.'
+    }
+    Test-SourceBackoff
     'PASS: bounded source visits, due recheck priority, dirty fairness, ten-second stability, bad-file isolation, retry/fencing and time budget.'
 } finally {
     $queue.Dispose()
