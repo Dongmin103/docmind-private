@@ -40,6 +40,36 @@ def defaults(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("fail_singleton", [False, True])
+async def test_cloudflare_split_keeps_concurrency_order_and_atomic_attachment(monkeypatch, fail_singleton):
+    from test.unit_test.rag.llm.test_cloudflare_embedding_budget import limit_error
+
+    monkeypatch.setattr(settings, "EMBEDDING_BATCH_SIZE", 32)
+    monkeypatch.setattr(settings, "EMBEDDING_BATCH_CONCURRENCY", 2)
+
+    def behavior(_, batch):
+        if len(batch) > 7 or (fail_singleton and "body 10" in batch):
+            raise limit_error()
+
+    endpoint = SyntheticEndpoint(delay=0.002, behavior=behavior)
+    docs = documents(64)
+    bundle = synthetic_bundle(endpoint, base_url="https://api.cloudflare.com/client/v4/accounts/test/ai/v1")
+    ctx = context()
+    if fail_singleton:
+        with pytest.raises(Exception, match="Max context reached"):
+            await EmbeddingService(ctx).embed_chunks(docs, bundle)
+        assert all("q_2_vec" not in doc for doc in docs)
+    else:
+        tokens, dimension = await EmbeddingService(ctx).embed_chunks(docs, bundle)
+        assert tokens == 193
+        assert dimension == 2
+        np.testing.assert_allclose([d["q_2_vec"] for d in docs], [[514 * 0.1 + sum(map(ord, f"body {i}")) * 0.9, 5 * 0.1 + len(f"body {i}") * 0.9] for i in range(64)])
+    assert endpoint.peak <= 2
+    assert endpoint.active == 0
+    assert not ctx.embed_limiter.locked()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("batch_size,requests", [(16, 5), (32, 3), (64, 2), (256, 2)])
 async def test_effective_provider_batching_merges_title_and_preserves_vectors(monkeypatch, batch_size, requests):
     monkeypatch.setattr(settings, "EMBEDDING_BATCH_SIZE", batch_size)

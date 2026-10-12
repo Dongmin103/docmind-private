@@ -26,7 +26,7 @@ import dashscope
 import numpy as np
 import requests
 from ollama import Client
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 from zai import ZhipuAiClient
 
 from common import settings
@@ -261,6 +261,29 @@ class OpenAIEmbed(Base):
     _FACTORY_NAME = "OpenAI"
 
     @property
+    def _is_cloudflare_bge_m3(self):
+        return self.model_name == "@cf/baai/bge-m3" and urlparse(self.base_url).hostname in ("api.cloudflare.com", "gateway.ai.cloudflare.com")
+
+    def _call_with_context_split(self, batch):
+        """Split only a confirmed Cloudflare context rejection, without losing inputs.
+
+        The local cl100k estimate is not the provider's tokenizer. Each retry
+        strictly reduces the number of inputs; a rejected singleton terminates.
+        Splits stay sequential inside the caller's existing concurrency permit.
+        """
+        try:
+            return self._call(batch)
+        except BadRequestError as exc:
+            detail = str(exc).lower()
+            if not (self._is_cloudflare_bge_m3 and len(batch) > 1 and "max context reached" in detail and "model supports only" in detail):
+                raise
+        logger.info("embedding provider context limit: splitting input_count=%d", len(batch))
+        middle = len(batch) // 2
+        left, left_tokens = self._call_with_context_split(batch[:middle])
+        right, right_tokens = self._call_with_context_split(batch[middle:])
+        return np.vstack((left, right)), left_tokens + right_tokens
+
+    @property
     def supports_combined_embedding(self):
         # Subclasses with a different call/preprocessing contract stay serial
         # and retain their existing 16-input adapter limit.
@@ -304,13 +327,15 @@ class OpenAIEmbed(Base):
     def encode(self, texts: list):
         if not self.supports_combined_embedding:
             return self._batched_encode(texts, self._call, batch_size=16, truncate_to=8191)
-        # Preserve per-input truncation; only the official endpoint inherits
-        # OpenAI's 300K total-token / 2048-item contract. Our item cap is 64.
+        # Preserve per-input truncation. Known provider/model ceilings apply
+        # even when the configured budget is unset or larger than the ceiling.
         token_limit = settings.EMBEDDING_REQUEST_TOKEN_LIMIT
         if type(token_limit) is not int or token_limit < 0:
             raise ValueError("EMBEDDING_REQUEST_TOKEN_LIMIT must be a nonnegative integer")
         if urlparse(self.base_url).hostname == "api.openai.com":
             token_limit = min(token_limit or 300000, 300000)
+        elif self._is_cloudflare_bge_m3:
+            token_limit = min(token_limit or 60000, 60000)
         count_tokens = token_limit or logger.isEnabledFor(logging.DEBUG)
         texts = [truncate(text, 8191) for text in texts]
         batches = []
@@ -332,7 +357,7 @@ class OpenAIEmbed(Base):
         dimension = None
         for batch, input_tokens in batches:
             start = time.perf_counter()
-            result, tokens = self._batched_encode(batch, self._call, batch_size=self.embedding_batch_size)
+            result, tokens = self._batched_encode(batch, self._call_with_context_split, batch_size=self.embedding_batch_size)
             if dimension is not None and result.shape[1] != dimension:
                 raise EmbeddingError("Embedding dimension changed between batches")
             dimension = result.shape[1]
