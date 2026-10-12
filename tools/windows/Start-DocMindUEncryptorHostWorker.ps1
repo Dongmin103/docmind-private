@@ -413,7 +413,8 @@ function Stop-WorkerProcessTree {
 }
 
 function Invoke-LeasedDecryptJob {
-    param($Lease, [ValidateSet('ingest', 'preview')][string]$Purpose = 'ingest')
+    param($Lease, [ValidateSet('ingest', 'preview')][string]$Purpose = 'ingest', [ref]$Finalized)
+    if ($null -ne $Finalized) { $Finalized.Value = $false }
     $hostClock = [Diagnostics.Stopwatch]::StartNew()
     $hostStartedUtc = [DateTimeOffset]::UtcNow.ToString('o')
     $marks = @{ start = [Int64]0; preflight = $null; decrypt = $null; verify = $null; delivery = $null; cleanup_start = $null; cleanup_end = $null; end = $null }
@@ -445,6 +446,7 @@ function Invoke-LeasedDecryptJob {
     $jobSucceeded = $false
     $errorCode = $null
     $receiptPath = $null
+    $receiptFinalized = $false
     try {
         [IO.Directory]::CreateDirectory($jobDirectory) | Out-Null
         Protect-DocMindJobDirectory -LiteralPath $jobDirectory
@@ -538,6 +540,7 @@ function Invoke-LeasedDecryptJob {
         $receiptFinalState = if ($finalState -eq 'COMPLETE') { 'CLEANED' } else { 'FAILED' }
         try {
             $receiptPath = Write-DocMindCleanupReceiptAtomic -ReceiptRoot $receiptRoot -JobId ([string]$Lease.job_id) -VersionId ([string]$Lease.version_id) -FencingToken ([Int64]$Lease.fencing_token) -FinalState $receiptFinalState -ErrorCode $errorCode
+            $receiptFinalized = $true
         } catch { $jobSucceeded = $false; $errorCode = 'CLEANUP_RECEIPT_WRITE_FAILED' }
     }
     try {
@@ -546,6 +549,7 @@ function Invoke-LeasedDecryptJob {
             Assert-DocMindNoReparsePoint -LiteralPath $receiptPath -Boundary $receiptRoot -Name 'Acknowledged cleanup receipt'
             Remove-Item -LiteralPath $receiptPath -Force -ErrorAction Stop
         }
+        if ($null -ne $Finalized) { $Finalized.Value = ($cleanupComplete -and $receiptFinalized) }
     } catch { if ($jobSucceeded) { $jobSucceeded = $false; $errorCode = 'STATUS_ACK_FAILED' } }
     $marks.end = Get-HostTimingNanoseconds $hostClock
     Save-HostTiming -Lease $Lease -Extension $outputExtension -State $finalState -Code $errorCode -StartedUtc $hostStartedUtc -Marks $marks
@@ -600,6 +604,7 @@ Write-Output ("Host worker ready; stale job directories removed: {0}; preview di
 
 $consecutivePreviewClaims = 0
 do {
+    $processedJob = $false
     try {
         if ([DateTimeOffset]::UtcNow -ge $lastReceiptReplayAt.AddSeconds($cleanupReceiptReplaySeconds)) {
             if (-not $PreviewOnly) {
@@ -635,7 +640,19 @@ do {
                 $claimKey = "${purpose}:$claimedJobId"
                 if ($lastFencingTokenByJob.ContainsKey($claimKey) -and $claimedFence -le [Int64]$lastFencingTokenByJob[$claimKey]) { throw 'STALE_FENCING_TOKEN' }
                 $lastFencingTokenByJob[$claimKey] = $claimedFence
-                Invoke-LeasedDecryptJob -Lease $lease -Purpose $purpose
+                $finalized = $false
+                try {
+                    Invoke-LeasedDecryptJob -Lease $lease -Purpose $purpose -Finalized ([ref]$finalized)
+                } catch {
+                    # A failed document with confirmed cleanup and status ACK
+                    # must not throttle unrelated work. Infrastructure failures
+                    # still reach the outer backoff.
+                    if (-not $finalized) { throw }
+                    $safeCode = $_.Exception.Message
+                    if ($safeCode -notmatch '^[A-Z0-9_]+$') { $safeCode = 'HOST_WORKER_ERROR' }
+                    Write-Warning ("Host document job failed: {0}" -f $safeCode)
+                }
+                $processedJob = $finalized
                 if ($purpose -eq 'preview') { $consecutivePreviewClaims++ } else { $consecutivePreviewClaims = 0 }
                 break
             }
@@ -645,5 +662,5 @@ do {
         if ($safeCode -notmatch '^[A-Z0-9_]+$' -and -not $safeCode.StartsWith('API_HTTP_')) { $safeCode = 'HOST_WORKER_ERROR' }
         Write-Warning ("Host worker cycle failed: {0}" -f $safeCode)
     }
-    if (-not $Once) { Start-Sleep -Seconds $PollSeconds }
+    if (-not $Once -and -not $processedJob) { Start-Sleep -Seconds $PollSeconds }
 } while (-not $Once)

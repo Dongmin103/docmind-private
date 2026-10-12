@@ -158,12 +158,12 @@ try {
     Assert-True $scanScript.Contains("'^midnight-\d{4}-\d{2}-\d{2}$'") 'Scheduled scan IDs are not constrained to the signed Asia/Seoul date.'
     Assert-True $scanScript.Contains('$started.schedule_fencing_token = $ScheduleFencingToken') 'Scheduled scan fencing is not echoed in the started event.'
     $watchScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Watch-DocMindEncryptedSources.ps1') -Raw
-    Assert-True $watchScript.Contains("'/api/v1/cloud-sync/host-worker/deletions'") 'Deletion endpoint contract is missing.'
+    Assert-True $watchScript.Contains("'/api/v1/cloud-sync/host-worker/changes'") 'Signed change endpoint contract is missing.'
     Assert-True $watchScript.Contains('Test-DocMindConfirmedSourceFileAbsence') 'Deletion events are not guarded by an absence proof.'
     Assert-True $watchScript.Contains('Get-Content -LiteralPath $configFile -Raw -Encoding UTF8') 'Watch config must decode UTF-8 source paths on Windows PowerShell.'
-    Assert-True $watchScript.Contains('FileSystemWatcher') 'Discovery event watcher is missing.'
-    Assert-True $watchScript.Contains('DiscoveryFallbackSeconds') 'Discovery fallback scan is missing.'
-    Assert-True $watchScript.Contains('DiscoveryFailureRetrySeconds') 'Discovery failure backoff is missing.'
+    Assert-True $watchScript.Contains('[DocMind.SyncCollector]::new') 'Native discovery event collector is missing.'
+    Assert-True $watchScript.Contains('Launch-Scan') 'Recovery scan is missing.'
+    Assert-True $watchScript.Contains('scanRetryAt') 'Recovery scan failure backoff is missing.'
     $planConfig = Join-Path $testRoot 'schedule-config.json'
     [IO.File]::WriteAllText($planConfig, (@{
         daily_reconciliation_timezone = 'Asia/Seoul'
@@ -257,7 +257,7 @@ try {
     Assert-True $workerScript.Contains('preview_enabled') 'Preview opt-in switch is missing.'
     Assert-True $workerScript.Contains('if ($PreviewOnly -and -not $previewEnabled)') 'Preview-only smoke must refuse a disabled preview config.'
     Assert-True $workerScript.Contains('if ($PreviewOnly) { @(''preview'') }') 'Preview-only smoke must not claim ingestion.'
-    Assert-True $workerScript.Contains('if ($PreviewOnly) { $runInitialScan = $false }') 'Preview-only smoke must skip source reconciliation.'
+    Assert-True (-not $workerScript.Contains('Invoke-DocMindSourceReconciliation.ps1')) 'Decrypt worker must leave source reconciliation to the independent watcher.'
 
     Write-Output 'Host worker self-test passed: HMAC/tamper, lease-bounded ACK timeout, explicit Content-Length, ACL idempotency, path boundary, full-scan/deletion proof, fencing, reaping, and purpose-isolated durable cleanup-receipt replay.'
 } finally {
