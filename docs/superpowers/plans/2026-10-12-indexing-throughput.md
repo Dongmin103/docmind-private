@@ -32,11 +32,11 @@
 
 **Interfaces:** Produce `long EnqueueScan(string source, string path, long now)`; existing pending rows return their generation unchanged, absent rows become immediately due initial registrations. `Due(source, now, limit)` prioritizes stable_count > 0 among already-due entries. No new wire kind.
 
-- [ ] Add failing assertions: scan candidate immediately due; repeated scan preserves fingerprint/10-second due; existing upsert retains 120 seconds; move/delete/outbox survive scan; obsolete ACK cannot delete scan's newer event; restart preserves initial timing; due recheck wins over older first observations.
-- [ ] Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/windows/Test-DocMindSyncQueue.ps1`; expected new regression failure.
-- [ ] Implement transaction-safe EnqueueScan and due priority; use EnqueueScan during streaming enumeration.
-- [ ] Run queue and collector tests; expected PASS.
-- [ ] Commit queue/scan change and tests.
+- [x] Add failing assertions: scan candidate immediately due; repeated scan preserves fingerprint/10-second due; existing upsert retains 120 seconds; move/delete/outbox survive scan; obsolete ACK cannot delete scan's newer event; restart preserves initial timing; due recheck wins over older first observations.
+- [x] Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/windows/Test-DocMindSyncQueue.ps1`; expected new regression failure.
+- [x] Implement transaction-safe EnqueueScan and due priority; use EnqueueScan during streaming enumeration.
+- [x] Run queue and collector tests; expected PASS.
+- [x] Commit queue/scan change and tests.
 
 ### Task 2: Bounded continuous source processing
 
@@ -44,11 +44,11 @@
 
 **Interfaces:** Produce `Process-SourceChanges -Id`, returning boolean progress after one dirty batch plus at most 32 due operations within 1 second. Process-Due returns whether an entry was progressed or delayed. Due selection rechecks each iteration, rather than retaining stale snapshots.
 
-- [ ] Add function-extraction tests using the real SQLite queue and stubbed signed delivery: 40 ready entries exceed one visit but drain over repeated visits; 10-second rechecks stay enforced; due second observation proceeds alongside dirty traffic; missing file only delays itself; pending outbox and fenced session stop processing; time budget stops starting new entries.
-- [ ] Run new test; expected missing source processing function failure.
-- [ ] Implement bounded source visits, boolean progress and progress-driven outer loop; preserve one immutable outbox per source.
-- [ ] Run new test and existing incremental signed HTTP test; expected PASS.
-- [ ] Commit watcher change and tests.
+- [x] Add function-extraction tests using the real SQLite queue and stubbed signed delivery: 40 ready entries exceed one visit but drain over repeated visits; 10-second rechecks stay enforced; due second observation proceeds alongside dirty traffic; missing file only delays itself; pending outbox and fenced session stop processing; time budget stops starting new entries.
+- [x] Run new test; expected missing source processing function failure.
+- [x] Implement bounded source visits, boolean progress and progress-driven outer loop; preserve one immutable outbox per source.
+- [x] Run new test and existing incremental signed HTTP test; expected PASS.
+- [x] Commit watcher change and tests.
 
 ### Task 3: Continuous worker claims
 
@@ -56,11 +56,11 @@
 
 **Interfaces:** Job function reports confirmed status/cleanup via a referenced boolean to distinguish safely finalized document failure from transport/cleanup uncertainty. Worker loop sleeps only when no finalized job was processed or cycle infrastructure failed.
 
-- [ ] Extract and execute the actual loop with fake claims/jobs and captured sleep calls: consecutive successful jobs have no sleep; safe failure continues; empty queue, claim error and unconfirmed failure sleep; Once makes one pass; 3-preview fairness and targeted ingestion claim preserved.
-- [ ] Run new test; expected sleep between ready jobs failure.
-- [ ] Implement progress tracking and safe finalization signal; update stale legacy deletion-endpoint assertion to current signed change protocol contract, without weakening deletion checks.
-- [ ] Run worker throughput and existing host-worker tests; expected PASS.
-- [ ] Commit worker changes and tests.
+- [x] Extract and execute the actual loop with fake claims/jobs and captured sleep calls: consecutive successful jobs have no sleep; safe failure continues; empty queue, claim error and unconfirmed failure sleep; Once makes one pass; 3-preview fairness and targeted ingestion claim preserved.
+- [x] Run new test; expected sleep between ready jobs failure.
+- [x] Implement progress tracking and safe finalization signal; update stale legacy deletion-endpoint assertion to current signed change protocol contract, without weakening deletion checks.
+- [x] Run worker throughput and existing host-worker tests; expected PASS.
+- [x] Commit worker changes and tests.
 
 ### Task 4: Streaming integration, measurements and review
 
@@ -68,10 +68,10 @@
 
 **Interfaces:** Synthetic endpoint accepts signed scan lifecycle/candidates, tracks sequence per source, and records timestamps. Test introduces a slow scan reader after initial entries so the watcher can finish an earlier file while scanning continues.
 
-- [ ] Add failing integration proving initial files finish two signed observations before scan completion; failed enumeration cannot send completed/candidate events.
-- [ ] Run regression against baseline scripts; expected no second observation within test deadline due to 120-second wait.
-- [ ] Run against implemented scripts; expected PASS, observed stable interval >=10 seconds, full inventory maintained.
-- [ ] Compare baseline/updated watcher on equal aged-upsert fixtures to isolate scheduler improvement; document source-stage measurements separately from full indexing.
-- [ ] Run all targeted PowerShell tests, Python syntax check and git diff check.
-- [ ] Obtain fresh independent code review; address substantive findings and rerun affected verification.
-- [ ] Commit validation record and leave feature branch ready for deployment review.
+- [x] Add failing integration proving initial files finish two signed observations before scan completion; failed enumeration cannot send completed/candidate events.
+- [x] Run regression against baseline scripts; expected no second observation within test deadline due to 120-second wait.
+- [x] Run against implemented scripts; expected PASS, observed stable interval >=10 seconds, full inventory maintained.
+- [x] Compare baseline/updated watcher on equal aged-upsert fixtures to isolate scheduler improvement; document source-stage measurements separately from full indexing.
+- [x] Run all targeted PowerShell tests, Python syntax check and git diff check.
+- [x] Obtain fresh independent code review; address substantive findings and rerun affected verification.
+- [x] Commit validation record and leave feature branch ready for deployment review.
