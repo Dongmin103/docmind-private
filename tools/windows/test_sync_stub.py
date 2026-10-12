@@ -4,24 +4,28 @@ import argparse
 import hashlib
 import hmac
 import json
+import secrets
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--log", required=True)
+    parser.add_argument("--scan-delay", type=float, default=0)
     args = parser.parse_args()
     secret = bytes(range(32))
-    last_sequence = 0
+    sequences = {}
+    delayed_scans = set()
+    lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
             pass
 
         def do_POST(self):
-            nonlocal last_sequence
             body = self.rfile.read(int(self.headers["Content-Length"]))
             digest = hashlib.sha256(body).hexdigest()
             stamp = self.headers.get("X-DocMind-Timestamp", "")
@@ -31,21 +35,33 @@ def main():
                 self.send_error(401)
                 return
             request = json.loads(body)
+            delay = 0
+            source = request.get("source_id", "")
             if self.path.endswith("/session"):
-                result = {"source_id": request["source_id"], "epoch": 1, "last_sequence": last_sequence,
+                result = {"source_id": source, "epoch": 1, "last_sequence": sequences.get(source, 0),
                           "lease_expires_at": "2099-01-01T00:00:00Z"}
+            elif self.path.endswith("/scans/events"):
+                result = {"accepted": True, "scan_id": request["scan_id"], "state": "RUNNING"}
+                if request["event"] == "batch" and request["scan_id"] not in delayed_scans:
+                    delayed_scans.add(request["scan_id"])
+                    delay = args.scan_delay
+            elif self.path.endswith("/scans/candidates"):
+                result = {"candidates": [], "next_cursor": None}
             else:
-                assert request["sequence"] == last_sequence + 1
-                last_sequence += 1
-                result = {"accepted": True, "epoch": 1, "sequence": last_sequence,
+                assert request["sequence"] == sequences.get(source, 0) + 1
+                sequences[source] = request["sequence"]
+                result = {"accepted": True, "epoch": 1, "sequence": request["sequence"],
                           "items": [{"observation_id": item["observation_id"],
                                      "state": "DIRTY" if item["kind"] == "dirty" else "INDEX_CURRENT"}
                                     for item in request["items"]]}
-                with open(args.log, "a", encoding="utf-8") as log:
-                    log.write(json.dumps(request, ensure_ascii=False) + "\n")
+            if args.scan_delay or self.path.endswith("/changes"):
+                with lock, open(args.log, "a", encoding="utf-8") as log:
+                    log.write(json.dumps({**request, "_received_at": time.time(), "_path": self.path}, ensure_ascii=False) + "\n")
+            if delay:
+                time.sleep(delay)
             output = json.dumps(result).encode()
             response_stamp = str(int(time.time()))
-            response_nonce = hashlib.sha256(f"{time.time_ns()}".encode()).hexdigest()[:32]
+            response_nonce = secrets.token_hex(16)
             response_hash = hashlib.sha256(output).hexdigest()
             signature = hmac.new(secret, f"POST\n{self.path}\n{response_stamp}\n{response_nonce}\n{response_hash}".encode(), hashlib.sha256).hexdigest()
             self.send_response(200)
@@ -58,7 +74,7 @@ def main():
             self.end_headers()
             self.wfile.write(output)
 
-    HTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
 
 
 if __name__ == "__main__":

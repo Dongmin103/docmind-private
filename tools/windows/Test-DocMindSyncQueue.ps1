@@ -79,6 +79,44 @@ try {
     $queue.ResetForNewEpoch('unicode', 2000000)
     Assert-True ($null -eq $queue.Outbox('unicode')) 'Stale epoch outbox survived fencing.'
     Assert-True ($queue.Count('unicode') -eq 1) 'Epoch reset dropped unresolved observation.'
+    $scanGeneration = $queue.EnqueueScan('scan', 'scanned.pdf', 3000000)
+    $scanned = $queue.Due('scan', 3000000, 1)[0]
+    Assert-True ($scanned.InitialRegistration -and $scanned.Generation -eq $scanGeneration) 'Scan discovery waited for modification debounce.'
+    Assert-True ($queue.RememberFingerprint($scanned, $fingerprint)) 'Scan fingerprint could not be remembered.'
+    Assert-True ($queue.Freeze('scan', 1, 1, 'scan-first', '{}', [DocMind.SyncEntry[]]@($scanned))) 'Scan first observation could not freeze.'
+    Assert-True ($queue.EnqueueScan('scan', 'SCANNED.PDF', 3000001) -eq $scanGeneration) 'Repeated scan replaced an in-flight generation.'
+    Assert-True ($queue.Outbox('scan').RequestId -eq 'scan-first') 'Scan replaced immutable outbox.'
+    $queue.Acknowledge('scan', 'scan-first', [int[]]@(1), 3000002)
+    Assert-True ($queue.EnqueueScan('scan', 'scanned.pdf', 3005000) -eq $scanGeneration) 'Repeated scan restarted observation.'
+    Assert-True ($queue.Due('scan', 3010001, 1).Length -eq 0) 'Repeated scan bypassed ten-second stability interval.'
+    $scanned = $queue.Due('scan', 3010002, 1)[0]
+    Assert-True ($scanned.StableCount -eq 1 -and $scanned.Fingerprint -eq $fingerprint) 'Repeated scan lost stability evidence.'
+    $queue.Dispose(); $queue = [DocMind.SyncQueue]::new($dbPath)
+    $queue.ResetForNewEpoch('scan', 3010003)
+    Assert-True ($queue.Due('scan', 3010003, 1)[0].InitialRegistration) 'Scan timing was lost after restart and epoch change.'
+    foreach ($kind in @('upsert','delete','move')) {
+        $eventSource = 'scan-' + $kind
+        $oldPath = if ($kind -eq 'move') { 'original.pdf' } else { $null }
+        $eventGeneration = $queue.Enqueue($eventSource, 'pending.pdf', $kind, $oldPath, 4000000)
+        Assert-True ($queue.EnqueueScan($eventSource, 'pending.pdf', 4000001) -eq $eventGeneration) 'Scan replaced a captured event generation.'
+        $pending = $queue.Dirty($eventSource, 1)[0]
+        Assert-True ($pending.Kind -eq $kind -and $pending.OldRelativePath -eq $oldPath) 'Scan lost event kind or move origin.'
+        Assert-True ($pending.DueAt -eq $(if ($kind -eq 'delete') { 4000000 } else { 4120000 })) 'Scan changed an existing event deadline.'
+    }
+    $null = $queue.Enqueue('scan', 'scanned.pdf', 'upsert', $null, 3010004)
+    Assert-True ($queue.Due('scan', 3010004, 1)[0].Fingerprint -eq $null) 'Modification kept stale scan fingerprint.'
+    $null = $queue.EnqueueScan('priority', 'second.pdf', 5000000)
+    $second = $queue.Due('priority', 5000000, 1)[0]
+    $queue.Delay($second, 5000000, 10000, 1)
+    $null = $queue.EnqueueScan('priority', 'first.pdf', 5000001)
+    Assert-True ($queue.Due('priority', 5010000, 1)[0].RelativePath -eq 'second.pdf') 'Due second observation was starved by first observations.'
+    $heldGeneration=$queue.EnqueueScan('held-scan','unconfigured.pdf',6000000)
+    $held=$queue.Due('held-scan',6000000,1)[0]
+    Assert-True ($queue.Freeze('held-scan',1,1,'held-first','{}',[DocMind.SyncEntry[]]@($held))) 'Held recovery fixture failed.'
+    $queue.Acknowledge('held-scan','held-first',[int[]]@(3),6000001)
+    Assert-True ($queue.Due('held-scan',6000002,1).Length -eq 0) 'Held fixture was still selectable.'
+    Assert-True ($queue.EnqueueScan('held-scan','unconfigured.pdf',6000002) -eq $heldGeneration) 'Recovery scan replaced held event generation.'
+    Assert-True ($queue.Due('held-scan',6000002,1).Length -eq 1) 'Recovery scan could not retry an acknowledged held file.'
     Write-Output 'PASS: durable queue, autosaves, created-file timing, 120s/10s/2s timing, immutable outbox, generation-safe ACK and restart.'
 } finally {
     if ($null -ne $queue) { $queue.Dispose() }
