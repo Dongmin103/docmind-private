@@ -135,7 +135,9 @@ function Freeze-And-Send {
     $session=$sessions[$Id];$sequence=[long]$session.last_sequence+1;$requestId='change-'+[Guid]::NewGuid().ToString('n')
     $body=[ordered]@{protocol_version=2;source_id=$Id;worker_id=[string]$config.worker_id;owner_id=$ownerId;epoch=[long]$session.epoch;sequence=$sequence;request_id=$requestId;items=$Items}
     $payload=$body|ConvertTo-Json -Compress -Depth 8
-    if($queue.Freeze($Id,[long]$session.epoch,$sequence,$requestId,$payload,$Entries)){Send-Outbox -Id $Id}
+    if(-not $queue.Freeze($Id,[long]$session.epoch,$sequence,$requestId,$payload,$Entries)){return $false}
+    Send-Outbox -Id $Id
+    return ($sessions.ContainsKey($Id) -and $null -eq $queue.Outbox($Id))
 }
 function Read-Fingerprint {
     param([string]$Id,[DocMind.SyncEntry]$Entry)
@@ -153,13 +155,13 @@ function Process-Due {
     foreach($entry in @($queue.Due($Id,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(),1))){
         try {
             if($entry.Kind -eq 'delete'){
-                if(-not (Test-DocMindConfirmedSourceFileAbsence -Root $roots[$Id] -RelativePath $entry.RelativePath)){$null=$queue.Enqueue($Id,$entry.RelativePath,'upsert',$null,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds());return}
-                if($entry.StableCount -eq 0){$queue.Delay($entry,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(),2000,1);return}
+                if(-not (Test-DocMindConfirmedSourceFileAbsence -Root $roots[$Id] -RelativePath $entry.RelativePath)){$null=$queue.Enqueue($Id,$entry.RelativePath,'upsert',$null,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds());return $true}
+                if($entry.StableCount -eq 0){$queue.Delay($entry,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(),2000,1);return $true}
                 $item=[ordered]@{kind='delete';relative_path=$entry.RelativePath;generation=$entry.Generation;observation_id=('obs-'+[Guid]::NewGuid().ToString('n'));root_access_confirmed=$true;absence_confirmed=$true}
             } else {
                 $snapshot=Read-Fingerprint -Id $Id -Entry $entry
-                if($entry.StableCount -gt 0 -and $entry.Fingerprint -ne $snapshot.Fingerprint){$null=$queue.Enqueue($Id,$entry.RelativePath,'upsert',$entry.OldRelativePath,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds());return}
-                if($entry.StableCount -eq 0 -and -not $queue.RememberFingerprint($entry,$snapshot.Fingerprint)){return}
+                if($entry.StableCount -gt 0 -and $entry.Fingerprint -ne $snapshot.Fingerprint){$null=$queue.Enqueue($Id,$entry.RelativePath,'upsert',$entry.OldRelativePath,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds());return $true}
+                if($entry.StableCount -eq 0 -and -not $queue.RememberFingerprint($entry,$snapshot.Fingerprint)){return $false}
                 $stage=if($entry.StableCount -eq 0){'first'}else{'second'}
                 $kind=if($entry.Kind -eq 'move' -and $snapshot.Identity){'move'}else{'upsert'}
                 $item=[ordered]@{kind=$kind;relative_path=$entry.RelativePath;generation=$entry.Generation;observation_id=('obs-'+$stage+'-'+[Guid]::NewGuid().ToString('n'));ciphertext_sha256=$snapshot.Hash;size=$snapshot.Size;mtime_ns=$snapshot.Mtime}
@@ -169,12 +171,37 @@ function Process-Due {
                     else{$item.kind='upsert'}
                 }
             }
-            Freeze-And-Send -Id $Id -Entries ([DocMind.SyncEntry[]]@($entry)) -Items @($item)
+            return (Freeze-And-Send -Id $Id -Entries ([DocMind.SyncEntry[]]@($entry)) -Items @($item))
         } catch {
             $queue.Delay($entry,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(),5000,$entry.StableCount)
             Write-Warning ('SYNC_FILE_RETRY '+$_.Exception.GetType().Name)
+            return $true
         }
     }
+    return $false
+}
+function Process-SourceChanges {
+    param([string]$Id)
+    $clock=[Diagnostics.Stopwatch]::StartNew();$progress=$false
+    if($null -ne $queue.Outbox($Id)){
+        Send-Outbox -Id $Id
+        if(-not $sessions.ContainsKey($Id) -or $null -ne $queue.Outbox($Id)){return $false}
+        $progress=$true
+    }
+    # Send one dirty batch, then give due stability checks a turn even when
+    # more dirty events arrive. Each iteration selects a fresh generation.
+    $dirty=@($queue.Dirty($Id,250))
+    if($dirty.Count){
+        $items=@($dirty|ForEach-Object{[ordered]@{kind='dirty';relative_path=$_.RelativePath;generation=$_.Generation;observation_id=('obs-dirty-'+[Guid]::NewGuid().ToString('n'))}})
+        if(-not (Freeze-And-Send -Id $Id -Entries ([DocMind.SyncEntry[]]$dirty) -Items $items)){return $progress}
+        $progress=$true
+    }
+    for($i=0;$i -lt 32 -and $clock.ElapsedMilliseconds -lt 1000;$i++){
+        if(-not $sessions.ContainsKey($Id) -or $null -ne $queue.Outbox($Id)){break}
+        if(-not (Process-Due -Id $Id)){break}
+        $progress=$true
+    }
+    return $progress
 }
 try {
     foreach($id in @($roots.Keys)){
@@ -186,6 +213,7 @@ try {
     }
     $lastMidnight=''
     do {
+        $progress=$false
         foreach($id in @($roots.Keys)){
             try {
                 if($scans.ContainsKey($id) -and $scans[$id].HasExited){
@@ -195,12 +223,7 @@ try {
                 if(-not $sessions.ContainsKey($id)){Open-Session -Id $id}
                 elseif([DateTimeOffset]::UtcNow -ge $renewed[$id].AddSeconds(30)){Open-Session -Id $id -Renew}
                 Process-Scope -Id $id
-                Send-Outbox -Id $id
-                if($null -eq $queue.Outbox($id)){
-                    $dirty=@($queue.Dirty($id,250))
-                    if($dirty.Count){$items=@($dirty|ForEach-Object{[ordered]@{kind='dirty';relative_path=$_.RelativePath;generation=$_.Generation;observation_id=('obs-dirty-'+[Guid]::NewGuid().ToString('n'))}});Freeze-And-Send -Id $id -Entries ([DocMind.SyncEntry[]]$dirty) -Items $items}
-                    else{Process-Due -Id $id}
-                }
+                if(Process-SourceChanges -Id $id){$progress=$true}
                 if($watchers[$id].Faulted){$watchers[$id].Faulted=$false;$queue.EnqueueScope($id,'',$null,'recovery')}
             } catch {
                 if($_.Exception.Message -match '^SESSION_HTTP_409_SESSION_(EXPIRED|FENCED)'){$sessions.Remove($id)}
@@ -210,7 +233,7 @@ try {
         $seoul=[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow,'Korea Standard Time')
         $today=$seoul.ToString('yyyy-MM-dd')
         if(-not $Once -and $seoul.Hour -eq 0 -and $lastMidnight -ne $today){foreach($id in @($sessions.Keys)){$null=Launch-Scan -Id $id -Reason scheduled};$lastMidnight=$today}
-        if(-not $Once){Start-Sleep -Seconds $PollSeconds}
+        if(-not $Once -and -not $progress){Start-Sleep -Seconds $PollSeconds}
     } while(-not $Once)
 } finally {
     foreach($watcher in @($watchers.Values)){$watcher.Dispose()}
