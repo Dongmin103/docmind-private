@@ -163,6 +163,18 @@ namespace DocMind
 
         public long Enqueue(string source, string path, string kind, string oldPath, long now)
         {
+            return EnqueueCore(source, path, kind, oldPath, now, false);
+        }
+
+        // Enumeration is an observation, not a newer filesystem event. Never
+        // reset a captured modification, deletion, move or in-flight hash.
+        public long EnqueueScan(string source, string path, long now)
+        {
+            return EnqueueCore(source, path, "create", null, now, true);
+        }
+
+        private long EnqueueCore(string source, string path, string kind, string oldPath, long now, bool scan)
+        {
             if (String.IsNullOrWhiteSpace(source)) throw new ArgumentException("Source required.");
             if (kind != "create" && kind != "upsert" && kind != "delete" && kind != "move") throw new ArgumentException("Invalid change kind.");
             path = NormalizePath(path);
@@ -174,6 +186,11 @@ namespace DocMind
                 long generation = 0;
                 Transaction(delegate
                 {
+                    if (scan)
+                    {
+                        List<object[]> pending = Query("SELECT generation FROM pending WHERE source=? AND path_key=?", source, key);
+                        if (pending.Count != 0) { generation = (long)pending[0][0]; return; }
+                    }
                     Query("UPDATE counter SET generation=generation+1 WHERE id=1");
                     generation = (long)Query("SELECT generation FROM counter WHERE id=1")[0][0];
                     // Preserve the earliest old path across autosave notifications.
@@ -201,7 +218,8 @@ namespace DocMind
         {
             if (limit < 1 || limit > 250) throw new ArgumentOutOfRangeException("limit");
             string condition = dirty ? "dirty_sent=0" : "due_at<=?";
-            string sql = "SELECT source,path_key,path,kind,old_path,generation,changed_at,due_at,stable_count,fingerprint,initial_registration FROM pending WHERE source=? AND state=0 AND " + condition + " AND NOT EXISTS(SELECT 1 FROM outbox WHERE source=?) ORDER BY due_at,path_key LIMIT ?";
+            string order = dirty ? "due_at,path_key" : "CASE WHEN stable_count>0 THEN 0 ELSE 1 END,due_at,path_key";
+            string sql = "SELECT source,path_key,path,kind,old_path,generation,changed_at,due_at,stable_count,fingerprint,initial_registration FROM pending WHERE source=? AND state=0 AND " + condition + " AND NOT EXISTS(SELECT 1 FROM outbox WHERE source=?) ORDER BY " + order + " LIMIT ?";
             List<object[]> rows = dirty ? Query(sql, source, source, limit) : Query(sql, source, now, source, limit);
             List<SyncEntry> result = new List<SyncEntry>();
             foreach (object[] row in rows)

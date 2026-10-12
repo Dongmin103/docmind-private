@@ -146,7 +146,7 @@ function Invoke-SourceScan {
         $batch = [Collections.Generic.List[object]]::new()
         Get-DocMindSourceSnapshotEntries -Root $root | ForEach-Object {
             $batch.Add($_)
-            $null = $queue.Enqueue($sourceKey,[string]$_.relative_path,'upsert',$null,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+            $null = $queue.EnqueueScan($sourceKey,[string]$_.relative_path,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
             $fileCount++
             if ($batch.Count -ge $BatchSize) {
                 $message = New-BaseEvent -Source $sourceKey -Scan $scanId -Event 'batch'
