@@ -44,10 +44,75 @@ from rag.llm.embedding_model import (
     NvidiaEmbed,
     OllamaEmbed,
     OpenAIEmbed,
+    OpenAI_APIEmbed,
+    AstraflowEmbed,
     ZhipuEmbed,
 )
 from common.exceptions import ModelException
 from common.token_utils import num_tokens_from_string
+
+
+@pytest.mark.parametrize("adapter_class", [OpenAIEmbed, OpenAI_APIEmbed])
+def test_configured_batch_size_reaches_actual_supported_provider(monkeypatch, adapter_class):
+    from common import settings
+    monkeypatch.setattr(settings, "EMBEDDING_BATCH_SIZE", 32)
+    embed = _make_openai(cls=adapter_class, total_tokens=7)
+    vectors, tokens = embed.encode(["synthetic"] * 65)
+    assert [len(c.kwargs["input"]) for c in embed.client.embeddings.create.call_args_list] == [32, 32, 1]
+    assert vectors.shape == (65, 3)
+    assert tokens == 21
+
+
+def test_unverified_subclass_retains_inner_batch_limit(monkeypatch):
+    from common import settings
+    monkeypatch.setattr(settings, "EMBEDDING_BATCH_SIZE", 64)
+    embed = _make_openai(cls=AstraflowEmbed, total_tokens=1)
+    embed.encode(["synthetic"] * 32)
+    assert [len(c.kwargs["input"]) for c in embed.client.embeddings.create.call_args_list] == [16, 16]
+
+
+@pytest.mark.parametrize("adapter_class", [OpenAIEmbed, OpenAI_APIEmbed])
+@pytest.mark.parametrize("official,request_sizes", [(True, [36, 4]), (False, [40])])
+def test_official_total_token_limit_is_not_imposed_on_compatible_endpoints(monkeypatch, adapter_class, official, request_sizes):
+    from common import settings
+    monkeypatch.setattr(settings, "EMBEDDING_BATCH_SIZE", 64)
+    embed = adapter_class("synthetic", "synthetic", base_url="https://api.openai.com/v1" if official else "https://synthetic.invalid/v1")
+    embed.client = MagicMock()
+    embed.client.embeddings.create.side_effect = _openai_create(total_tokens=1)
+    vectors, _ = embed.encode(["word " * 9000] * 40)
+    assert vectors.shape[0] == 40
+    assert [len(c.kwargs["input"]) for c in embed.client.embeddings.create.call_args_list] == request_sizes
+    if official:
+        assert all(sum(num_tokens_from_string(t) for t in c.kwargs["input"]) <= 300000 for c in embed.client.embeddings.create.call_args_list)
+
+
+def test_explicit_compatible_request_token_budget_splits_and_rejects_oversized_input(monkeypatch):
+    from common import settings
+    monkeypatch.setattr(settings, "EMBEDDING_BATCH_SIZE", 64)
+    monkeypatch.setattr(settings, "EMBEDDING_REQUEST_TOKEN_LIMIT", 5, raising=False)
+    embed = _make_openai(cls=OpenAI_APIEmbed, total_tokens=1)
+    embed.encode(["body 1", "body 2", "body 3"])
+    assert [len(c.kwargs["input"]) for c in embed.client.embeddings.create.call_args_list] == [1, 1, 1]
+    with pytest.raises(ValueError, match="token"):
+        embed.encode(["word " * 20])
+
+
+@pytest.mark.parametrize("indices", [[0, 0], [0, 2], [0], [0, None], [False, 1]])
+def test_openai_rejects_invalid_cardinality_and_indices(indices):
+    embed = _make_openai(total_tokens=1)
+    data = [SimpleNamespace(index=i, embedding=[1., 2.]) for i in indices]
+    embed.client.embeddings.create.return_value = SimpleNamespace(data=data, usage=SimpleNamespace(total_tokens=1))
+    embed.client.embeddings.create.side_effect = None
+    with pytest.raises(EmbeddingError):
+        embed.encode(["body 1", "body 2"])
+
+
+def test_compatible_response_without_indices_keeps_returned_order():
+    embed = _make_openai(cls=OpenAI_APIEmbed, total_tokens=1)
+    embed.client.embeddings.create.side_effect = None
+    embed.client.embeddings.create.return_value = SimpleNamespace(data=[SimpleNamespace(index=None, embedding=[3., 4.]), SimpleNamespace(index=None, embedding=[5., 6.])])
+    vectors, _ = embed.encode(["body 1", "body 2"])
+    np.testing.assert_array_equal(vectors, [[3., 4.], [5., 6.]])
 
 
 def test_local_tei_embedding_uses_configured_read_timeout(monkeypatch):

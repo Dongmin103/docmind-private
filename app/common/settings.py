@@ -215,6 +215,26 @@ SERENEDB = {}
 DOC_MAXIMUM_SIZE: int = 128 * 1024 * 1024
 DOC_BULK_SIZE: int = 32
 EMBEDDING_BATCH_SIZE: int = 16
+EMBEDDING_BATCH_CONCURRENCY: int = 1
+EMBEDDING_REQUEST_TOKEN_LIMIT: int = 0
+
+
+def _embedding_throughput_options():
+    """Validate worker options without changing other consumers' batch ceiling."""
+    values = []
+    for name, default, minimum, maximum in (
+        ("EMBEDDING_BATCH_SIZE", 16, 1, None),
+        ("EMBEDDING_BATCH_CONCURRENCY", 1, 1, 2),
+        ("EMBEDDING_REQUEST_TOKEN_LIMIT", 0, 0, None),
+    ):
+        try:
+            value = int(os.environ.get(name, default))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be an integer") from exc
+        if value < minimum or (maximum is not None and value > maximum):
+            raise ValueError(f"{name} outside supported range")
+        values.append(value)
+    return tuple(values)
 
 PARALLEL_DEVICES: int = 0
 
@@ -503,10 +523,10 @@ def init_settings():
         MAIL_DEFAULT_SENDER = (mail_default_sender[0], mail_default_sender[1])
     MAIL_FRONTEND_URL = SMTP_CONF.get("mail_frontend_url", "")
 
-    global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE
+    global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE, EMBEDDING_BATCH_CONCURRENCY, EMBEDDING_REQUEST_TOKEN_LIMIT
     DOC_MAXIMUM_SIZE = int(os.environ.get("MAX_CONTENT_LENGTH", 128 * 1024 * 1024))
     DOC_BULK_SIZE = int(os.environ.get("DOC_BULK_SIZE", 32))
-    EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", 16))
+    EMBEDDING_BATCH_SIZE, EMBEDDING_BATCH_CONCURRENCY, EMBEDDING_REQUEST_TOKEN_LIMIT = _embedding_throughput_options()
 
     os.environ["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1"
 
