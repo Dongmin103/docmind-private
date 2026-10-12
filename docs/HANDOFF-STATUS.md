@@ -2,6 +2,8 @@
 
 날짜: 2026-09-21
 
+2026-10-12 추가: 사용자 승인으로 현재 Windows/Docker 개발 환경의 임베딩을 GTE로 전환했다. 서비스 실행 경로, 데이터 이전 및 검증 결과, 수집 복구와 BGE 롤백 제약은 [GTE 배포 기록](LOCAL-GTE-DEPLOYMENT-2026-10-12.md)에 정리한다. 아래 내용은 초기 인수인계 범위다.
+
 ## 포함
 
 - 변경 전 DocMind/RAGFlow 커스텀 소스: Python, web, Go, 파서 sidecar, 빌드 파일·lockfile·라이선스·기존 테스트 코드.

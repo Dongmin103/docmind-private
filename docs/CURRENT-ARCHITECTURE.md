@@ -2,6 +2,8 @@
 
 ## 현재 상태
 
+2026-10-12 로컬 개발 배포: Windows GPU의 인증된 OpenAI 호환 GTE 서비스 → 기존 Docker 모델 어댑터 → Elasticsearch `q_768_vec` 경로를 사용한다. 데이터셋/tenant 기본 임베딩은 GTE로 전환했다. 아래 초기 스냅샷의 BGE-M3 설명은 이전 상태이며, 현재 구성은 [배포 기록](LOCAL-GTE-DEPLOYMENT-2026-10-12.md)이 우선한다.
+
 app/는 2026-09-21 커스텀 소스 스냅샷에서 시작했으며, 현재 개발 브랜치는 제품 경로의 OpenViking route/catalog generation/publish와 배포 의존성을 제거하고 공통 scope/C128 검색으로 전환했다. 원본 HEAD는 432dd7e6f98796b875beb41dd1abf2ced3ad8d5b이며 실제 환경설정·개인키·문서 데이터는 포함하지 않는다. 이 checkout의 변경이 운영 이미지에 배포됐거나 운영 서비스가 중지됐다는 뜻은 아니다.
 
 백업의 실행 설정은 Python API + MySQL + Elasticsearch + Redis 호환 Valkey, CPU였다. Docker 앱에는 커스텀 PDF/Office/HWP 처리 및 DocMind 화면 변경이 포함돼 있었다. 소스 기본값과 실행 이미지가 같다고 가정하지 말고 새 이미지로 빌드한다.
@@ -12,7 +14,7 @@ app/는 2026-09-21 커스텀 소스 스냅샷에서 시작했으며, 현재 개�
 | api/apps/services/docmind_* | 공통 scope 검색·등록·폴더·경로와 계층 draft 상태 |
 | api/db/services/{file,document,task,knowledgebase}_service.py | 문서 등록·파싱 작업·저장소·색인 관리. UI 제거와 별개로 필요 |
 | rag/svr/task_executor.py | 파싱/청킹/색인 작업, 큐·재시도. 메모리/그래프/agent 공통 의존 포함 |
-| rag/app, deepdoc, rag/parser_platform | 문서 청킹과 파서 연결. 기존 청킹/BGE-M3를 이번 작업에서 교체하지 않음 |
+| rag/app, deepdoc, rag/parser_platform | 문서 청킹과 파서 연결. 청킹 유지, 임베딩은 로컬 GTE 서비스 사용 |
 | parser_services/docling_pdf, docling_office, surya, rhwp | 커스텀 PDF/Office/OCR/HWP sidecar의 소스와 Containerfile |
 | rag/llm, api/db/services/llm_service.py | 모델 어댑터와 설정. Jina reranker와 답변 LLM은 서로 다른 역할 |
 | web/src/pages/docmind | DocMind 문서 선택·검색 화면 |
@@ -28,7 +30,7 @@ app/는 2026-09-21 커스텀 소스 스냅샷에서 시작했으며, 현재 개�
 ```text
 Windows All-in-One 암호화 원본 (세 루트)
   → Windows 감지/복호화 실행부 (임시 출력)
-  → Docker DocMind 파서 → 기존 청커/BGE-M3 → ES
+  → Docker DocMind 파서 → 기존 청커 → Windows GPU GTE → ES
   → 임시 평문 및 파생물 정리
 
 사용자 전체/폴더/문서 선택
