@@ -189,7 +189,7 @@ function Invoke-DocMindIsolationTransition {
     Assert-DocMindIsolationArtifacts -Manifest $Manifest
     if ($Action -eq 'Apply' -and $Manifest.phase -eq 'applied') { return }
     if ($Action -eq 'Rollback' -and $Manifest.phase -eq 'rolled-back') { return }
-    if ($Action -eq 'Apply' -and (-not $Manifest.memory_gate.passed -or -not $Manifest.functional_gate.passed)) { throw 'ISOLATION_DEPLOYMENT_GATE_FAILED' }
+    if ($Action -eq 'Apply') { Assert-DocMindIsolationReleaseGates -Manifest $Manifest }
     Assert-DocMindIsolationQuiescent -Manifest $Manifest -AllowLegacyReceipts:($Action -eq 'Apply')
     $handles = Enter-DocMindIsolationTransition -Manifest $Manifest
     try {
@@ -233,6 +233,19 @@ function Invoke-DocMindIsolationTransition {
             throw $transitionFailure
         }
     } finally { Exit-DocMindIsolationTransition -Handles $handles }
+}
+
+function Assert-DocMindIsolationReleaseGates {
+    param($Manifest)
+    $memory = $Manifest.memory_gate; $functional = $Manifest.functional_gate
+    if (-not $memory.passed -or -not $functional.passed) { throw 'ISOLATION_DEPLOYMENT_GATE_FAILED' }
+    if ($memory.PSObject.Properties.Name -notcontains 'observed_seconds' -or $memory.observed_seconds -lt 1200 -or $memory.minimum_required_seconds -lt 1200) { throw 'MEMORY_DURATION_PROOF_REQUIRED' }
+    $required = @('browser_trials','browser_first_page_p95_ms','ingest_delivery_delay_seconds','preview_preceded_ingest_ack','idle_seconds','overlap_seconds','scenarios')
+    foreach ($name in $required) { if ($functional.PSObject.Properties.Name -notcontains $name) { throw 'FUNCTIONAL_PROOF_INCOMPLETE' } }
+    if ($functional.browser_trials -lt 20 -or $functional.browser_first_page_p95_ms -gt 5000 -or $functional.ingest_delivery_delay_seconds -lt 540 -or $functional.preview_preceded_ingest_ack -ne $true -or $functional.idle_seconds -lt 300 -or $functional.overlap_seconds -lt 900) { throw 'FUNCTIONAL_DEPLOYMENT_GATE_FAILED' }
+    foreach ($scenario in @('large_pdf','office','hwp','two_tabs','capacity','disconnect','cancel','termination_failure','parent_kill','restart','rollback')) {
+        if ($functional.scenarios.PSObject.Properties.Name -notcontains $scenario -or $functional.scenarios.$scenario -ne 'PASS') { throw 'FUNCTIONAL_SCENARIO_PROOF_REQUIRED' }
+    }
 }
 
 function New-DocMindIsolationManifest {

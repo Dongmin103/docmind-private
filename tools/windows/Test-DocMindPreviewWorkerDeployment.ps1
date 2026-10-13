@@ -51,6 +51,7 @@ function Exit-DocMindIsolationTransition { param($Handles) }
 function Invoke-DocMindLegacyReceiptRecovery { param($Manifest) }
 function Get-DocMindTaskState { param($Name) return 'Ready' }
 function Wait-DocMindIsolationApi { param($Manifest) }
+function Assert-DocMindIsolationReleaseGates { param($Manifest) if (-not $Manifest.memory_gate.passed -or -not $Manifest.functional_gate.passed) { throw 'ISOLATION_DEPLOYMENT_GATE_FAILED' } }
 function Assert-DocMindNoRoleWorkers { param($Manifest) }
 function Initialize-DocMindRoleRoots { param($Worker) }
 function Set-DocMindIsolationTask {
