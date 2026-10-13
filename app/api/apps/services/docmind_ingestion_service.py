@@ -1130,6 +1130,13 @@ def _claim_next(
             DocmindIngestionJob.lifecycle_state.in_({'CLAIMED', 'DECRYPTING', 'DELIVERED', 'PARSING', 'INDEXING', 'CLEANUP', 'CLEANUP_FAILED'})
             | (DocmindIngestionJob.host_cleanup_state == 'PENDING')
         )
+        if candidate.lifecycle_state == 'DECRYPTING':
+            # _claimable_jobs permits only expired decrypt leases here. Replace
+            # that fenced attempt in its existing slot after host cleanup;
+            # counting it again would permanently block a lost claim response.
+            if candidate.host_cleanup_state == 'PENDING' or candidate.parser_input_token_hash:
+                return None
+            active = active.where(DocmindIngestionJob.id != candidate.id)
         count = active.count()
         if count >= admission_limit or active.where(DocmindIngestionJob.pdf_ocr_requested == True).exists():  # noqa: E712
             return None

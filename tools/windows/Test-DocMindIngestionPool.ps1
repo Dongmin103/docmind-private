@@ -13,6 +13,21 @@ try {
     Assert-True ($a.WorkRoot -ne $b.WorkRoot -and $a.ReceiptRoot -ne $b.ReceiptRoot) 'Two slots share mutable roots.'
     Assert-True ($a.ControlRoot -eq $b.ControlRoot) 'Slots bypass the shared decrypt gate.'
     Assert-True ((Get-DocMindWorkerRolePaths -Config $config -Purpose ingest).WorkRoot -eq $config.work_root) 'Standalone paths changed.'
+    # Reap/replay slot 0 with an expired sibling workspace and receipt present.
+    foreach($paths in @($a,$b)) {
+        $job=Join-Path $paths.WorkRoot 'same-job'
+        [void][IO.Directory]::CreateDirectory($job)
+        Set-Content -LiteralPath (Join-Path $job 'plaintext.bin') -Value 'synthetic'
+        @{job_id='same-job';version_id='same-version';fencing_token=1;lease_expires_at=[DateTimeOffset]::UtcNow.AddMinutes(-10).ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $job 'job-state.json')
+        (Get-Item -LiteralPath $job).LastWriteTimeUtc=[DateTime]::UtcNow.AddMinutes(-10)
+    }
+    $siblingReceipt=Write-DocMindCleanupReceiptAtomic -ReceiptRoot $b.ReceiptRoot -JobId 'same-job' -VersionId 'same-version' -FencingToken 1 -FinalState 'CLEANUP_PENDING' -ErrorCode $null
+    $removed=Remove-DocMindExpiredJobDirectories -WorkRoot $a.WorkRoot -ReceiptRoot $a.ReceiptRoot -MinimumAgeSeconds 30
+    Assert-True ($removed -eq 1 -and (Test-Path (Join-Path $b.WorkRoot 'same-job/plaintext.bin'))) 'Slot reaper touched sibling plaintext.'
+    $lostAck=Invoke-DocMindCleanupReceiptReplay -ReceiptRoot $a.ReceiptRoot -WorkRoot $a.WorkRoot -Sender {param($r) throw 'SYNTHETIC_ACK_LOSS'}
+    Assert-True ($lostAck.pending -eq 1) 'Lost ACK discarded its durable receipt.'
+    $replayed=Invoke-DocMindCleanupReceiptReplay -ReceiptRoot $a.ReceiptRoot -WorkRoot $a.WorkRoot -Sender {param($r)}
+    Assert-True ($replayed.acknowledged -eq 1 -and (Test-Path $siblingReceipt)) 'Slot replay consumed sibling receipt.'
     $helper=Join-Path $PSScriptRoot 'DocMindIngestionPool.ps1'
     if(-not(Test-Path $helper)){throw 'Missing pool supervisor'}
     . $helper

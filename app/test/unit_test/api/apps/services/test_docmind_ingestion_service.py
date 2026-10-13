@@ -178,6 +178,28 @@ def test_concurrent_claim_threads_never_exceed_pool_capacity(ingestion_db, monke
             assert DocmindIngestionJob.select().where(DocmindIngestionJob.lifecycle_state == 'DECRYPTING').count() == 2
 
 
+@pytest.mark.parametrize('capacity,ocr', [(1, False), (2, False), (1, True), (2, True)])
+def test_pool_reclaims_lost_claim_response_after_lease_expiry(ingestion_db, monkeypatch, capacity, ocr):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', str(capacity))
+    job_id = _pool_document(1, ocr=ocr)
+    first = service.claim_next('lost-worker', ingestion_pool_size=capacity, lease_seconds=1800)
+    if capacity == 2 and not ocr:
+        _pool_document(2)
+        assert service.claim_next('other-worker', ingestion_pool_size=capacity)
+    DocmindIngestionJob.update(lease_expires_at=service._now()-timedelta(seconds=1)).where(DocmindIngestionJob.id == job_id).execute()
+    retry = service.claim_next('replacement', ingestion_pool_size=capacity, lease_seconds=1800)
+    assert retry and retry.job_id == job_id
+    assert retry.fencing_token == first.fencing_token + 1
+
+
+def test_pool_does_not_reclaim_expired_attempt_awaiting_host_cleanup(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '1')
+    _pool_document(1)
+    assert service.claim_next('lost-worker', ingestion_pool_size=1)
+    DocmindIngestionJob.update(host_cleanup_state='PENDING', lease_expires_at=service._now()-timedelta(seconds=1)).execute()
+    assert service.claim_next('replacement', ingestion_pool_size=1) is None
+
+
 def test_observation_requires_repeat_and_is_idempotent(ingestion_db):
     assert _observe() == {"state": "WAITING_SOURCE_STABLE", "stable_observations": 1}
     second = _observe()
