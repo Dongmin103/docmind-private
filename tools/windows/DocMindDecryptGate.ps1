@@ -28,12 +28,13 @@ namespace DocMind {
   [DllImport("kernel32.dll")] static extern uint ResumeThread(IntPtr thread);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
   IntPtr job; public Process Process { get; private set; }
-  public DecryptChild(string exe,string source,string output) {
+  public DecryptChild(string exe,string source,string output) : this(exe,"\""+source+"\" \""+output+"\" /dec") {}
+  public DecryptChild(string exe,string arguments) {
    job=CreateJobObject(IntPtr.Zero,null); if(job==IntPtr.Zero) throw new Win32Exception();
    var limits=new EXTENDED_LIMIT(); limits.basic.flags=0x2000;
    if(!SetInformationJobObject(job,9,ref limits,(uint)Marshal.SizeOf(limits))) { Dispose(); throw new Win32Exception(); }
    var startup=new STARTUP_EX(); startup.startup.cb=(uint)Marshal.SizeOf(startup); PROCESS_INFO child;
-   var command=new System.Text.StringBuilder("\""+exe+"\" \""+source+"\" \""+output+"\" /dec");
+   var command=new System.Text.StringBuilder("\""+exe+"\" "+arguments);
    IntPtr size=IntPtr.Zero; InitializeProcThreadAttributeList(IntPtr.Zero,1,0,ref size);
    startup.attributes=Marshal.AllocHGlobal(size); var jobPointer=Marshal.AllocHGlobal(IntPtr.Size); bool initialized=false;
    try {

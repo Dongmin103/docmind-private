@@ -14,6 +14,7 @@ function Invoke-TestLoop {
     $allowedClaimFormats=@();$previewEnabled=[bool]$Preview;
     $lastReceiptReplayAt=[DateTimeOffset]::UtcNow.AddDays(1);$cleanupReceiptReplaySeconds=30
     $config=[pscustomobject]@{worker_id='worker-test'};$claimLeaseSeconds=300;$claimPath='/ingest';$previewClaimPath='/preview';$PollSeconds=5
+    $IngestionSlot=-1
     $lastFencingTokenByJob=@{};$script:jobs=0;$script:sleeps=0;$script:claims=[Collections.Generic.List[string]]::new()
     function Get-DocMindClaimRequestBody {param($Purpose,$IngestionBody) return $IngestionBody}
     function Invoke-DocMindRoleReaper { param($ControlRoot,$WorkRoot,$ReceiptRoot,$MinimumAgeSeconds) return 0 }

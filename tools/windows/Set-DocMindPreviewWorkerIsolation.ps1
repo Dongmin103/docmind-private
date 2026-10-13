@@ -280,7 +280,7 @@ function New-DocMindIsolationManifest {
         Copy-Item -LiteralPath $file -Destination $snapshot
         $originalFiles += @{ path = $file; snapshot = $snapshot; sha256 = Get-DocMindFileSha256 $file }
     }
-    foreach ($name in @('Start-DocMindUEncryptorHostWorker.ps1', 'DocMindUEncryptorHostWorker.Common.ps1', 'DocMindDecryptGate.ps1', 'Set-DocMindPreviewWorkerIsolation.ps1')) {
+    foreach ($name in @('Start-DocMindUEncryptorHostWorker.ps1', 'DocMindUEncryptorHostWorker.Common.ps1', 'DocMindDecryptGate.ps1', 'DocMindIngestionPool.ps1', 'Set-DocMindPreviewWorkerIsolation.ps1')) {
         $target = Join-Path $after $name
         Copy-Item -LiteralPath (Join-Path $script:DocMindIsolationToolRoot $name) -Destination $target
         $artifacts += @{ path = $target; sha256 = Get-DocMindFileSha256 $target }

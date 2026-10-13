@@ -6,6 +6,11 @@ param(
     [string]$ClaimSourceId = '',
     [string]$ClaimJobId = '',
     [ValidateSet('ingest', 'preview')][string]$Purpose = 'ingest',
+    [ValidateRange(-1,1)][int]$IngestionSlot = -1,
+    [ValidateSet(1,2)][int]$PoolSize = 1,
+    [int]$ParentProcessId = 0,
+    [string]$ParentStartedUtc = '',
+    [string]$StopFile = '',
     [string]$ClaimFormats = '',
     [int]$MaxPdfPages = 0,
     [string]$CleanupJobId,
@@ -22,6 +27,9 @@ Set-StrictMode -Version Latest
 Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
 . (Join-Path $PSScriptRoot 'DocMindUEncryptorHostWorker.Common.ps1')
 . (Join-Path $PSScriptRoot 'DocMindDecryptGate.ps1')
+. (Join-Path $PSScriptRoot 'DocMindIngestionPool.ps1')
+if ($IngestionSlot -ge 0 -and ($Purpose -ne 'ingest' -or -not $StopFile -or
+    -not (Test-DocMindPoolParent -ParentProcessId $ParentProcessId -ParentStartedUtc $ParentStartedUtc))) { throw 'POOL_PARENT_REQUIRED' }
 
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { throw 'DOCMIND_HOST_WORKER_CONFIG or -ConfigPath is required.' }
 $configFile = [IO.Path]::GetFullPath($ConfigPath)
@@ -75,7 +83,11 @@ if (-not $apiBase.IsAbsoluteUri -or -not $apiBase.IsLoopback -or @('http', 'http
     throw 'api_base_uri must be an authenticated loopback HTTP(S) endpoint published by Docker.'
 }
 $executable = [IO.Path]::GetFullPath([string]$config.executable_path)
-$rolePaths = Get-DocMindWorkerRolePaths -Config $config -Purpose $Purpose
+$rolePaths = Get-DocMindWorkerRolePaths -Config $config -Purpose $Purpose -IngestionSlot $IngestionSlot
+if ($IngestionSlot -ge 0) {
+    $config.worker_id = [string]$config.worker_id + '-slot-' + $IngestionSlot
+    Assert-DocMindIdentifier -Value ([string]$config.worker_id) -Name 'worker_id'
+}
 $workRoot = $rolePaths.WorkRoot
 $receiptRoot = $rolePaths.ReceiptRoot
 $controlRoot = $rolePaths.ControlRoot
@@ -567,7 +579,7 @@ function ConvertTo-PreviewLease {
     return $lease
 }
 
-$singleton = Enter-DocMindWorkerSingleton -Purpose $Purpose
+$singleton = Enter-DocMindWorkerSingleton -Purpose $Purpose -IngestionSlot $IngestionSlot
 try {
 [void](Assert-ExecutableIdentity)
 if (-not [string]::IsNullOrWhiteSpace($CleanupJobId)) {
@@ -585,6 +597,8 @@ $lastReceiptReplayAt = [DateTimeOffset]::UtcNow
 Write-Output ('Host worker ready; role: {0}; removed: {1}; receipts acknowledged: {2}.' -f $Purpose, $removed, $receiptReplay.acknowledged)
 
 do {
+    if ($IngestionSlot -ge 0 -and ((Test-Path -LiteralPath $StopFile) -or
+        -not (Test-DocMindPoolParent -ParentProcessId $ParentProcessId -ParentStartedUtc $ParentStartedUtc))) { break }
     $processedJob = $false
     $cycleFailed = $false
     try {
@@ -595,6 +609,7 @@ do {
             $lastReceiptReplayAt = [DateTimeOffset]::UtcNow
         }
         $claimBody = [ordered]@{ worker_id = [string]$config.worker_id; protocol_version = 1; lease_seconds = $claimLeaseSeconds }
+        if ($IngestionSlot -ge 0) { $claimBody.ingestion_pool_size = $PoolSize }
         if ($allowedClaimFormats.Count -gt 0) { $claimBody.allowed_formats = @($allowedClaimFormats) }
         if ($SkipRetries) { $claimBody.skip_retries = $true }
         if (-not [string]::IsNullOrWhiteSpace($ClaimSourceId)) { $claimBody.claim_source_id = $ClaimSourceId }
