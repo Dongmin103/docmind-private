@@ -6,6 +6,7 @@
 
 - API **한 프로세스**에 `DOCMIND_INGESTION_DOCUMENT_CONCURRENCY=2`를 전달해야 슬롯 2 claim을 허용한다. 기본은 1이며, 잘못된 풀 크기는 거부한다. 여러 API 프로세스/호스트에 걸친 전역 제한은 구현 범위 밖이다.
 - `MAX_CONCURRENT_EMBEDDING_REQUESTS=2`는 모든 cloud-ingestion 이벤트 루프가 공유한다. GTE 768, 배치 32, 기존 배치 동시 요청 2, GPU 모델 추론 1은 고정한다.
+- Kordoc `/v1/parse`는 동시에 한 작업만 처리하며 추가 요청을 `503 PARSER_BUSY`로 거부한다. `kordoc_pilot.py`의 프로세스 공통·서비스 URL별 파싱 슬롯으로 요청/응답 읽기를 직렬화한다. 슬롯 대기 시간은 HTTP 제한 시간에서 차감한다. 슬롯은 임베딩 전에 반환되므로 A 임베딩과 B 파싱은 겹칠 수 있다. 다른 API 프로세스/호출자까지 조율하는 전역 큐는 아니다.
 - 문서 준비·파싱·임베딩 단계를 겹치되 artifact 요청은 인덱스 활성화와 서버 정리가 끝날 때까지 응답을 기다린다. 별도 평문 대기 큐는 없다.
 - 실제 복호화는 ingest/preview 공통 gate 1을 유지한다. OCR 작업은 다른 진행 문서가 없을 때만 claim하고, OCR가 진행 중이면 일반 문서를 추가 claim하지 않는다. 검색/preview GPU 사용량은 이 admission 제한에 포함되지 않는다.
 - 감독 프로세스가 기존 ingest singleton을 보유하고 자식은 `worker_id-slot-0/1`, `work_root/slot-0/1`, `cleanup_receipt_root/slot-0/1`을 사용한다. preview 경로와 복호화 control root는 유지한다.
@@ -43,6 +44,8 @@ python app/scripts/benchmark_docmind_indexing_concurrency.py `
 ```
 
 metadata에는 `manifest_sha256`, `model`, `batch`, 코드 버전, 문서/복호화 동시성, 실행 번호를 넣는다. 키·원문·벡터·인증정보는 넣지 않는다. 예시 실행 명령은 시험 대상별로 작성해야 하며 제공된 제품 스크립트가 아니다.
+
+격리 ES의 빈 인덱스를 매회 초기화할 때에는 기존 서비스의 인덱스 매핑·설정을 읽어 동일하게 생성한다. 신규 동적 매핑 생성 실패를 처리량 차이로 계산하지 않는다. Python에서 Windows PowerShell 5.1을 자식으로 실행할 경우 `PSModulePath`에 PowerShell 7 모듈 경로가 섞이지 않도록 실행 환경을 분리한다. 상태 조회의 일시적인 연결 종료와 실제 문서 실패는 구분해 기록한다.
 
 필수 비교 항목: 전체 시간 중앙값, 성공 처리량, 문서 지연 p50/p95, 첫 문서 검색 가능 시간, 단계별 수행/대기, GPU 평균/최대/유휴 비율, VRAM·RAM·임시 디스크 최대, 오류·timeout·retry·정리 누락. GPU 표본의 측정 간격과 시간축 오차도 기록한다.
 

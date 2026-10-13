@@ -5,11 +5,35 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import threading
+import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from typing import Any
 
 PILOT_FORMATS = frozenset({"hwp", "hwpx", "doc", "docx", "pdf", "xls", "xlsx", "pptx"})
+_parser_slots: dict[str, threading.Lock] = {}
+_parser_slots_guard = threading.Lock()
+
+
+@contextmanager
+def _parser_slot(service_url: str, timeout: float):
+    """Kordoc accepts one job; share its slot across threads and event loops."""
+    if timeout <= 0:
+        raise ValueError("Kordoc timeout must be positive")
+    deadline = time.monotonic() + timeout
+    with _parser_slots_guard:
+        slot = _parser_slots.setdefault(service_url.rstrip("/"), threading.Lock())
+    if not slot.acquire(timeout=timeout):
+        raise TimeoutError("Kordoc parser queue deadline exceeded")
+    try:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Kordoc parser queue deadline exceeded")
+        yield remaining
+    finally:
+        slot.release()
 
 
 class KordocPageLimitExceeded(RuntimeError):
@@ -54,8 +78,9 @@ def parse_pilot_service(
         headers={"Content-Type": "application/json"}, method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            content = response.read(256 * 1024 * 1024 + 1)
+        with _parser_slot(service_url, timeout) as remaining:
+            with urllib.request.urlopen(request, timeout=remaining) as response:
+                content = response.read(256 * 1024 * 1024 + 1)
     except urllib.error.HTTPError as error:
         try:
             failure = json.loads(error.read(4096))

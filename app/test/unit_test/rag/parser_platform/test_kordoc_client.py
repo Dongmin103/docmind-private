@@ -1,8 +1,11 @@
 """HTTP client carries the per-job PDF safety limit to Kordoc."""
 
 import io
+import hashlib
 import json
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 from urllib.error import HTTPError
 
@@ -10,6 +13,64 @@ from rag.parser_platform.kordoc_pilot import KordocPageLimitExceeded, KordocServ
 
 
 class KordocClientTest(unittest.TestCase):
+    def test_same_parser_waits_until_previous_response_is_read(self):
+        entered = threading.Event()
+        second_started = threading.Event()
+        second_entered = threading.Event()
+        release = threading.Event()
+        calls = []
+
+        def respond(request, *, timeout):
+            calls.append(request)
+            if len(calls) == 1:
+                entered.set()
+                self.assertTrue(release.wait(3))
+            else:
+                second_entered.set()
+            return io.BytesIO(json.dumps({"source_hash": hashlib.sha256(b"synthetic").hexdigest(),
+                                         "source_format": "hwp", "parser_name": "kordoc"}).encode())
+
+        def call(second=False):
+            if second:
+                second_started.set()
+            return parse_pilot_service(b"synthetic", "hwp", service_url="http://serial-parser:8095", timeout=2)
+
+        with patch("rag.parser_platform.kordoc_pilot.urllib.request.urlopen", side_effect=respond):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(call)
+                self.assertTrue(entered.wait(2))
+                second = pool.submit(call, True)
+                self.assertTrue(second_started.wait(2))
+                try:
+                    self.assertFalse(second_entered.wait(.15), "single-job parser received concurrent requests")
+                finally:
+                    release.set()
+                self.assertEqual(first.result()["source_format"], "hwp")
+                self.assertEqual(second.result()["source_format"], "hwp")
+        self.assertEqual(len(calls), 2)
+
+    def test_queue_wait_uses_request_deadline_and_does_not_send_expired_job(self):
+        entered = threading.Event()
+        release = threading.Event()
+
+        def respond(request, *, timeout):
+            entered.set()
+            self.assertTrue(release.wait(3))
+            return io.BytesIO(json.dumps({"source_hash": hashlib.sha256(b"synthetic").hexdigest(),
+                                         "source_format": "hwp", "parser_name": "kordoc"}).encode())
+
+        with patch("rag.parser_platform.kordoc_pilot.urllib.request.urlopen", side_effect=respond) as send:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                first = pool.submit(parse_pilot_service, b"synthetic", "hwp", service_url="http://deadline-parser:8095", timeout=2)
+                self.assertTrue(entered.wait(2))
+                try:
+                    with self.assertRaises(TimeoutError):
+                        parse_pilot_service(b"synthetic", "hwp", service_url="http://deadline-parser:8095", timeout=.05)
+                finally:
+                    release.set()
+                first.result()
+        self.assertEqual(send.call_count, 1)
+
     def test_page_cap_is_sent_and_reported_with_observed_count(self):
         seen = {}
 
