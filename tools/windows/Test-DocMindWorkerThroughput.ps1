@@ -58,18 +58,20 @@ Assert-True (($result.Claims -join ',') -eq '/ingest') 'Targeted ingestion claim
 # Exercise the actual decrypt-job cleanup/status path with a synthetic local
 # executable. Only external transport is replaced; no real uEncryptor or API.
 . (Join-Path $PSScriptRoot 'DocMindUEncryptorHostWorker.Common.ps1')
+. (Join-Path $PSScriptRoot 'DocMindDecryptGate.ps1')
 $base=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../.local/worker-throughput-tests'))
 $testRoot=Join-Path $base ([Guid]::NewGuid().ToString('n'))
 [IO.Directory]::CreateDirectory($testRoot)|Out-Null
 try {
     $executable=Join-Path $testRoot 'synthetic.exe'
     Add-Type -TypeDefinition 'using System.IO; public class SyntheticDecrypt { public static int Main(string[] args) { File.Copy(args[0], args[1]); return 0; } }' -OutputAssembly $executable -OutputType ConsoleApplication
-    foreach($name in @('Get-HostTimingNanoseconds','Stop-WorkerProcessTree','Invoke-LeasedDecryptJob')){
+    foreach($name in @('Get-HostTimingNanoseconds','Invoke-LeasedDecryptJob')){
         $node=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$false)
         Assert-True ($null -ne $node) ('Missing worker function: '+$name)
         $definition=$node.Extent.Text.Replace('Global\DocMind-uEncryptor2-SingleRun',('Local\DocMind-Test-'+[Guid]::NewGuid().ToString('n')))
         Invoke-Expression $definition
     }
+    $controlRoot=Join-Path $testRoot 'control'
     $sourceRoot=Join-Path $testRoot 'source';[IO.Directory]::CreateDirectory($sourceRoot)|Out-Null
     $sourceFile=Join-Path $sourceRoot 'sample.pdf';[IO.File]::WriteAllText($sourceFile,'synthetic only')
     $sources=@{'synthetic-source'=$sourceRoot};$workRoot=Join-Path $testRoot 'work';$receiptRoot=Join-Path $testRoot 'receipts'
@@ -93,6 +95,12 @@ try {
     $script:statusFails=$true;$finalized=$false
     try{Invoke-LeasedDecryptJob -Lease $lease -Finalized ([ref]$finalized)}catch{}
     Assert-True (-not $finalized) 'Failed status ACK marked actual job finalized.'
+    $script:statusFails=$false
+    function Invoke-DocMindDecryptProcess { param($Gate,$Executable,$SourceFile,$OutputFile,$TimeoutSeconds) $Gate.ProcessExitConfirmed=$false; throw 'PROCESS_TERMINATION_FAILED' }
+    function Send-WorkerStatus { param($Lease,$State,$ErrorCode,$CleanupComplete,$Purpose) Assert-True ($State -ne 'COMPLETE' -and $ErrorCode -eq 'PROCESS_TERMINATION_FAILED' -and -not $CleanupComplete) 'Termination failure was overwritten by completion or cleanup.' }
+    $caught='';try{Invoke-LeasedDecryptJob -Lease $lease -Finalized ([ref]$finalized)}catch{$caught=$_.Exception.Message}
+    Assert-True ($caught -eq 'PROCESS_TERMINATION_FAILED' -and -not $finalized) 'Unsafe termination was reported finalized.'
+
 } finally {
     $resolved=[IO.Path]::GetFullPath($testRoot)
     if(-not $resolved.StartsWith($base+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Unsafe worker-test cleanup.'}

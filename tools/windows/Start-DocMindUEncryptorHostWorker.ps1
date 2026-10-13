@@ -21,6 +21,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
 . (Join-Path $PSScriptRoot 'DocMindUEncryptorHostWorker.Common.ps1')
+. (Join-Path $PSScriptRoot 'DocMindDecryptGate.ps1')
 
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { throw 'DOCMIND_HOST_WORKER_CONFIG or -ConfigPath is required.' }
 $configFile = [IO.Path]::GetFullPath($ConfigPath)
@@ -268,7 +269,7 @@ function Invoke-SignedBytesRequest {
     $client = [Net.Http.HttpClient]::new()
     $client.Timeout = [TimeSpan]::FromSeconds($RequestTimeoutSeconds)
     try {
-        $response = $client.SendAsync($request, [Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+        $response = $client.SendAsync($request, [Net.Http.HttpCompletionOption]::ResponseContentRead).GetAwaiter().GetResult()
         try {
             $responseBytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
             Assert-SignedResponse -Response $response -Method $Method -Uri $uri -BodyBytes $responseBytes
@@ -395,17 +396,6 @@ function Invoke-TargetHostCleanup {
     Write-Output "Target host cleanup acknowledged: $CleanupJobId"
 }
 
-function Stop-WorkerProcessTree {
-    param([Diagnostics.Process]$Process)
-    if ($null -eq $Process -or $Process.HasExited) { return }
-    & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
-    [void]$Process.WaitForExit(5000)
-    if (-not $Process.HasExited) {
-        try { $Process.Kill() } catch { }
-        if (-not $Process.WaitForExit(5000)) { throw 'PROCESS_TERMINATION_FAILED' }
-    }
-}
-
 function Invoke-LeasedDecryptJob {
     param($Lease, [ValidateSet('ingest', 'preview')][string]$Purpose = 'ingest', [ref]$Finalized)
     if ($null -ne $Finalized) { $Finalized.Value = $false }
@@ -413,6 +403,19 @@ function Invoke-LeasedDecryptJob {
     $hostStartedUtc = [DateTimeOffset]::UtcNow.ToString('o')
     $marks = @{ start = [Int64]0; preflight = $null; decrypt = $null; verify = $null; delivery = $null; cleanup_start = $null; cleanup_end = $null; end = $null }
     if ($Purpose -eq 'preview') { $jobsPath = $previewJobsPath }
+    [IO.Directory]::CreateDirectory($workRoot) | Out-Null
+    Assert-DocMindNoReparsePoint -LiteralPath $workRoot -Boundary $workRoot -Name 'Work root'
+    $jobDirectory = Join-Path $workRoot (('{0}-{1}' -f [string]$Lease.job_id, [Guid]::NewGuid().ToString('n')))
+    $outputExtension = [IO.Path]::GetExtension([string]$Lease.relative_path)
+    if ($outputExtension.Length -gt 16 -or $outputExtension -notmatch '^\.[A-Za-z0-9]+$') { $outputExtension = '.bin' }
+    $outputFile = Join-Path $jobDirectory ('plaintext' + $outputExtension.ToLowerInvariant())
+    $gate = $null
+    $cleanupComplete = $false
+    $jobSucceeded = $false
+    $errorCode = $null
+    $receiptPath = $null
+    $receiptFinalized = $false
+    try {
     $validationLease = if ($Purpose -eq 'preview') { $Lease | Select-Object job_id, source_id, document_id, version_id, relative_path, ciphertext_sha256, fencing_token, lease_expires_at } else { $Lease }
     $leaseExpiry = Assert-DocMindLeasePayload -Payload $validationLease -MinimumRemainingSeconds $leaseSafetySeconds
     if (-not $sources.ContainsKey([string]$Lease.source_id)) { throw 'SOURCE_NOT_REGISTERED' }
@@ -423,47 +426,23 @@ function Invoke-LeasedDecryptJob {
     $executableHashBefore = Assert-ExecutableIdentity
     $marks.preflight = Get-HostTimingNanoseconds $hostClock
 
-    [IO.Directory]::CreateDirectory($workRoot) | Out-Null
-    Assert-DocMindNoReparsePoint -LiteralPath $workRoot -Boundary $workRoot -Name 'Work root'
-    $jobDirectory = Join-Path $workRoot (('{0}-{1}' -f [string]$Lease.job_id, [Guid]::NewGuid().ToString('n')))
-    $outputExtension = [IO.Path]::GetExtension([string]$Lease.relative_path)
-    if ($outputExtension.Length -gt 16 -or $outputExtension -notmatch '^\.[A-Za-z0-9]+$') { $outputExtension = '.bin' }
-    $outputFile = Join-Path $jobDirectory ('plaintext' + $outputExtension.ToLowerInvariant())
-    $process = $null
-    $mutex = $null
-    $mutexAcquired = $false
-    $cleanupComplete = $false
-    $jobSucceeded = $false
-    $errorCode = $null
-    $receiptPath = $null
-    $receiptFinalized = $false
-    try {
         [IO.Directory]::CreateDirectory($jobDirectory) | Out-Null
         Protect-DocMindJobDirectory -LiteralPath $jobDirectory
         Write-JobState -JobDirectory $jobDirectory -Lease $Lease -State 'DECRYPTING'
-        $createdNew = $false
-        $mutex = [Threading.Mutex]::new($false, 'Global\DocMind-uEncryptor2-SingleRun', [ref]$createdNew)
-        $mutexAcquired = $mutex.WaitOne([TimeSpan]::FromSeconds(5))
-        if (-not $mutexAcquired) { throw 'HOST_CONCURRENCY_LIMIT' }
-
-        $startInfo = [Diagnostics.ProcessStartInfo]::new()
-        $startInfo.FileName = $executable
-        $startInfo.Arguments = ('"{0}" "{1}" /dec' -f $sourceFile, $outputFile)
-        $startInfo.UseShellExecute = $false
-        $startInfo.CreateNoWindow = $true
-        $startInfo.RedirectStandardInput = $true
-        $startInfo.RedirectStandardOutput = $true
-        $startInfo.RedirectStandardError = $true
-        $process = [Diagnostics.Process]::new()
-        $process.StartInfo = $startInfo
-        if (-not $process.Start()) { throw 'PROCESS_START_FAILED' }
-        $process.StandardInput.Close()
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        if (-not $process.WaitForExit($timeoutSeconds * 1000)) { Stop-WorkerProcessTree -Process $process; throw 'TIMEOUT_OR_INTERACTIVE_PROMPT' }
-        [void]$stdoutTask.GetAwaiter().GetResult()
-        [void]$stderrTask.GetAwaiter().GetResult()
-        if ($process.ExitCode -ne 0) { throw 'NONZERO_EXIT' }
+        $deadline = $leaseExpiry.AddSeconds(-10)
+        $waitLimit = if ($Purpose -eq 'preview') { 30 } else { 5 }
+        if ($deadline -gt [DateTimeOffset]::UtcNow.AddSeconds($waitLimit)) { $deadline = [DateTimeOffset]::UtcNow.AddSeconds($waitLimit) }
+        $validateLease = {
+            if ([DateTimeOffset]::UtcNow.AddSeconds(10) -ge $leaseExpiry) { throw 'LEASE_EXPIRED_BEFORE_DECRYPT' }
+        }
+        $gate = Enter-DocMindDecryptGate -ControlRoot $controlRoot -DeadlineUtc $deadline -ValidateLease $validateLease
+        $marks.lock_acquired = Get-HostTimingNanoseconds $hostClock
+        # Validate the local file again after waiting, immediately before launch.
+        $sourceFile = Resolve-DocMindSourceFile -Root $sources[[string]$Lease.source_id] -RelativePath ([string]$Lease.relative_path)
+        if (-not (Test-DocMindFixedTimeHexEqual (Get-DocMindFileSha256 -LiteralPath $sourceFile) $sourceHashBefore)) { throw 'SOURCE_FINGERPRINT_MISMATCH' }
+        $processTimeout = [int][Math]::Min($timeoutSeconds, [Math]::Floor(($leaseExpiry - [DateTimeOffset]::UtcNow).TotalSeconds - 10))
+        if ($processTimeout -lt 1) { throw 'LEASE_EXPIRED_BEFORE_DECRYPT' }
+        Invoke-DocMindDecryptProcess -Gate $gate -Executable $executable -SourceFile $sourceFile -OutputFile $outputFile -TimeoutSeconds $processTimeout
         if (-not (Test-Path -LiteralPath $outputFile -PathType Leaf)) { throw 'OUTPUT_MISSING' }
         $outputItem = Get-Item -LiteralPath $outputFile
         if ($outputItem.Length -le 0) { throw 'OUTPUT_EMPTY' }
@@ -478,6 +457,7 @@ function Invoke-LeasedDecryptJob {
         Write-JobState -JobDirectory $jobDirectory -Lease $Lease -State 'DELIVERING'
         $plainHash = Get-DocMindFileSha256 -LiteralPath $outputFile
         $marks.verify = Get-HostTimingNanoseconds $hostClock
+        Exit-DocMindDecryptGate -Gate $gate -ProcessExitConfirmed $gate.ProcessExitConfirmed
         $stream = [IO.File]::Open($outputFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
         try {
             $content = New-DocMindArtifactStreamContent -Stream $stream -Length $outputItem.Length
@@ -506,13 +486,11 @@ function Invoke-LeasedDecryptJob {
         if ($errorCode -notmatch '^[A-Z0-9_]+$') { $errorCode = 'HOST_WORKER_ERROR' }
     } finally {
         $marks.cleanup_start = Get-HostTimingNanoseconds $hostClock
-        if ($process) {
-            try { Stop-WorkerProcessTree -Process $process } catch { $errorCode = 'PROCESS_TERMINATION_FAILED' }
-            $process.Dispose()
+        if ($gate) {
+            if (-not $gate.ProcessExitConfirmed) { $errorCode = 'PROCESS_TERMINATION_FAILED'; $jobSucceeded = $false }
+            Exit-DocMindDecryptGate -Gate $gate -ProcessExitConfirmed $gate.ProcessExitConfirmed
         }
-        if ($mutexAcquired) { $mutex.ReleaseMutex() }
-        if ($mutex) { $mutex.Dispose() }
-        if (Test-Path -LiteralPath $jobDirectory) {
+        if ((-not $gate -or $gate.ProcessExitConfirmed) -and (Test-Path -LiteralPath $jobDirectory)) {
             try {
                 $receiptPath = Write-DocMindCleanupReceiptAtomic -ReceiptRoot $receiptRoot -JobId ([string]$Lease.job_id) -VersionId ([string]$Lease.version_id) -FencingToken ([Int64]$Lease.fencing_token) -FinalState 'CLEANUP_PENDING' -ErrorCode $null
             } catch { $errorCode = 'CLEANUP_RECEIPT_WRITE_FAILED'; $jobSucceeded = $false }
@@ -522,7 +500,10 @@ function Invoke-LeasedDecryptJob {
             } catch { $errorCode = 'PLAINTEXT_CLEANUP_FAILED' }
         }
         $cleanupComplete = -not (Test-Path -LiteralPath $jobDirectory)
-        if (-not $cleanupComplete) { $errorCode = 'PLAINTEXT_CLEANUP_FAILED'; $jobSucceeded = $false }
+        if (-not $cleanupComplete) {
+            if ($errorCode -ne 'PROCESS_TERMINATION_FAILED') { $errorCode = 'PLAINTEXT_CLEANUP_FAILED' }
+            $jobSucceeded = $false
+        }
         $marks.cleanup_end = Get-HostTimingNanoseconds $hostClock
     }
     $finalState = if ($jobSucceeded -and $cleanupComplete) { 'COMPLETE' } elseif (-not $cleanupComplete) { 'CLEANUP_FAILED' } else { 'FAILED' }
@@ -579,7 +560,8 @@ if (-not [string]::IsNullOrWhiteSpace($CleanupJobId)) {
 Protect-DocMindJobDirectory -LiteralPath $workRoot
 [IO.Directory]::CreateDirectory($receiptRoot) | Out-Null
 Protect-DocMindJobDirectory -LiteralPath $receiptRoot
-$removed = Remove-DocMindExpiredJobDirectories -WorkRoot $workRoot -ReceiptRoot $receiptRoot -MinimumAgeSeconds $reaperMinimumAgeSeconds -ExcludedDirectoryNames @('previews')
+$reaperGate = Enter-DocMindDecryptGate -ControlRoot $controlRoot -DeadlineUtc ([DateTimeOffset]::UtcNow.AddSeconds(5)) -ValidateLease { }
+try { $removed = Remove-DocMindExpiredJobDirectories -WorkRoot $workRoot -ReceiptRoot $receiptRoot -MinimumAgeSeconds $reaperMinimumAgeSeconds -ExcludedDirectoryNames @('previews') } finally { Exit-DocMindDecryptGate -Gate $reaperGate -ProcessExitConfirmed $true }
 $receiptReplay = Invoke-DocMindCleanupReceiptReplay -ReceiptRoot $receiptRoot -WorkRoot $workRoot -Sender { param($receipt) Send-CleanupReceipt -Receipt $receipt -Purpose $Purpose }
 $lastReceiptReplayAt = [DateTimeOffset]::UtcNow
 Write-Output ('Host worker ready; role: {0}; removed: {1}; receipts acknowledged: {2}.' -f $Purpose, $removed, $receiptReplay.acknowledged)
