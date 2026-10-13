@@ -120,36 +120,38 @@ def test_pool_caps_active_documents_and_requires_enabled_server(ingestion_db, mo
     monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '1')
     _pool_document(1)
     with pytest.raises(service.DocmindIngestionError, match='DOCMIND_INGESTION_POOL_NOT_ENABLED'):
-        service.claim_next('pool-0', ingestion_pool_size=2)
-    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '2')
+        service.claim_next('pool-0', ingestion_pool_size=3)
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '3')
     _pool_document(2); _pool_document(3)
-    first = service.claim_next('pool-0', ingestion_pool_size=2)
-    second = service.claim_next('pool-1', ingestion_pool_size=2)
+    first = service.claim_next('pool-0', ingestion_pool_size=3)
+    second = service.claim_next('pool-1', ingestion_pool_size=3)
+    third = service.claim_next('pool-2', ingestion_pool_size=3)
+    assert third and third.job_id not in {first.job_id, second.job_id}
     assert first and second and first.job_id != second.job_id
     assert service.claim_next('standalone-worker') is None
 
 
 def test_pool_ocr_waits_for_active_document_and_blocks_new_claims(ingestion_db, monkeypatch):
-    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '2')
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '3')
     regular = _pool_document(1)
-    assert service.claim_next('pool-0', ingestion_pool_size=2)
+    assert service.claim_next('pool-0', ingestion_pool_size=3)
     ocr = _pool_document(2, ocr=True)
-    assert service.claim_next('pool-1', ingestion_pool_size=2, lease_seconds=1800) is None
+    assert service.claim_next('pool-1', ingestion_pool_size=3, lease_seconds=1800) is None
     DocmindIngestionJob.update(lifecycle_state='COMPLETE', host_cleanup_state='COMPLETE').where(DocmindIngestionJob.id == regular).execute()
-    claimed = service.claim_next('pool-1', ingestion_pool_size=2, lease_seconds=1800)
+    claimed = service.claim_next('pool-1', ingestion_pool_size=3, lease_seconds=1800)
     assert claimed.job_id == ocr
     _pool_document(3)
-    assert service.claim_next('pool-0', ingestion_pool_size=2) is None
+    assert service.claim_next('pool-0', ingestion_pool_size=3) is None
 
 
 def test_pool_holds_slot_until_host_cleanup(ingestion_db, monkeypatch):
-    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '2')
-    ids = [_pool_document(n) for n in range(3)]
-    for n in range(2): assert service.claim_next(f'pool-{n}', ingestion_pool_size=2)
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '3')
+    ids = [_pool_document(n) for n in range(4)]
+    for n in range(3): assert service.claim_next(f'pool-{n}', ingestion_pool_size=3)
     DocmindIngestionJob.update(lifecycle_state='FAILED', host_cleanup_state='PENDING').where(DocmindIngestionJob.id == ids[0]).execute()
-    assert service.claim_next('pool-0', ingestion_pool_size=2) is None
+    assert service.claim_next('pool-0', ingestion_pool_size=3) is None
     DocmindIngestionJob.update(host_cleanup_state='COMPLETE').where(DocmindIngestionJob.id == ids[0]).execute()
-    assert service.claim_next('pool-0', ingestion_pool_size=2) is not None
+    assert service.claim_next('pool-0', ingestion_pool_size=3) is not None
 
 
 def test_concurrent_claim_threads_never_exceed_pool_capacity(ingestion_db, monkeypatch, tmp_path):
@@ -157,7 +159,7 @@ def test_concurrent_claim_threads_never_exceed_pool_capacity(ingestion_db, monke
     import threading
     from contextlib import closing
     from concurrent.futures import ThreadPoolExecutor
-    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '2')
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '3')
     for n in range(4): _pool_document(n)
     path = str(tmp_path / 'claims.sqlite')
     with closing(sqlite3.connect(path)) as target:
@@ -167,23 +169,23 @@ def test_concurrent_claim_threads_never_exceed_pool_capacity(ingestion_db, monke
     def claim(n):
         barrier.wait(timeout=5)
         with database.connection_context():
-            result = service.claim_next(f'pool-{n}', ingestion_pool_size=2)
+            result = service.claim_next(f'pool-{n}', ingestion_pool_size=3)
             return result.job_id if result else None
     with database.bind_ctx(MODELS):
         with ThreadPoolExecutor(4) as pool:
             ids = list(pool.map(claim, range(4)))
-        assert len([value for value in ids if value]) == 2
-        assert len(set(value for value in ids if value)) == 2
+        assert len([value for value in ids if value]) == 3
+        assert len(set(value for value in ids if value)) == 3
         with database.connection_context():
-            assert DocmindIngestionJob.select().where(DocmindIngestionJob.lifecycle_state == 'DECRYPTING').count() == 2
+            assert DocmindIngestionJob.select().where(DocmindIngestionJob.lifecycle_state == 'DECRYPTING').count() == 3
 
 
-@pytest.mark.parametrize('capacity,ocr', [(1, False), (2, False), (1, True), (2, True)])
+@pytest.mark.parametrize('capacity,ocr', [(1, False), (2, False), (3, False), (1, True), (2, True), (3, True)])
 def test_pool_reclaims_lost_claim_response_after_lease_expiry(ingestion_db, monkeypatch, capacity, ocr):
     monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', str(capacity))
     job_id = _pool_document(1, ocr=ocr)
     first = service.claim_next('lost-worker', ingestion_pool_size=capacity, lease_seconds=1800)
-    if capacity == 2 and not ocr:
+    if capacity == 3 and not ocr:
         _pool_document(2)
         assert service.claim_next('other-worker', ingestion_pool_size=capacity)
     DocmindIngestionJob.update(lease_expires_at=service._now()-timedelta(seconds=1)).where(DocmindIngestionJob.id == job_id).execute()

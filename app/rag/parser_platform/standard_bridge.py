@@ -79,6 +79,7 @@ class ParserPlatformStandardBridge:
                         service_url=self.config.kordoc_service_url,
                         timeout=self.config.kordoc_deadline_seconds,
                         max_pdf_pages=self.config.max_pdf_pages if source_format == SourceFormat.PDF else None,
+                        timing_scope=lambda name: stage_scope(storage, name, prepared.parse_run_id),
                     )
                 except KordocServiceError as error:
                     if (source_format != SourceFormat.PPTX or not self.config.pptx_text_fallback_enabled

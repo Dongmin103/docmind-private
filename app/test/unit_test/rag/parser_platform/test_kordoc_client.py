@@ -3,9 +3,13 @@
 import io
 import hashlib
 import json
+import os
 import threading
+import time
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from unittest.mock import patch
 from urllib.error import HTTPError
 
@@ -13,6 +17,101 @@ from rag.parser_platform.kordoc_pilot import KordocPageLimitExceeded, KordocServ
 
 
 class KordocClientTest(unittest.TestCase):
+    def test_slow_drip_success_and_error_bodies_obey_wall_deadline(self):
+        for status in [200, 503]:
+            with self.subTest(status=status):
+                class Handler(BaseHTTPRequestHandler):
+                    def log_message(self, *_):
+                        pass
+                    def do_POST(self):
+                        self.rfile.read(int(self.headers['Content-Length']))
+                        self.send_response(status)
+                        self.send_header('Content-Length', '100')
+                        self.end_headers()
+                        try:
+                            for _ in range(100):
+                                self.wfile.write(b' ')
+                                self.wfile.flush()
+                                time.sleep(.02)
+                        except OSError:
+                            pass
+                server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    started = time.monotonic()
+                    with self.assertRaises(TimeoutError):
+                        parse_pilot_service(b'synthetic', 'hwp', service_url=f'http://127.0.0.1:{server.server_port}', timeout=.12)
+                    self.assertLess(time.monotonic() - started, .4)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join()
+
+    def test_busy_until_deadline_records_wait_and_never_retries_cleanup_failure(self):
+        stages = []
+        @contextmanager
+        def timing(name):
+            stages.append(name)
+            yield
+        def busy(request, *, timeout):
+            raise HTTPError(request.full_url, 503, 'busy', {}, io.BytesIO(b'{"code":"PARSER_BUSY"}'))
+        with patch('rag.parser_platform.kordoc_pilot.urllib.request.urlopen', side_effect=busy):
+            with self.assertRaises(TimeoutError):
+                parse_pilot_service(b'synthetic', 'hwp', service_url='http://always-busy', timeout=.08, timing_scope=timing)
+        self.assertEqual(stages[:2], ['parser_queue', 'parser_serialize'])
+        self.assertIn('parser_transport', stages)
+        self.assertIn('parser_busy_wait', stages)
+        error = HTTPError('http://failed', 503, 'failed', {}, io.BytesIO(b'{"code":"PARSER_CLEANUP_FAILED"}'))
+        with patch('rag.parser_platform.kordoc_pilot.urllib.request.urlopen', side_effect=error) as send:
+            with self.assertRaises(KordocServiceError) as caught:
+                parse_pilot_service(b'synthetic', 'hwp', service_url='http://failed', timeout=.08)
+        self.assertEqual(caught.exception.code, 'PARSER_CLEANUP_FAILED')
+        self.assertEqual(send.call_count, 1)
+
+    def test_capacity_two_admits_two_and_does_not_serialize_queued_source(self):
+        entered = threading.Barrier(3)
+        release = threading.Event()
+        encoded = []
+        original_encode = __import__('base64').b64encode
+        def encode(value):
+            encoded.append(value)
+            return original_encode(value)
+        def respond(request, *, timeout):
+            entered.wait(timeout=2)
+            self.assertTrue(release.wait(3))
+            return io.BytesIO(json.dumps({'source_hash': hashlib.sha256(b'synthetic').hexdigest(),
+                                         'source_format': 'hwp', 'parser_name': 'kordoc'}).encode())
+        with patch.dict(os.environ, {'KORDOC_CLIENT_CONCURRENCY': '2'}), \
+             patch('rag.parser_platform.kordoc_pilot.urllib.request.urlopen', side_effect=respond), \
+             patch('rag.parser_platform.kordoc_pilot.base64.b64encode', side_effect=encode):
+            with ThreadPoolExecutor(2) as pool:
+                futures = [pool.submit(parse_pilot_service, b'synthetic', 'hwp',
+                           service_url='http://pool-parser:8095', timeout=2) for _ in range(2)]
+                try:
+                    entered.wait(timeout=2)
+                    with self.assertRaises(TimeoutError):
+                        parse_pilot_service(b'queued', 'hwp', service_url='http://pool-parser:8095', timeout=.05)
+                    self.assertEqual(encoded, [b'synthetic', b'synthetic'])
+                finally:
+                    release.set()
+                self.assertTrue(all(f.result()['parser_name'] == 'kordoc' for f in futures))
+
+    def test_busy_server_retries_within_original_deadline(self):
+        success = json.dumps({'source_hash': hashlib.sha256(b'synthetic').hexdigest(),
+                              'source_format': 'hwp', 'parser_name': 'kordoc'}).encode()
+        timeouts = []
+        def respond(request, *, timeout):
+            timeouts.append(timeout)
+            if len(timeouts) == 1:
+                raise HTTPError(request.full_url, 503, 'busy', {}, io.BytesIO(b'{"code":"PARSER_BUSY"}'))
+            return io.BytesIO(success)
+        with patch('rag.parser_platform.kordoc_pilot.urllib.request.urlopen', side_effect=respond):
+            result = parse_pilot_service(b'synthetic', 'hwp', service_url='http://busy-parser:8095', timeout=1)
+        self.assertEqual(result['parser_name'], 'kordoc')
+        self.assertEqual(len(timeouts), 2)
+        self.assertLess(timeouts[1], timeouts[0])
+
     def test_same_parser_waits_until_previous_response_is_read(self):
         entered = threading.Event()
         second_started = threading.Event()
