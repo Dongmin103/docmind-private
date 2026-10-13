@@ -30,9 +30,10 @@ foreach ($role in @('ingest', 'preview')) {
     $Purpose = $role; $Once = $true; $ClaimJobId = ''; $ClaimSourceId = ''; $SkipRetries = $false; $allowedClaimFormats = @()
     $config = [pscustomobject]@{ worker_id = 'synthetic' }; $claimLeaseSeconds = 300; $claimPath = '/ingest'; $previewClaimPath = '/preview'
     $lastReceiptReplayAt = [DateTimeOffset]::UtcNow.AddDays(-1); $cleanupReceiptReplaySeconds = 60
-    $workRoot = 'synthetic-work'; $receiptRoot = 'synthetic-receipts'; $lastFencingTokenByJob = @{}; $PollSeconds = 5
+    $workRoot = 'synthetic-work'; $receiptRoot = 'synthetic-receipts'; $controlRoot = 'synthetic-control'; $reaperMinimumAgeSeconds = 300; $lastFencingTokenByJob = @{}; $PollSeconds = 5
     $script:claimed = ''; $script:replayed = ''
     function Send-CleanupReceipt { param($Receipt, $Purpose) $script:replayed = $Purpose }
+    function Invoke-DocMindRoleReaper { param($ControlRoot,$WorkRoot,$ReceiptRoot,$MinimumAgeSeconds) return 0 }
     function Invoke-DocMindCleanupReceiptReplay { param($ReceiptRoot, $WorkRoot, $Sender) & $Sender $null; return [pscustomobject]@{ pending = 0; acknowledged = 1 } }
     function Invoke-SignedJsonRequest { param($Method, $RelativeUri, $Body) $script:claimed = $RelativeUri; return [pscustomobject]@{ Body = [Text.Encoding]::UTF8.GetBytes('{"job":null}') } }
     Invoke-Expression $loop

@@ -78,7 +78,7 @@ function Set-DocMindGateBlocked {
 }
 
 function Assert-DocMindDecryptControlSafe {
-    param([string]$ControlRoot)
+    param([string]$ControlRoot, [switch]$ReadOnly)
     if (Test-Path -LiteralPath (Join-Path $ControlRoot 'blocked.json')) { throw 'DECRYPT_GATE_BLOCKED' }
     $ownerPath = Join-Path $ControlRoot 'owner.json'
     if (-not (Test-Path -LiteralPath $ownerPath)) { return }
@@ -88,8 +88,9 @@ function Assert-DocMindDecryptControlSafe {
         $child = Get-Process -Id ([int]$owner.child_pid) -ErrorAction SilentlyContinue
         # A reused PID is uncertain, and must never be killed or assumed safe.
         if ($null -ne $child) { throw 'OWNER_PROCESS_PRESENT' }
-        Remove-Item -LiteralPath $ownerPath -Force
+        if (-not $ReadOnly) { Remove-Item -LiteralPath $ownerPath -Force }
     } catch {
+        if ($ReadOnly) { throw 'DECRYPT_ACTIVE_OR_UNRESOLVED' }
         Set-DocMindGateBlocked -ControlRoot $ControlRoot -Reason 'OWNER_EXIT_UNCONFIRMED'
         throw 'DECRYPT_GATE_BLOCKED'
     }

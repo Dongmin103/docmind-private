@@ -139,9 +139,22 @@ def test_validate_worker_lease_is_read_only(preview_db):
     job = service.claim("worker-1")
     before = dict(DocmindPreviewSession.get_by_id(created["preview_id"]).__data__)
     result = service.validate_worker_lease(created["preview_id"], worker_id="worker-1", version_id="version-1", fencing_token=job["fencing_token"])
-    assert result == {"valid": True, "lease_expires_at": before["lease_expires_at"].isoformat()}
+    assert result == {"valid": True, "lease_expires_at": job["lease_expires_at"]}
+    assert result["lease_expires_at"].endswith("+00:00")
     assert DocmindPreviewSession.get_by_id(created["preview_id"]).__data__ == before
     assert list(preview_db[1].iterdir()) == []
+
+
+def test_worker_lease_survives_mysql_datetime_precision(preview_db, monkeypatch):
+    now = service._now().replace(microsecond=789123)
+    monkeypatch.setattr(service, "_now", lambda: now)
+    created = _create()
+    job = service.claim("worker-1")
+    row = DocmindPreviewSession.get_by_id(created["preview_id"])
+    # MySQL DATETIME without fractional precision truncates microseconds.
+    DocmindPreviewSession.update(lease_expires_at=row.lease_expires_at.replace(microsecond=0)).where(DocmindPreviewSession.id == row.id).execute()
+    result = service.validate_worker_lease(row.id, worker_id="worker-1", version_id="version-1", fencing_token=job["fencing_token"])
+    assert result["lease_expires_at"] == job["lease_expires_at"]
 
 
 @pytest.mark.parametrize("change", ["owner", "fence", "version", "expired", "CANCELLED", "READY", "PROCESSING", "source_replaced", "source_deleted", "revoked"])

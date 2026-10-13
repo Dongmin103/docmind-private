@@ -98,6 +98,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/windows/Test-DocMi
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/windows/Test-DocMindWorkerThroughput.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/windows/Test-DocMindUEncryptorHostWorker.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/windows/Test-DocMindPreviewWorkerDeployment.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/windows/Test-DocMindPreviewIsolationSampler.ps1
 ```
 
 The gate tests use synthetic executables and a private mutex namespace. They
@@ -127,6 +128,17 @@ current/peak/events. Shared tmpfs is counted by hashed backing-store identity
 once. Missing measurements are failures, never zero. Container changes and OOM
 counter/peak resets fail the run. Read access to kernel diagnostics is needed;
 missing kernel evidence prevents a passing release gate.
+The expected inventory includes the candidate's core services and currently
+running related containers; stopped retired containers are excluded. Required
+containers, shared tmpfs and enabled worker roles must all be observed.
+
+Actual Windows/HTTP overlap probe (private mutex namespace):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/windows/Invoke-DocMindPreviewIsolationProbe.ps1 `
+  -DeliveryDelaySeconds 540 -Trials 20 `
+  -OutputDirectory C:/DocMindDev/docmind/.local/preview-worker-isolation/measurements/overlap
+```
 
 The browser probe requires an isolated, prepared synthetic fixture page and
 Playwright Chromium. Use the production preview component, a <=1MiB/<=5-page
@@ -141,9 +153,9 @@ termination failure, worker restart and Rollback remain separate scenarios.
 ## Recorded evidence and limits
 
 - Windows role/gate/throughput/cleanup/deployment suites: PASS.
-- Isolated Linux Python 3.13 preview service + HTTP: 53 PASS.
-- Frontend document-preview Jest: 29 PASS across four suites.
-- Memory evaluator unit tests: PASS (missing data, units, shared tmpfs,
+- Isolated Linux Python 3.13 preview service + HTTP: 54 PASS.
+- Frontend document-preview Jest: 30 PASS across four suites.
+- Memory evaluator unit tests: 16 PASS (missing data, expected inventory, units, shared tmpfs,
   OOM/reset/restart, independent Windows/WSL thresholds, swap and cgroup peaks).
 - Global TypeScript check: existing baseline 236 errors, changed tree 235,
   no new diagnostics. Whole Vite build fails in both trees because the installed
@@ -151,15 +163,28 @@ termination failure, worker restart and Rollback remain separate scenarios.
 - Five-minute memory observation recorded privately under
   `.local/preview-worker-isolation/measurements/baseline-20261013/`; it includes
   existing application activity and verification, so it is not an idle proof.
+- Actual 540-second HTTP delay, twenty synthetic Windows decrypt trials: mixed
+  decrypt-ready 540,148ms; isolated decrypt-ready p95 130.5ms. These measure
+  process/output readiness, not browser first-page rendering.
+- Observed available-memory minima: Windows 2249.5MiB, WSL 2838.3MiB;
+  WSL swap peak/end 67.0MiB. The main application's sampled current-memory
+  maximum was 3761.3MiB/4096MiB (91.8%); historical peaks were also retained.
 - Memory gate fails on existing cgroup peaks. No limits, BGE service, model
   bindings, production tasks, containers, source files or database data were
-  changed. Latest GTE deployment documents confirm GTE binding, but do not alone
-  prove BGE receives no requests from any remaining path; BGE use remains
+  changed. Read-only queries found GTE on the one dataset and one tenant default,
+  with zero BGE bindings in those fields. This does not prove BGE receives no
+  requests from every remaining path; BGE use remains
   unconfirmed and no stop/removal is authorized here.
 - Live Apply, live representative preview/ingest/cleanup ACK, twenty browser
   first-page trials, full format matrix and a passing fifteen-minute candidate
   load test have **not** been performed. No before/after browser p95 or extra
   worker idle-memory guarantee is claimed.
+- Independent Sol/high review findings were repaired and covered by red→green
+  regressions: explicit UTC and second-precision lease round trips; generated
+  ingest timing compatible with preserved scope; observational busy preflight;
+  deferred startup reaping during active decrypt; required resource coverage;
+  generated-role process sampling. A late same-session heartbeat also cannot
+  regress READY back to QUEUED. No second review pass is claimed.
 
 Original private recovery material lives beside the prepared manifest in
 `before/`; new reviewed artifacts live in `after/`. The actual live task remains

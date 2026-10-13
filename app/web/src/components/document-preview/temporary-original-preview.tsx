@@ -35,6 +35,7 @@ const StageLabels: Record<string, string> = {
   PROCESSING: '페이지 준비 중입니다.',
   READY: '원문을 불러오는 중입니다.',
 };
+const StageRanks: Record<string, number> = { QUEUED: 0, DECRYPTING: 1, PROCESSING: 2, READY: 3 };
 
 function previewError(error: unknown): string {
   if (error instanceof PreviewRequestError) {
@@ -259,19 +260,23 @@ export default function TemporaryOriginalPreview({
       setBusy(false);
       setError(previewError(cause));
     };
+    let latestStage = -1;
     const acceptStatus = (next: PreviewSession) => {
       if (!isCurrent()) return false;
       if (next.source_version_id !== sourceVersionId) {
         fail(new PreviewRequestError('SOURCE_VERSION_CHANGED', 409));
         return false;
       }
-      if (next.chunk_set_id && next.chunk_set_id !== chunkSetRef.current) {
-        chunkSetRef.current = next.chunk_set_id;
-        onChunkSetChangedRef.current?.();
-      }
       if (TerminalStatuses.has(next.status)) {
         fail(new PreviewRequestError(next.error_code || next.status, 500));
         return false;
+      }
+      const stage = StageRanks[next.status] ?? 0;
+      if (stage < latestStage) return true;
+      latestStage = stage;
+      if (next.chunk_set_id && next.chunk_set_id !== chunkSetRef.current) {
+        chunkSetRef.current = next.chunk_set_id;
+        onChunkSetChangedRef.current?.();
       }
       setSession((current) => current ? { ...current, ...next } : current);
       return true;

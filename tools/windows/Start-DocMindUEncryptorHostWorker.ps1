@@ -534,6 +534,18 @@ function Invoke-LeasedDecryptJob {
     if (-not $jobSucceeded) { throw $errorCode }
 }
 
+function Invoke-DocMindRoleReaper {
+    param([string]$ControlRoot, [string]$WorkRoot, [string]$ReceiptRoot, [int]$MinimumAgeSeconds)
+    try {
+        $gate = Enter-DocMindDecryptGate -ControlRoot $ControlRoot -DeadlineUtc ([DateTimeOffset]::UtcNow.AddSeconds(1)) -ValidateLease { }
+    } catch {
+        if ($_.Exception.Message -eq 'PREVIEW_DECRYPT_BUSY') { return 0 }
+        throw
+    }
+    try { return Remove-DocMindExpiredJobDirectories -WorkRoot $WorkRoot -ReceiptRoot $ReceiptRoot -MinimumAgeSeconds $MinimumAgeSeconds -ExcludedDirectoryNames @('previews') }
+    finally { Exit-DocMindDecryptGate -Gate $gate -ProcessExitConfirmed $true }
+}
+
 function ConvertTo-PreviewLease {
     param([Parameter(Mandatory = $true)]$Claim)
     if ($Claim.PSObject.Properties.Name -notcontains 'id' -or [string]$Claim.id -ne [string]$Claim.job_id) { throw 'PREVIEW_CLAIM_ID_MISMATCH' }
@@ -567,8 +579,7 @@ if (-not [string]::IsNullOrWhiteSpace($CleanupJobId)) {
 Protect-DocMindJobDirectory -LiteralPath $workRoot
 [IO.Directory]::CreateDirectory($receiptRoot) | Out-Null
 Protect-DocMindJobDirectory -LiteralPath $receiptRoot
-$reaperGate = Enter-DocMindDecryptGate -ControlRoot $controlRoot -DeadlineUtc ([DateTimeOffset]::UtcNow.AddSeconds(5)) -ValidateLease { }
-try { $removed = Remove-DocMindExpiredJobDirectories -WorkRoot $workRoot -ReceiptRoot $receiptRoot -MinimumAgeSeconds $reaperMinimumAgeSeconds -ExcludedDirectoryNames @('previews') } finally { Exit-DocMindDecryptGate -Gate $reaperGate -ProcessExitConfirmed $true }
+$removed = Invoke-DocMindRoleReaper -ControlRoot $controlRoot -WorkRoot $workRoot -ReceiptRoot $receiptRoot -MinimumAgeSeconds $reaperMinimumAgeSeconds
 $receiptReplay = Invoke-DocMindCleanupReceiptReplay -ReceiptRoot $receiptRoot -WorkRoot $workRoot -Sender { param($receipt) Send-CleanupReceipt -Receipt $receipt -Purpose $Purpose }
 $lastReceiptReplayAt = [DateTimeOffset]::UtcNow
 Write-Output ('Host worker ready; role: {0}; removed: {1}; receipts acknowledged: {2}.' -f $Purpose, $removed, $receiptReplay.acknowledged)
@@ -578,6 +589,7 @@ do {
     $cycleFailed = $false
     try {
         if ([DateTimeOffset]::UtcNow -ge $lastReceiptReplayAt.AddSeconds($cleanupReceiptReplaySeconds)) {
+            [void](Invoke-DocMindRoleReaper -ControlRoot $controlRoot -WorkRoot $workRoot -ReceiptRoot $receiptRoot -MinimumAgeSeconds $reaperMinimumAgeSeconds)
             $receiptReplay = Invoke-DocMindCleanupReceiptReplay -ReceiptRoot $receiptRoot -WorkRoot $workRoot -Sender { param($receipt) Send-CleanupReceipt -Receipt $receipt -Purpose $Purpose }
             if ($receiptReplay.pending -gt 0) { Write-Warning ('Cleanup receipts awaiting signed ACK: {0}.' -f $receiptReplay.pending) }
             $lastReceiptReplayAt = [DateTimeOffset]::UtcNow

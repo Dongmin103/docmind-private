@@ -252,4 +252,27 @@ describe('temporary original preview', () => {
     expect(jest.getTimerCount()).toBe(0);
     jest.useRealTimers();
   });
+
+  it('ignores a queued heartbeat that arrives after ready polling', async () => {
+    jest.useFakeTimers();
+    let finishHeartbeat!: (value: Response) => void;
+    let heartbeatStarted = false;
+    mockFetch.mockImplementation((url: string, options: RequestInit) => {
+      if (url.endsWith('/heartbeat')) {
+        heartbeatStarted = true;
+        return new Promise<Response>((resolve) => { finishHeartbeat = resolve; });
+      }
+      if (options.method === 'DELETE') return Promise.resolve(response(204));
+      if (url.endsWith('/content')) return Promise.resolve(response(200));
+      return Promise.resolve(response(200, { ...ReadySession, status: heartbeatStarted ? 'READY' : 'QUEUED' }));
+    });
+    const { unmount } = render(<TemporaryOriginalPreview documentId="d" sourceVersionId="source-v1" chunkSetId="chunks-v1" />);
+    fireEvent.click(screen.getByRole('button', { name: '원문 보기' }));
+    await act(async () => { await jest.advanceTimersByTimeAsync(31000); });
+    expect(screen.getByTestId('native-viewer')).toBeInTheDocument();
+    await act(async () => { finishHeartbeat(response(200, { ...ReadySession, status: 'QUEUED' })); });
+    expect(screen.getByTestId('native-viewer')).toBeInTheDocument();
+    unmount();
+    jest.useRealTimers();
+  });
 });

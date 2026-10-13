@@ -15,6 +15,13 @@ if (Test-Path -LiteralPath $destination) { throw 'MEASUREMENT_DIRECTORY_ALREADY_
 . (Join-Path $PSScriptRoot 'DocMindUEncryptorHostWorker.Common.ps1')
 Protect-DocMindJobDirectory -LiteralPath $destination
 function ConvertTo-WslPath([string]$Path) { return '/mnt/' + $Path.Substring(0, 1).ToLowerInvariant() + $Path.Substring(2).Replace('\', '/') }
+function Get-DocMindMeasuredWorkerRole {
+    param([string]$CommandLine)
+    if ($CommandLine -match 'run-ingest\.ps1(?:["\s]|$)' -or $CommandLine -match '-Purpose\s+ingest\b') { return 'ingest' }
+    if ($CommandLine -match 'run-preview\.ps1(?:["\s]|$)' -or $CommandLine -match '-Purpose\s+preview\b') { return 'preview' }
+    if ($CommandLine -match 'Start-DocMindUEncryptorHostWorker|run-.*worker\.ps1') { return 'mixed' }
+    return ''
+}
 $probe = ConvertTo-WslPath (Join-Path $repo 'app/scripts/preview_worker_isolation_probe.py')
 $linuxOutput = ConvertTo-WslPath (Join-Path $destination 'wsl.jsonl')
 $arguments = '-d Ubuntu -- python3 "{0}" sample-wsl --duration {1} --interval {2} --output "{3}"' -f $probe, $DurationSeconds, $IntervalSeconds, $linuxOutput
@@ -22,19 +29,24 @@ $linux = Start-Process wsl.exe -ArgumentList $arguments -WindowStyle Hidden -Pas
 $null = $linux.Handle
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $windowsFile = Join-Path $destination 'windows.jsonl'
+$expectedWorkerRoles = @()
+foreach ($task in @(Get-ScheduledTask | Where-Object { $_.TaskName -match '^DocMind Host Worker' -and $_.Settings.Enabled })) {
+    if ($task.TaskName -match '\((ingest|preview)\)$') { $expectedWorkerRoles += $Matches[1] } else { $expectedWorkerRoles += 'mixed' }
+}
 try {
     do {
         $sampleClock = [Diagnostics.Stopwatch]::StartNew()
-        $row = [ordered]@{ utc = [DateTimeOffset]::UtcNow.ToString('o'); elapsed_seconds = $clock.Elapsed.TotalSeconds; interval_seconds = $IntervalSeconds; windows_available_bytes = $null; committed_bytes = $null; commit_limit_bytes = $null; workers = @() }
+        $row = [ordered]@{ utc = [DateTimeOffset]::UtcNow.ToString('o'); elapsed_seconds = $clock.Elapsed.TotalSeconds; interval_seconds = $IntervalSeconds; expected_worker_roles = $expectedWorkerRoles; windows_available_bytes = $null; committed_bytes = $null; commit_limit_bytes = $null; workers = @() }
         try {
             $memory = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory
             $row.windows_available_bytes = [Int64]$memory.AvailableBytes
             $row.committed_bytes = [Int64]$memory.CommittedBytes
             $row.commit_limit_bytes = [Int64]$memory.CommitLimit
-            $workerIds = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -match 'Start-DocMindUEncryptorHostWorker|run-.*worker\.ps1' } | ForEach-Object ProcessId)
-            foreach ($workerId in $workerIds) {
-                $worker = Get-Process -Id $workerId -ErrorAction SilentlyContinue
-                if ($worker) { $row.workers += @{ pid = $workerId; private_bytes = $worker.PrivateMemorySize64; working_set_bytes = $worker.WorkingSet64 } }
+            foreach ($process in @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'")) {
+                $role = Get-DocMindMeasuredWorkerRole -CommandLine $process.CommandLine
+                if (-not $role) { continue }
+                $worker = Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
+                if ($worker) { $row.workers += @{ role = $role; pid = $process.ProcessId; private_bytes = $worker.PrivateMemorySize64; working_set_bytes = $worker.WorkingSet64 } }
             }
         } catch { $row.collection_error = 'WINDOWS_SAMPLE_FAILED' }
         [IO.File]::AppendAllText($windowsFile, (($row | ConvertTo-Json -Compress -Depth 6) + "`n"), [Text.UTF8Encoding]::new($false))

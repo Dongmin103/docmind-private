@@ -31,11 +31,30 @@ try {
     Assert-True (-not $prepared.original.enabled -and -not $prepared.original.running) 'Disabled original state was changed.'
     Assert-True ((Get-Content -LiteralPath $prepared.workers[0].config -Raw | ConvertFrom-Json).sources[0].source_id -eq 'synthetic-source') 'Prepare broadened source scope.'
     Assert-True ([IO.File]::ReadAllText((Join-Path $testRoot 'prepared/after/run-ingest.ps1')).Contains('-ClaimSourceId synthetic-source -SkipRetries')) 'Prepare dropped ingestion filters.'
+    Assert-True (-not [IO.File]::ReadAllText((Join-Path $testRoot 'prepared/after/run-ingest.ps1')).Contains('-TimingRoot')) 'Generated non-benchmark ingest launcher cannot start with TimingRoot.'
     Assert-DocMindIsolationArtifacts -Manifest $prepared
+    # Execute the generated launcher in PowerShell 5.1. Keep the production
+    # parameter block and timing guard; replace only readiness/API/decryption.
+    $workerTokens=$null; $workerErrors=$null
+    $workerAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Start-DocMindUEncryptorHostWorker.ps1'),[ref]$workerTokens,[ref]$workerErrors)
+    $timingGuard=$workerAst.Find({param($n) $n -is [Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.Contains('HOST_TIMING_REQUIRES_DEPT2_SCOPE')},$false)
+    $mockWorker=$workerAst.ParamBlock.Extent.Text + "`n" + $timingGuard.Extent.Text + @'
+
+if ($Purpose -ne 'ingest' -or $ClaimSourceId -ne 'synthetic-source' -or -not $SkipRetries) { throw 'GENERATED_CLAIM_SCOPE_CHANGED' }
+'GENERATED_WORKER_INITIALIZED'
+'@
+    [IO.File]::WriteAllText((Join-Path $testRoot 'prepared/after/Start-DocMindUEncryptorHostWorker.ps1'),$mockWorker)
+    [IO.File]::WriteAllText((Join-Path $testRoot 'prepared/after/Set-DocMindPreviewWorkerIsolation.ps1'),'function Wait-DocMindIsolationApi { param($Manifest) }')
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $testRoot 'prepared/after/run-ingest.ps1')
+    Assert-True ($LASTEXITCODE -eq 0 -and [IO.File]::ReadAllText((Join-Path $testRoot 'prepared/after/ingest.log')).Contains('GENERATED_WORKER_INITIALIZED')) 'Generated ingest launcher failed initialization.'
     [IO.File]::AppendAllText($prepared.artifacts[0].path, 'changed')
     $rejected=$false; try { Assert-DocMindIsolationArtifacts -Manifest $prepared } catch { $rejected=$_.Exception.Message -eq 'PREPARED_ARTIFACT_CHANGED' }
     Assert-True $rejected 'Changed prepared artifact was accepted.'
     $prepared.control_root = Join-Path $testRoot 'control'; [IO.Directory]::CreateDirectory($prepared.control_root) | Out-Null
+    Write-DocMindGateRecord -Path (Join-Path $prepared.control_root 'owner.json') -Record @{ phase='running';child_pid=$PID;child_started_utc=(Get-Process -Id $PID).StartTime.ToUniversalTime().ToString('o');executable_sha256=('a'*64) }
+    try { Assert-DocMindIsolationQuiescent -Manifest $prepared } catch { }
+    Assert-True (-not (Test-Path (Join-Path $prepared.control_root 'blocked.json'))) 'Busy observational preflight persistently blocked a healthy process.'
+    Remove-Item -LiteralPath (Join-Path $prepared.control_root 'owner.json') -Force
     [IO.File]::WriteAllText((Join-Path $prepared.control_root 'blocked.json'), '{}')
     $rejected=$false; try { Assert-DocMindIsolationQuiescent -Manifest $prepared } catch { $rejected=$_.Exception.Message -eq 'DECRYPT_GATE_BLOCKED' }
     Assert-True $rejected 'Persistent decrypt block did not prevent transition.'

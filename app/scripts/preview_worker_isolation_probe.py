@@ -25,6 +25,12 @@ def evaluate(windows, linux, *, minimum_seconds=1200):
     for row in windows:
         if row.get("windows_available_bytes") is None:
             failures.append("WINDOWS_MEASUREMENT_MISSING")
+        expected_roles = set(row.get("expected_worker_roles") or [])
+        workers = row.get("workers", [])
+        if not expected_roles or not expected_roles.issubset({worker.get("role") for worker in workers}):
+            failures.append("WINDOWS_WORKER_COVERAGE_MISSING")
+        if any(worker.get("private_bytes") is None or worker.get("working_set_bytes") is None for worker in workers):
+            failures.append("WINDOWS_WORKER_MEASUREMENT_MISSING")
     for row in linux:
         if any(row.get(key) is None for key in required_linux) or not row.get("containers"):
             failures.append("WSL_MEASUREMENT_MISSING")
@@ -45,14 +51,22 @@ def evaluate(windows, linux, *, minimum_seconds=1200):
     if swap and (max(swap) - swap[0] > 128 * MIB or swap[-1] >= 512 * MIB):
         failures.append("SWAP_BUDGET_EXCEEDED")
     previous = {}
-    expected = None
+    expected_inventory = None
     tmpfs_peak = 0
     peak_ratios = {}
     for row in linux:
         names = {c["name"] for c in row.get("containers", [])}
-        if expected is not None and names != expected:
-            failures.append("CONTAINER_SET_CHANGED")
-        expected = names if expected is None else expected
+        expected = set(row.get("expected_containers") or [])
+        expected_tmpfs = set(row.get("expected_tmpfs") or [])
+        if not expected or not expected_tmpfs:
+            failures.append("EXPECTED_RESOURCE_COVERAGE_MISSING")
+        if names != expected:
+            failures.append("EXPECTED_CONTAINER_MISSING_OR_CHANGED")
+        if expected_inventory is not None and expected != expected_inventory:
+            failures.append("EXPECTED_INVENTORY_CHANGED")
+        expected_inventory = expected if expected_inventory is None else expected_inventory
+        if {m["identity"] for m in row.get("tmpfs", [])} != expected_tmpfs:
+            failures.append("EXPECTED_TMPFS_COVERAGE_MISSING")
         unique = {}
         for mount in row.get("tmpfs", []):
             if mount.get("used_bytes") is None:
@@ -91,7 +105,8 @@ def evaluate(windows, linux, *, minimum_seconds=1200):
             "wsl_min_available_mib": min(available) / MIB if available else None,
             "swap_peak_mib": max(swap) / MIB if swap else None,
             "swap_end_mib": swap[-1] / MIB if swap else None,
-            "tmpfs_peak_bytes": tmpfs_peak, "cgroup_peak_ratios": peak_ratios}
+            "tmpfs_peak_bytes": None if any("TMPFS" in error or error == "EXPECTED_RESOURCE_COVERAGE_MISSING" for error in failures) else tmpfs_peak,
+            "cgroup_peak_ratios": peak_ratios}
 
 
 def _run(command):
@@ -106,9 +121,29 @@ def _number(path):
         return None
 
 
-def sample_wsl():
+def candidate_inventory():
+    # Include configured stopped containers, which `docker ps` would hide.
+    ids = _run(["docker", "ps", "-a", "--filter", "name=docmind", "-q"]).split()
+    if not ids:
+        raise RuntimeError("EXPECTED_INVENTORY_UNAVAILABLE")
+    configured = json.loads(_run(["docker", "inspect", *ids]))
+    running = [item for item in configured if item["State"]["Running"]]
+    mains = [item for item in running if item["Name"].endswith("ragflow-cpu-1")]
+    if len(mains) != 1:
+        raise RuntimeError("CANDIDATE_TOPOLOGY_UNRESOLVED")
+    prefix = mains[0]["Name"].lstrip("/")[:-len("ragflow-cpu-1")]
+    core = ("ragflow-cpu-1", "mysql-1", "es01-1", "redis-1", "minio-1", "docmind-preview-processor-1", "kordoc-parser-1")
+    expected = {prefix + suffix for suffix in core} | {item["Name"].lstrip("/") for item in running}
+    stores = {hashlib.sha256(mount["Source"].encode()).hexdigest()
+              for item in configured if item["Name"].lstrip("/") in expected
+              for mount in item["Mounts"] if mount["Destination"] == "/run/docmind-previews"}
+    return {"expected_containers": sorted(expected), "expected_tmpfs": sorted(stores)}
+
+
+def sample_wsl(inventory):
     row = {"utc": datetime.now(timezone.utc).isoformat(), "wsl_available_bytes": None,
            "swap_used_bytes": None, "allocation_errors": None, "containers": [], "tmpfs": []}
+    row.update(inventory)
     try:
         memory = dict(re.findall(r"^(\w+):\s+(\d+) kB", Path("/proc/meminfo").read_text(), re.M))
         row["wsl_available_bytes"] = int(memory["MemAvailable"]) * 1024
@@ -153,10 +188,14 @@ def sample_wsl():
 
 def collect_wsl(output, duration, interval):
     start = time.monotonic()
+    try:
+        inventory = candidate_inventory()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        inventory = {"expected_containers": None, "expected_tmpfs": None}
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("x", encoding="utf-8") as stream:
         while True:
-            row = sample_wsl()
+            row = sample_wsl(inventory)
             row["elapsed_seconds"] = time.monotonic() - start
             row["interval_seconds"] = interval
             stream.write(json.dumps(row) + "\n")

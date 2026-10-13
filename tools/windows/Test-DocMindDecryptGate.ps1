@@ -71,6 +71,13 @@ if ($Mode -eq 'delivery') { [IO.File]::WriteAllText($OutputFile + '.delivery', '
     $parent = Start-SyntheticWorker $crashControl (Join-Path $root 'orphan') 'exit'
     try {
         Wait-File (Join-Path $root 'orphan.started')
+        $tokens=$null; $errors=$null
+        $workerAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Start-DocMindUEncryptorHostWorker.ps1'),[ref]$tokens,[ref]$errors)
+        $reaper=$workerAst.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-DocMindRoleReaper'},$false)
+        Assert-True ($null -ne $reaper) 'Startup reaper contention is not recoverable.'
+        Invoke-Expression $reaper.Extent.Text
+        $removed=Invoke-DocMindRoleReaper -ControlRoot $crashControl -WorkRoot (Join-Path $root 'restart-work') -ReceiptRoot (Join-Path $root 'restart-receipts') -MinimumAgeSeconds 300
+        Assert-True ($removed -eq 0 -and -not (Test-Path (Join-Path $crashControl 'blocked.json'))) 'Restart reaper failed instead of deferring while another decrypt runs.'
         Assert-Code { Enter-DocMindDecryptGate -ControlRoot $crashControl -DeadlineUtc ([DateTimeOffset]::UtcNow.AddMilliseconds(300)) -ValidateLease { } } 'PREVIEW_DECRYPT_BUSY'
         Assert-Code { Enter-DocMindDecryptGate -ControlRoot $crashControl -DeadlineUtc ([DateTimeOffset]::UtcNow.AddSeconds(5)) -ValidateLease { throw 'PREVIEW_STALE_WORKER_RESULT' } } 'PREVIEW_STALE_WORKER_RESULT'
         Stop-Process -Id $parent.Id -Force

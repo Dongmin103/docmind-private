@@ -75,7 +75,7 @@ function Assert-DocMindIsolationArtifacts {
 
 function Assert-DocMindIsolationQuiescent {
     param($Manifest, [switch]$AllowLegacyReceipts)
-    Assert-DocMindDecryptControlSafe -ControlRoot $Manifest.control_root
+    Assert-DocMindDecryptControlSafe -ControlRoot $Manifest.control_root -ReadOnly
     foreach ($root in @($Manifest.work_roots)) {
         if (-not (Test-Path -LiteralPath $root)) { continue }
         Assert-DocMindNoReparsePoint -LiteralPath $root -Boundary ([IO.Path]::GetPathRoot($root)) -Name 'Plaintext root'
@@ -302,6 +302,7 @@ function New-DocMindIsolationManifest {
         [IO.File]::WriteAllText($configFile, ($newConfig | ConvertTo-Json -Depth 12))
         $launchFile = Join-Path $after ('run-' + $role + '.ps1')
         $roleFilters = if ($role -eq 'ingest') { $filters -join ' ' } else { '' }
+        $timingArgument = if ($role -eq 'preview' -or ($roleFilters -match '-ClaimSourceId\s+[''"]?dept-2-e2e(?:[''"]?\s|[''"]?$)')) { "-TimingRoot (Join-Path `$PSScriptRoot 'timing-$role')" } else { '' }
         $boot = @'
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'DocMindUEncryptorHostWorker.Common.ps1')
@@ -312,9 +313,9 @@ $node = $ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefi
 Invoke-Expression $node.Extent.Text
 $config = Get-Content -LiteralPath (Join-Path $PSScriptRoot '__ROLE__.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 Wait-DocMindIsolationApi -Manifest $config
-& (Join-Path $PSScriptRoot 'Start-DocMindUEncryptorHostWorker.ps1') -ConfigPath (Join-Path $PSScriptRoot '__ROLE__.json') -Purpose __ROLE__ __FILTERS__ -TimingRoot (Join-Path $PSScriptRoot 'timing-__ROLE__') *>&1 | Out-File -LiteralPath (Join-Path $PSScriptRoot '__ROLE__.log') -Append -Encoding UTF8
+& (Join-Path $PSScriptRoot 'Start-DocMindUEncryptorHostWorker.ps1') -ConfigPath (Join-Path $PSScriptRoot '__ROLE__.json') -Purpose __ROLE__ __FILTERS__ __TIMING__ *>&1 | Out-File -LiteralPath (Join-Path $PSScriptRoot '__ROLE__.log') -Append -Encoding UTF8
 '@
-        [IO.File]::WriteAllText($launchFile, $boot.Replace('__ROLE__', $role).Replace('__FILTERS__', $roleFilters))
+        [IO.File]::WriteAllText($launchFile, $boot.Replace('__ROLE__', $role).Replace('__FILTERS__', $roleFilters).Replace('__TIMING__', $timingArgument))
         [xml]$xml = $originalXml
         $xml.Task.Actions.Exec.Command = [string]$task.Actions.Execute
         $xml.Task.Actions.Exec.Arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "' + $launchFile + '"'
