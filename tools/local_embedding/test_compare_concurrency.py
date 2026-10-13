@@ -4,7 +4,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
-from compare_concurrency import ParallelEngine, SerializedTokenizer
+from compare_concurrency import ParallelEngine, SerializedTokenizer, BatchEngine
 
 
 class Stream:
@@ -16,6 +16,36 @@ class Stream:
 
 
 class Tests(unittest.TestCase):
+    def test_short_batch_16_preserves_order_and_token_count(self):
+        engine = BatchEngine.__new__(BatchEngine)
+        engine.short_batch = 16
+        engine.tokenizer = lambda texts, **kwargs: {'input_ids': [range(int(t)) for t in texts]}
+        calls = []
+        def retry(texts):
+            calls.append(texts)
+            return [[int(t)] for t in texts]
+        engine._retry = retry
+        texts = [str(i) for i in range(1, 33)]
+        self.assertEqual(engine.encode(texts), ([[int(t)] for t in texts], 528))
+        self.assertEqual([len(c) for c in calls], [16, 16])
+
+    def test_long_batch_sizes_and_token_limit_unchanged(self):
+        engine = BatchEngine.__new__(BatchEngine)
+        engine.short_batch = 16
+        engine.tokenizer = lambda texts, **kwargs: {'input_ids': [range(int(t)) for t in texts]}
+        calls = []
+        def retry(texts):
+            calls.append(texts)
+            return texts
+        engine._retry = retry
+        texts = ['8192', '2049', '2048', '1025', '1024']
+        self.assertEqual(engine.encode(texts), (texts, sum(map(int, texts))))
+        self.assertEqual([len(c) for c in calls], [1, 1, 2, 1])
+        calls.clear()
+        from service import RequestError
+        with self.assertRaises(RequestError): engine.encode(['8193'])
+        self.assertEqual(calls, [])
+
     def test_two_streams_bounded_and_output_preserved(self):
         local = threading.local()
         @contextlib.contextmanager

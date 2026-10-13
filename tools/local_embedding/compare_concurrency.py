@@ -1,4 +1,4 @@
-"""Explicit benchmark-only GTE concurrency2 server; production service unchanged.
+"""Explicit benchmark-only GTE concurrency/batch server; production unchanged.
 
 Use the same private config and environment as service.py, with a separate port.
 Records timings/counts only, never inputs, vectors, credentials or exception text.
@@ -11,6 +11,29 @@ import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from service import EmbeddingService, GTEEngine, Handler, RequestError
+
+
+class BatchEngine(GTEEngine):
+    """Retain production length policy except the explicit short-input batch cap."""
+    def __init__(self, config, short_batch=8):
+        super().__init__(config)
+        self.short_batch = short_batch
+
+    def encode(self, texts):
+        lengths = [len(ids) for ids in self.tokenizer(texts, truncation=False)['input_ids']]
+        if max(lengths) > 8192:
+            raise RequestError('Input exceeds 8192 GTE tokens; nothing was truncated')
+        order = sorted(range(len(texts)), key=lambda i: lengths[i], reverse=True)
+        out = [None] * len(texts)
+        offset = 0
+        while offset < len(order):
+            n = lengths[order[offset]]
+            size = 1 if n > 2048 else 2 if n > 1024 else self.short_batch
+            ids = order[offset:offset + size]
+            for i, vector in zip(ids, self._retry([texts[i] for i in ids])):
+                out[i] = vector
+            offset += len(ids)
+        return out, sum(lengths)
 
 
 class SerializedTokenizer:
@@ -71,6 +94,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True)
     parser.add_argument('--events', required=True)
+    parser.add_argument('--inference-slots', type=int, choices=[1, 2], default=2)
+    parser.add_argument('--short-batch', type=int, choices=[8, 16], default=8)
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text(encoding='utf-8-sig'))
     events = Path(args.events)
@@ -83,14 +108,14 @@ def main():
             with events.open('a', encoding='utf-8') as output:
                 output.write(json.dumps(event, separators=(',', ':')) + '\n')
 
-    engine = GTEEngine(config)
+    engine = BatchEngine(config, args.short_batch)
     engine.encode(['서비스 준비 확인'])
     engine.torch.cuda.synchronize()
     engine.tokenizer = SerializedTokenizer(engine.tokenizer, record)
 
     class TimedGate:
         def __init__(self):
-            self.gate = threading.BoundedSemaphore(2)
+            self.gate = threading.BoundedSemaphore(args.inference_slots)
 
         def acquire(self, timeout):
             context.request_id = str(time.perf_counter_ns())
@@ -138,15 +163,18 @@ def main():
             raise
 
     engine._batch = measured_batch
-    streams = [engine.torch.cuda.Stream() for _ in range(2)]
+    # Single inference retains the production default stream; two uses separate streams.
+    streams = ([engine.torch.cuda.default_stream()] if args.inference_slots == 1
+               else [engine.torch.cuda.Stream() for _ in range(2)])
     wrapped = ParallelEngine(engine, streams, record)
     service = EmbeddingService(wrapped, config['api_key'])
     service.lock = TimedGate()
     server = ThreadingHTTPServer((config.get('bind', '127.0.0.1'), config['port']), Handler)
     server.service = service
-    record({'event': 'ready', 'epoch': time.time(), 'concurrency': 2,
+    record({'event': 'ready', 'epoch': time.time(), 'concurrency': args.inference_slots,
+            'short_batch': args.short_batch,
             'streams': [s.cuda_stream for s in streams]})
-    print('GTE comparison ready: one model, two inference slots/streams', flush=True)
+    print(f'GTE comparison ready: one model, slots={args.inference_slots}, short_batch={args.short_batch}', flush=True)
     server.serve_forever()
 
 
