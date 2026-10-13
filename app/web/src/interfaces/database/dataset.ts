@@ -2,16 +2,6 @@
 // The data structures returned by the `datasets` interface and `/api/v1/datasets/{id}` are inconsistent.
 
 import { RunningStatus } from '@/constants/knowledge';
-import { DataSourceKey } from '@/pages/user-setting/data-source/constant';
-
-export interface IConnector {
-  id: string;
-  name: string;
-  status: RunningStatus;
-  source: DataSourceKey;
-  auto_parse?: '0' | '1';
-}
-
 export interface IDataset {
   avatar?: string;
   chunk_count: number;
@@ -48,7 +38,6 @@ export interface IDataset {
   update_date: string;
   update_time: number;
   vector_similarity_weight: number;
-  connectors: IConnector[];
 }
 
 export type IDatasetFilter = {

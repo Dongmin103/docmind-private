@@ -23,9 +23,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * RAGFlow backend until the key is issued. RAGFlow never sees the user's AIMLAPI
  * credentials; the popup handles sign-in/consent on aimlapi.com.
  *
- * Mirrors the data-source connector OAuth pattern
- * (`data-source/component/google-drive-token-field.tsx`): a popup opened
- * synchronously on click, a self-scheduling `setTimeout` poll loop, a manual
+ * Opens a popup synchronously on click, with a self-scheduling `setTimeout`
+ * poll loop, a manual
  * "check status" fallback, and cleanup on unmount.
  */
 export type AimlapiAuthorizeStatus =

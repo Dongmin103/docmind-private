@@ -583,6 +583,13 @@ class CreateDatasetReq(Base):
     auto_metadata_config: Annotated[AutoMetadataConfig | None, Field(default=None)]
     ext: Annotated[dict, Field(default={})]
 
+    @field_validator("ext")
+    @classmethod
+    def reject_external_connectors(cls, value: dict) -> dict:
+        if "connectors" in value:
+            raise ValueError("External connectors are not supported")
+        return value
+
     @field_validator("pipeline_id", mode="before")
     @classmethod
     def handle_pipeline_id(cls, v: str | None, info: ValidationInfo):
@@ -851,7 +858,6 @@ class UpdateDatasetReq(CreateDatasetReq):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=DATASET_NAME_LIMIT), Field(default="")]
     pagerank: Annotated[int, Field(default=0, ge=0, le=100)]
     language: Annotated[str | None, Field(default=None, max_length=32)]
-    connectors: Annotated[list[dict[str, Any]], Field(default_factory=list)]
 
     @field_validator("dataset_id", mode="before")
     @classmethod

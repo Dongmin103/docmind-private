@@ -61,8 +61,6 @@ export enum Routes {
   Model = '/model',
   Prompt = '/prompt',
   CompilationTemplatesEditNext = '/compilation-templates/edit-next',
-  DataSource = '/data-source',
-  DataSourceDetailPage = '/data-source-detail-page',
   ChatChannel = '/chat-channel',
   ProfileMcp = `${ProfileSetting}${Mcp}`,
   ProfileTeam = `${ProfileSetting}${Team}`,
@@ -312,20 +310,10 @@ const routeConfigOptions = [
           },
 
           {
-            path: `${Routes.UserSetting}${Routes.DataSource}`,
-            Component: () => import('@/pages/user-setting/data-source'),
-          },
-          {
             path: `${Routes.UserSetting}${Routes.ChatChannel}`,
             Component: () => import('@/pages/user-setting/chat-channel'),
           },
         ],
-      },
-      {
-        path: `${Routes.UserSetting}${Routes.DataSource}${Routes.DataSourceDetailPage}`,
-        layout: false,
-        Component: () =>
-          import('@/pages/user-setting/data-source/data-source-detail-page'),
       },
     ],
   },

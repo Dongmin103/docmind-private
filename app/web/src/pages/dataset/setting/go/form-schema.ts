@@ -27,17 +27,6 @@ export const formSchema = z
     embedding_model: z.string(),
     pagerank: z.number(),
     parser_config: z.record(z.string(), z.any()).optional(),
-    connectors: z
-      .array(
-        z.object({
-          id: z.string().optional(),
-          name: z.string().optional(),
-          source: z.string().optional(),
-          ststus: z.string().optional(),
-          auto_parse: z.string().optional(),
-        }),
-      )
-      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.parse_type === ParseType.Pipeline && !data.pipeline_id) {

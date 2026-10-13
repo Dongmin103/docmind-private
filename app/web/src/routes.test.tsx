@@ -9,10 +9,12 @@ jest.mock('react-router', () => ({
 
 import authorizationUtil from './utils/authorization-util';
 import { routers } from './routes';
+import { matchRoutes } from 'react-router';
 
 const load = async (path: string, search = '') => {
   const route = routers.routes.find((item) => item.path === path);
-  if (typeof route?.loader !== 'function') throw new Error(`Missing loader for ${path}`);
+  if (typeof route?.loader !== 'function')
+    throw new Error(`Missing loader for ${path}`);
   return route.loader({
     request: { url: `http://localhost${path}${search}` } as Request,
     params: {},
@@ -36,3 +38,18 @@ it('stores an OAuth callback token before redirecting to DocMind', async () => {
   expect(result.headers.get('Location')).toBe('/docmind?view=library');
   setAuthorization.mockRestore();
 });
+
+it.each([
+  '/user-setting/data-source',
+  '/user-setting/data-source/data-source-detail-page',
+])('does not expose the removed external connector route %s', (path) => {
+  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
+});
+
+it.each(['/docmind', '/user-setting/model', '/user-setting/chat-channel'])(
+  'preserves the supported route %s',
+  (path) => {
+    const matches = matchRoutes(routers.routes, path);
+    expect(matches?.at(-1)?.route.path).toBe(path);
+  },
+);

@@ -250,6 +250,7 @@ services:
       dockerfile: Dockerfile
       args:
         RAGFLOW_VERSION: windows-development
+    # Cloud-only entrypoint: no standalone task executor or connector sync daemon.
     command:
       - --enable-adminserver
       - --init-model-provider-tables

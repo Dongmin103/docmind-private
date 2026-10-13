@@ -13,12 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""
-Shared constants for task executor modules.
-
-This module exists to break circular imports between task_executor.py and
-task_executor_refactor modules.
-"""
+"""Shared constants for document task processing."""
 
 CANVAS_DEBUG_DOC_ID = "dataflow_x"
 GRAPH_RAPTOR_FAKE_DOC_ID = "graph_raptor_x"

@@ -4,8 +4,6 @@ import {
   useFetchDatasetPipelineConfiguration,
   useUpdateKnowledge,
 } from '@/hooks/use-knowledge-request';
-import { IConnector } from '@/interfaces/database/dataset';
-import { useDataSourceInfo } from '@/pages/user-setting/data-source/constant';
 import { checkEmbedding } from '@/services/knowledge-service';
 import {
   getOperatorType,
@@ -13,13 +11,7 @@ import {
   transformFormConfigToApi,
 } from '@/utils/pipeline-operator';
 import { pick } from 'lodash';
-import {
-  Dispatch,
-  SetStateAction,
-  useCallback,
-  useEffect,
-  useMemo,
-} from 'react';
+import { useCallback, useEffect } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
@@ -55,19 +47,6 @@ export const useFetchDatasetSettingOnMount = (
 ) => {
   const { data: knowledgeDetails, loading } =
     useFetchDatasetPipelineConfiguration();
-  const { dataSourceInfo } = useDataSourceInfo();
-
-  const sourceData = useMemo(() => {
-    return (knowledgeDetails?.connectors ?? []).map(
-      (connector: IConnector) => ({
-        ...connector,
-        icon:
-          dataSourceInfo[connector.source as keyof typeof dataSourceInfo]
-            ?.icon || '',
-      }),
-    );
-  }, [knowledgeDetails?.connectors, dataSourceInfo]);
-
   useEffect(() => {
     const parserConfig = knowledgeDetails.parser_config as
       | Record<string, any>
@@ -100,7 +79,6 @@ export const useFetchDatasetSettingOnMount = (
         'name',
         'permission',
         'language',
-        'connectors',
         'pagerank',
         'avatar',
         'pipeline_id',
@@ -109,16 +87,15 @@ export const useFetchDatasetSettingOnMount = (
         'parser_id',
       ]),
       embedding_model: knowledgeDetails.embedding_model,
-      connectors: sourceData,
       parse_type: knowledgeDetails.pipeline_id
         ? ParseType.Pipeline
         : ParseType.BuiltIn,
       parser_config: formParserConfig,
     } as z.infer<typeof formSchema>;
     form.reset(formValues);
-  }, [form, knowledgeDetails, sourceData]);
+  }, [form, knowledgeDetails]);
 
-  return { knowledgeDetails, loading, sourceData };
+  return { knowledgeDetails, loading };
 };
 
 export const useSaveDatasetSetting = () => {
@@ -170,84 +147,4 @@ export const useSaveDatasetSetting = () => {
   );
 
   return { handleSave, loading };
-};
-
-export const usePipelineDataList = (sourceData: any[] | undefined) => {
-  const { dataSourceInfo } = useDataSourceInfo();
-
-  return useMemo(
-    () =>
-      sourceData?.map((item) => ({
-        ...item,
-        icon:
-          dataSourceInfo[item.source as keyof typeof dataSourceInfo]?.icon ||
-          '',
-      })),
-    [sourceData, dataSourceInfo],
-  );
-};
-
-export const useConnectorHandlers = (
-  form: UseFormReturn<any>,
-  sourceData?: any[],
-  setSourceData?: Dispatch<SetStateAction<any[] | undefined>>,
-) => {
-  const { dataSourceInfo } = useDataSourceInfo();
-
-  const handleLinkOrEditSubmit = useCallback(
-    (data: any[] | undefined) => {
-      if (data) {
-        const connectors = data.map((connector) => ({
-          ...connector,
-          auto_parse: (connector as IConnector).auto_parse === '0' ? '0' : '1',
-          icon:
-            dataSourceInfo[connector.source as keyof typeof dataSourceInfo]
-              ?.icon || '',
-        }));
-        setSourceData?.(connectors);
-        form.setValue('connectors', connectors || []);
-      }
-    },
-    [dataSourceInfo, form, setSourceData],
-  );
-
-  const unbindFunc = useCallback(
-    (data: any) => {
-      if (data) {
-        const connectors = sourceData?.filter(
-          (connector) => connector.id !== data.id,
-        );
-        setSourceData?.(connectors);
-        form.setValue('connectors', connectors || []);
-      }
-    },
-    [sourceData, form, setSourceData],
-  );
-
-  const handleAutoParse = useCallback(
-    ({
-      source_id,
-      isAutoParse,
-    }: {
-      source_id: string;
-      isAutoParse: boolean;
-    }) => {
-      if (source_id) {
-        const connectors = sourceData?.map((connector) => {
-          if (connector.id === source_id) {
-            return {
-              ...connector,
-              auto_parse: isAutoParse ? '1' : '0',
-            };
-          }
-          return connector;
-        });
-        setSourceData?.(connectors);
-        form.setValue('connectors', connectors || []);
-      }
-    },
-    [sourceData, form, setSourceData],
-  );
-
-  return { handleLinkOrEditSubmit, unbindFunc, handleAutoParse };
 };

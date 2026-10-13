@@ -111,14 +111,13 @@ def _load_dataset_module(monkeypatch):
     _install_module(
         monkeypatch,
         "api.db.db_models",
-        Connector2Kb=SimpleNamespace(kb_id="kb_id"),
         Document=SimpleNamespace(kb_id="kb_id"),
         File=SimpleNamespace(),
-        SyncLogs=SimpleNamespace(kb_id="kb_id", status=SimpleNamespace(in_=lambda _values: None)),
     )
     _install_module(
         monkeypatch,
         "api.db.services.document_service",
+        DocmindProtectedEvidenceError=PermissionError,
         DocumentService=SimpleNamespace(),
         queue_raptor_o_graphrag_tasks=MagicMock(),
     )
@@ -132,12 +131,6 @@ def _load_dataset_module(monkeypatch):
             get_by_id=staticmethod(lambda _dataset_id: (True, kb)),
         ),
         validate_dataset_embedding_models=lambda *_args, **_kwargs: None,
-    )
-    _install_module(
-        monkeypatch,
-        "api.db.services.connector_service",
-        Connector2KbService=SimpleNamespace(),
-        SyncLogsService=SimpleNamespace(),
     )
     _install_module(
         monkeypatch,

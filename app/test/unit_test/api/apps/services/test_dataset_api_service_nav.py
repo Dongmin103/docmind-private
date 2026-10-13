@@ -82,14 +82,13 @@ def _load_nav_module(monkeypatch, *, accessible=True, index_pack=("idx-1", None)
     _stub(
         monkeypatch,
         "api.db.db_models",
-        Connector2Kb=SimpleNamespace(),
         Document=SimpleNamespace(),
         File=SimpleNamespace(),
-        SyncLogs=SimpleNamespace(),
     )
     _stub(
         monkeypatch,
         "api.db.services.document_service",
+        DocmindProtectedEvidenceError=PermissionError,
         DocumentService=SimpleNamespace(get_parsing_status_by_kb_ids=MagicMock()),
         queue_raptor_o_graphrag_tasks=MagicMock(),
     )
@@ -100,12 +99,6 @@ def _load_nav_module(monkeypatch, *, accessible=True, index_pack=("idx-1", None)
         "api.db.services.knowledgebase_service",
         KnowledgebaseService=knowledgebase_service,
         validate_dataset_embedding_models=lambda kbs: None,
-    )
-    _stub(
-        monkeypatch,
-        "api.db.services.connector_service",
-        Connector2KbService=SimpleNamespace(),
-        SyncLogsService=SimpleNamespace(),
     )
     _stub(
         monkeypatch,

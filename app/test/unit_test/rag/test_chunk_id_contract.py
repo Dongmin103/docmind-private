@@ -64,7 +64,6 @@ def test_raptor_summary_namespace_uses_summary_ordinal_and_source_ids():
 
 def test_writer_inventory_share_chunk_id_contract():
     expected = {
-        "rag/svr/task_executor.py": ["make_chunk_id(\"searchable_chunk\"", "make_chunk_id(\"toc\"", "make_raptor_summary_chunk_id(content"],
         "rag/svr/task_executor_refactor/dataflow_service.py": ["make_chunk_id(\"dataflow_chunk\""],
         "rag/svr/task_executor_refactor/chunk_service.py": ["make_chunk_id(\"searchable_chunk\""],
         "rag/svr/task_executor_refactor/task_handler.py": ["make_chunk_id(\"toc\""],

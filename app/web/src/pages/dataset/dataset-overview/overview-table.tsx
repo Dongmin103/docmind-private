@@ -28,8 +28,6 @@ import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { cn } from '@/lib/utils';
 import { PipelineResultSearchParams } from '@/pages/dataflow-result/constant';
 import { NavigateToDataflowResultProps } from '@/pages/dataflow-result/interface';
-import { useDataSourceInfo } from '@/pages/user-setting/data-source/constant';
-import { IDataSourceInfoMap } from '@/pages/user-setting/data-source/interface';
 import { formatDate, formatSecondsToHumanReadable } from '@/utils/date';
 import {
   ColumnDef,
@@ -59,7 +57,6 @@ export const getFileLogsTableColumns = (
   navigateToDataflowResult: (
     props: NavigateToDataflowResultProps,
   ) => () => void,
-  dataSourceInfo: IDataSourceInfoMap,
 ) => {
   // const { t } = useTranslate('knowledgeDetails');
   const columns: ColumnDef<IFileLogItem & DocumentLog>[] = [
@@ -119,16 +116,6 @@ export const getFileLogsTableColumns = (
           row.original.source_from === '' ? (
             <div className="bg-accent-primary-5 w-6 h-6 rounded-full flex items-center justify-center">
               <MonitorUp className="text-accent-primary" size={16} />
-            </div>
-          ) : dataSourceInfo[
-              row.original.source_from as keyof typeof dataSourceInfo
-            ] ? (
-            <div className="w-6 h-6 flex items-center justify-center">
-              {
-                dataSourceInfo[
-                  row.original.source_from as keyof typeof dataSourceInfo
-                ].icon
-              }
             </div>
           ) : (
             <div className="w-6 h-6 flex items-center justify-center">
@@ -388,7 +375,6 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
     setLogInfo(logDetail);
     setIsModalVisible(true);
   };
-  const { dataSourceInfo } = useDataSourceInfo();
   const columns = useMemo(() => {
     return active === LogTabs.FILE_LOGS
       ? getFileLogsTableColumns(
@@ -396,7 +382,6 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
           showLog,
           knowledgeId || '',
           navigateToDataflowResult,
-          dataSourceInfo,
         )
       : getDatasetLogsTableColumns(t, showLog);
   }, [active, t]);

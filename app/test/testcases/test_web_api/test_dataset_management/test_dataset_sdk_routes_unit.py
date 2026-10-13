@@ -229,17 +229,6 @@ def _load_dataset_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services.file_service", file_service_mod)
     services_pkg.file_service = file_service_mod
 
-    connector_service_mod = ModuleType("api.db.services.connector_service")
-
-    class _StubConnector2KbService:
-        @staticmethod
-        def link_connectors(*_args, **_kwargs):
-            return []
-
-    connector_service_mod.Connector2KbService = _StubConnector2KbService
-    monkeypatch.setitem(sys.modules, "api.db.services.connector_service", connector_service_mod)
-    services_pkg.connector_service = connector_service_mod
-
     knowledgebase_service_mod = ModuleType("api.db.services.knowledgebase_service")
 
     class _StubKnowledgebaseService:

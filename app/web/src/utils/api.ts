@@ -124,22 +124,6 @@ export default {
   }) =>
     `${restAPIv1}/providers/${provider_name}/instances/${instance_name}/models`,
 
-  // data source
-  dataSourceUpdate: (id: string) => `${restAPIv1}/connectors/${id}`,
-  dataSourceSet: `${restAPIv1}/connectors`,
-  dataSourceList: `${restAPIv1}/connectors`,
-  dataSourceDel: (id: string) => `${restAPIv1}/connectors/${id}`,
-  dataSourceRebuild: (id: string) => `${restAPIv1}/connectors/${id}/rebuild`,
-  dataSourceLogs: (id: string) => `${restAPIv1}/connectors/${id}/logs`,
-  dataSourceDetail: (id: string) => `${restAPIv1}/connectors/${id}`,
-  dataSourceTest: (id: string) => `${restAPIv1}/connectors/${id}/test`,
-  googleWebAuthStart: (type: 'google-drive' | 'gmail') =>
-    `${restAPIv1}/connectors/google/oauth/web/start?type=${type}`,
-  googleWebAuthResult: (type: 'google-drive' | 'gmail') =>
-    `${restAPIv1}/connectors/google/oauth/web/result?type=${type}`,
-  boxWebAuthStart: () => `${restAPIv1}/connectors/box/oauth/web/start`,
-  boxWebAuthResult: () => `${restAPIv1}/connectors/box/oauth/web/result`,
-
   // chat channel
   chatChannelSet: `${restAPIv1}/chat-channels`,
   chatChannelList: `${restAPIv1}/chat-channels`,

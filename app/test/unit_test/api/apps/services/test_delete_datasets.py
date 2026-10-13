@@ -56,9 +56,6 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete, s
     cleanup = SimpleNamespace(
         calls=calls,
         doc_filter_delete=MagicMock(side_effect=lambda *_a, **_k: (calls.append("sweep_documents"), stranded_doc_rows)[1]),
-        connector2kb_filter_delete=MagicMock(side_effect=lambda *_a, **_k: calls.append("unlink_connectors")),
-        sync_logs_filter_delete=MagicMock(side_effect=lambda *_a, **_k: calls.append("delete_sync_logs")),
-        sync_logs_filter_update=MagicMock(side_effect=lambda *_a, **_k: calls.append("cancel_running_syncs")),
     )
     kb = SimpleNamespace(id="kb-1", tenant_id="tenant-1", name="test-kb")
     doc = SimpleNamespace(id="doc-1")
@@ -103,15 +100,6 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete, s
     )
     _stub(
         monkeypatch,
-        "api.db.services.connector_service",
-        Connector2KbService=SimpleNamespace(filter_delete=cleanup.connector2kb_filter_delete),
-        SyncLogsService=SimpleNamespace(
-            filter_delete=cleanup.sync_logs_filter_delete,
-            filter_update=cleanup.sync_logs_filter_update,
-        ),
-    )
-    _stub(
-        monkeypatch,
         "api.db.services.task_service",
         TaskService=SimpleNamespace(),
         GRAPH_RAPTOR_FAKE_DOC_ID="fake-doc",
@@ -125,8 +113,8 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete, s
     )
     _stub(
         monkeypatch,
-        "api.db.services.tenant_llm_service",
-        TenantLLMService=SimpleNamespace(),
+        "api.db.services.tenant_model_service",
+        TenantModelService=SimpleNamespace(),
     )
     _stub(
         monkeypatch,
@@ -154,10 +142,8 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete, s
         "api.db.db_models",
         DB=SimpleNamespace(connection_context=lambda: lambda func: func),
         TenantModel=SimpleNamespace(),
-        Connector2Kb=SimpleNamespace(kb_id="kb_id"),
         Document=SimpleNamespace(kb_id="kb_id"),
         File=SimpleNamespace(source_type="source_type", id="id", type="type", name="name"),
-        SyncLogs=SimpleNamespace(kb_id="kb_id", status=SimpleNamespace(in_=lambda _values: None)),
     )
     _stub(
         monkeypatch,
@@ -188,6 +174,7 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete, s
         WIKI_PAGE_COMPILE_KWD="wiki",
         _chunk_hash=lambda content: "stub-hash",
     )
+    _stub(monkeypatch, "rag.nlp", __path__=[])
     _stub(
         monkeypatch,
         "rag.nlp.search",
@@ -239,14 +226,8 @@ async def test_delete_datasets_deletes_linked_file_when_file2document_exists(mon
 
 
 @pytest.mark.asyncio
-async def test_delete_datasets_unwires_connectors_and_sweeps_stranded_documents(monkeypatch):
-    """Deleting a dataset must not leave connector state pointing at it.
-
-    Regression test for #18116. Surviving Connector2Kb/SyncLogs rows keep the
-    connector scheduler queueing syncs against a kb_id that no longer resolves,
-    and a surviving document row is invisible to the user while still able to
-    trip the cross-KB id collision guard.
-    """
+async def test_delete_datasets_sweeps_stranded_documents(monkeypatch):
+    """Dataset deletion also removes rows left after per-document cleanup."""
     module, _f2d_delete, cleanup = _load_delete_datasets_module(
         monkeypatch,
         f2d_rows=[],
@@ -258,18 +239,8 @@ async def test_delete_datasets_unwires_connectors_and_sweeps_stranded_documents(
 
     assert ok is True
     assert result == {"success_count": 1}
-    cleanup.connector2kb_filter_delete.assert_called_once()
-    cleanup.sync_logs_filter_delete.assert_called_once()
     cleanup.doc_filter_delete.assert_called_once()
-    cleanup.sync_logs_filter_update.assert_called_once()
-
-    # Queued syncs are cancelled while the connector mapping still exists, the
-    # mapping is dropped only once the dataset is really gone, and the sweep for
-    # rows an in-flight sync may have written runs last.
     assert cleanup.calls == [
-        "cancel_running_syncs",
         "delete_dataset",
-        "unlink_connectors",
-        "delete_sync_logs",
         "sweep_documents",
     ]

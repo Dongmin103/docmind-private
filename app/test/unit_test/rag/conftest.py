@@ -14,21 +14,10 @@
 #  limitations under the License.
 #
 
-"""Shared fixtures for ``rag`` unit tests.
-
-Also restores the real ``common.data_source`` package before importing rag
-unit tests.
-
-``test/unit_test/data_source/conftest.py`` registers a lightweight
-``sys.modules["common.data_source"]`` stub so submodule imports skip the heavy
-package ``__init__.py``. Pytest collection order visits ``data_source/`` before
-``rag/``, so without this hook ``rag.svr.sync_data_source`` fails on
-``from common.data_source import BlobStorageConnector``.
-"""
+"""Shared PDF parser fixtures for rag unit tests."""
 
 from __future__ import annotations
 
-import importlib
 import logging
 import sys
 import types
@@ -37,28 +26,6 @@ import pytest
 
 _LOG = logging.getLogger(__name__)
 _PDF_PARSER_KEY = "deepdoc.parser.pdf_parser"
-
-
-def _restore_common_data_source_package() -> None:
-    mod = sys.modules.get("common.data_source")
-    if mod is None:
-        return
-    # Stub is a bare types.ModuleType with __path__ and no __file__; real package has __init__.py.
-    if getattr(mod, "__file__", None) is not None:
-        return
-    if not isinstance(mod, types.ModuleType) or not getattr(mod, "__path__", None):
-        return
-    keys = [key for key in sys.modules if key == "common.data_source" or key.startswith("common.data_source.")]
-    for key in keys:
-        del sys.modules[key]
-    importlib.invalidate_caches()
-    try:
-        importlib.import_module("common.data_source")
-    except Exception as exc:  # pragma: no cover
-        raise ImportError("conftest: failed to restore real common.data_source package") from exc
-
-
-_restore_common_data_source_package()
 
 
 def _make_pdf_parser_stub():

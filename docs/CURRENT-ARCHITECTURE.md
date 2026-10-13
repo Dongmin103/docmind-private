@@ -13,7 +13,7 @@ app/는 2026-09-21 커스텀 소스 스냅샷에서 시작했으며, 현재 개�
 | api/apps/restful_apis/docmind_api.py | DocMind API, 로그인·공용 workspace bootstrap 진입점 |
 | api/apps/services/docmind_* | 공통 scope 검색·등록·폴더·경로와 계층 draft 상태 |
 | api/db/services/{file,document,task,knowledgebase}_service.py | 문서 등록·파싱 작업·저장소·색인 관리. UI 제거와 별개로 필요 |
-| rag/svr/task_executor.py | 파싱/청킹/색인 작업, 큐·재시도. 메모리/그래프/agent 공통 의존 포함 |
+| rag/svr/task_executor_refactor/task_handler.py | DocMind 인덱싱이 직접 호출하는 공통 파싱·청킹·임베딩·색인 처리 |
 | rag/app, deepdoc, rag/parser_platform | 문서 청킹과 파서 연결. 청킹 유지, 임베딩은 로컬 GTE 서비스 사용 |
 | parser_services/docling_pdf, docling_office, surya, rhwp | 커스텀 PDF/Office/OCR/HWP sidecar의 소스와 Containerfile |
 | rag/llm, api/db/services/llm_service.py | 모델 어댑터와 설정. Jina reranker와 답변 LLM은 서로 다른 역할 |

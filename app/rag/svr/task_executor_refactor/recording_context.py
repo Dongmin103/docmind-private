@@ -18,8 +18,7 @@
 This module provides the [`BaseRecordingContext`](rag/svr/task_executor_refactor/recording_context.py:48) abstract base class,
 [`RecordingContext`](rag/svr/task_executor_refactor/recording_context.py:89) concrete class, and
 [`NullRecordingContext`](rag/svr/task_executor_refactor/recording_context.py:204) no-op class, which capture
-actual execution results from the production code path (e.g., [`do_handle_task()`](rag/svr/task_executor.py))
-for later comparison with dry-run results.
+execution metrics and results from TaskHandler and its processing stages.
 
 The recording context is used throughout the task execution pipeline to collect
 intermediate metrics and final results at various stages:

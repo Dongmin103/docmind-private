@@ -907,8 +907,7 @@ class Markdown(MarkdownParser):
                     # document, so validate and DNS-pin every hop before connecting.
                     # Otherwise a markdown image like ![x](http://169.254.169.254/...)
                     # would make the server fetch internal services / cloud metadata.
-                    # Redirects are followed manually so each hop is re-validated,
-                    # mirroring common/data_source/rss_connector.py.
+                    # Redirects are followed manually so each hop is re-validated.
                     current_hostname, current_ip = assert_url_is_safe(url)
                     current_url = url
                     response = None
@@ -1433,7 +1432,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
     #    attach_media_context(res, table_context_size, image_context_size)
 
     # Attach PDF outline as transient metadata on the first chunk.
-    # task_executor.py will extract and persist it as document metadata.
+    # the shared task handler will extract and persist it as document metadata.
     if res and pdf_parser and getattr(pdf_parser, "outlines", None):
         res[0]["__outline__"] = [{"title": title, "depth": depth} for title, depth, *_ in pdf_parser.outlines]
 

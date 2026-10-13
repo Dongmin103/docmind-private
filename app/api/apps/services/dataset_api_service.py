@@ -19,13 +19,12 @@ import math
 import os
 import re
 
-from api.db.db_models import Connector2Kb, Document, File, SyncLogs
+from api.db.db_models import Document, File
 from api.db.joint_services.tenant_model_service import (
     get_composite_model_name_by_ids,
     resolve_model_config,
     resolve_model_id,
 )
-from api.db.services.connector_service import Connector2KbService, SyncLogsService
 from api.db.services.document_service import DocumentService, DocmindProtectedEvidenceError, queue_raptor_o_graphrag_tasks
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
@@ -35,7 +34,7 @@ from api.db.services.tenant_model_service import TenantModelService
 from api.db.services.user_service import TenantService, UserService, UserTenantService
 from api.utils.api_utils import deep_merge, get_parser_config, remap_dictionary_keys, verify_embedding_availability
 from common import settings
-from common.constants import PAGERANK_FLD, FileSource, LLMType, RetCode, StatusEnum, TaskStatus
+from common.constants import PAGERANK_FLD, FileSource, LLMType, RetCode, StatusEnum
 from common.misc_utils import thread_pool_exec, thread_pool_exec_long_time
 from rag.advanced_rag.knowlege_compile.wiki import WIKI_PAGE_COMPILE_KWD
 
@@ -99,6 +98,9 @@ async def create_dataset(tenant_id: str, req: dict):
     :param req: dataset creation request
     :return: (success, result) or (success, error_message)
     """
+    if "connectors" in req or "connectors" in (req.get("ext") or {}):
+        return False, "External connectors are not supported"
+
     # Extract ext field for additional parameters
     ext_fields = req.pop("ext", {})
 
@@ -190,15 +192,6 @@ def _delete_datasets_sync(tenant_id: str, ids: list = None, delete_all: bool = F
     errors = []
     success_count = 0
     for kb_id, kb in kb_id_instance_pairs:
-        # Cancel this dataset's queued syncs before touching its documents.
-        # Tasks are only picked up while they are SCHEDULE, so cancelling stops
-        # every run that has not started yet; a sync already in flight is not
-        # interruptible, which is what the stranded-row sweep below covers.
-        SyncLogsService.filter_update(
-            [SyncLogs.kb_id == kb_id, SyncLogs.status.in_([TaskStatus.SCHEDULE, TaskStatus.RUNNING])],
-            {"status": TaskStatus.CANCEL},
-        )
-
         for doc in DocumentService.query(kb_id=kb_id):
             if not DocumentService.remove_document(doc, tenant_id):
                 errors.append(f"Remove document '{doc.id}' error for dataset '{kb_id}'")
@@ -236,17 +229,7 @@ def _delete_datasets_sync(tenant_id: str, ids: list = None, delete_all: bool = F
             errors.append(f"Delete dataset error for {kb_id}")
             continue
 
-        # Unwire the data sources only once the dataset is really gone, so a
-        # failed deletion above leaves a dataset that is still linked and still
-        # syncable. Left behind, these rows keep the connector scheduler queueing
-        # syncs against a kb_id that no longer resolves, and any document such a
-        # run writes outlives its dataset -- an invisible row that later reports
-        # a cross-KB id collision against whatever dataset is linked next.
-        Connector2KbService.filter_delete([Connector2Kb.kb_id == kb_id])
-        SyncLogsService.filter_delete([SyncLogs.kb_id == kb_id])
-
-        # Sweep anything the per-document loop could not see, including rows
-        # written by a sync that was already in flight when deletion started.
+        # Sweep any document rows the per-document loop could not remove.
         stranded = DocumentService.filter_delete([Document.kb_id == kb_id])
         if stranded:
             logging.warning("delete_datasets: removed %s stranded document rows for dataset %s", stranded, kb_id)
@@ -287,7 +270,6 @@ def get_dataset(dataset_id: str, tenant_id: str):
 
     response_data = remap_dictionary_keys(kb.to_dict())
     response_data["size"] = DocumentService.get_total_size_by_kb_id(dataset_id)
-    response_data["connectors"] = list(Connector2KbService.list_connectors(dataset_id))
     return True, response_data
 
 
@@ -330,6 +312,9 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
     if not req:
         return False, "no properties were modified"
 
+    if "connectors" in req or "connectors" in (req.get("ext") or {}):
+        return False, "External connectors are not supported"
+
     kbs = KnowledgebaseService.get_kb_by_id(dataset_id, tenant_id)
     if not kbs:
         return False, f"User '{tenant_id}' lacks permission for dataset '{dataset_id}'"
@@ -362,12 +347,6 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
 
     # Merge ext fields with req
     req.update(ext_fields)
-
-    # Extract connectors from request
-    connectors = []
-    if "connectors" in req:
-        connectors = req["connectors"]
-        del req["connectors"]
 
     if req.get("parser_config"):
         # Flatten parent_child config into children_delimiter for the execution layer
@@ -434,13 +413,7 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
     if not ok:
         return False, "Dataset updated failed"
 
-    # Link connectors to the dataset
-    errors = Connector2KbService.link_connectors(kb.id, [conn for conn in connectors], tenant_id)
-    if errors:
-        logging.error("Link KB errors: %s", errors)
-
     response_data = remap_dictionary_keys(k.to_dict())
-    response_data["connectors"] = connectors
     return True, response_data
 
 

@@ -119,22 +119,6 @@ paths:
     guard_boundary: recursive document-ID collection before _rm_sync
     operation: DELETE_FILE_TREE
     test_id: test_file_tree_delete_denies_whole_tree_before_first_side_effect
-  - id: DM-MUT-015
-    entrypoint: ConnectorService.rebuild
-    service_chain: sync-log delete -> connector documents delete -> reschedule
-    mutated_resources: [sync_log_db, document_db, file_db, file_relation_db, task_db, object_storage, chunk_index]
-    first_side_effect: SyncLogs delete
-    guard_boundary: collect connector documents before SyncLogs.filter_delete
-    operation: CONNECTOR_REBUILD
-    test_id: test_connector_rebuild_denies_before_sync_log_or_document_mutation
-  - id: DM-MUT-016
-    entrypoint: ConnectorService.cleanup_stale_documents_for_task
-    service_chain: stale document batch delete -> sync counters
-    mutated_resources: [sync_log_db, document_db, file_db, file_relation_db, task_db, object_storage, chunk_index]
-    first_side_effect: first stale document delete
-    guard_boundary: guard complete stale set before batch loop
-    operation: CONNECTOR_PRUNE_STALE_DOCUMENTS
-    test_id: test_connector_prune_denies_before_first_batch_or_sync_counter_update
   - id: DM-MUT-017
     entrypoint: dataset_api_service.delete_index
     service_chain: task cancel/delete -> graph/raptor/skill index wipe -> dataset task fields update
@@ -159,14 +143,6 @@ paths:
     guard_boundary: guard all dataset documents before iteration
     operation: REBUILD_DOCUMENT_EMBEDDINGS
     test_id: test_dataset_reembedding_denies_before_first_task
-  - id: DM-MUT-020
-    entrypoint: task_executor.do_handle_task
-    service_chain: legacy parser task -> model/index initialization -> metadata/chunk writes
-    mutated_resources: [task_db, document_db, chunk_index, metadata_index]
-    first_side_effect: task progress or index initialization
-    guard_boundary: after immutable task identity extraction and before progress/model/index work
-    operation: TASK_EXECUTOR
-    test_id: test_legacy_task_executor_denies_before_first_task_or_index_side_effect
   - id: DM-MUT-021
     entrypoint: TaskHandler.handle
     service_chain: refactor parser task -> model/index initialization -> metadata/chunk writes
@@ -175,14 +151,6 @@ paths:
     guard_boundary: after cancellation check and before embedding/index initialization
     operation: TASK_EXECUTOR
     test_id: test_refactor_task_executor_denies_before_first_task_or_index_side_effect
-  - id: DM-MUT-022
-    entrypoint: task_executor.delete_raptor_chunks
-    service_chain: RAPTOR marker lookup -> doc-store summary delete
-    mutated_resources: [chunk_index]
-    first_side_effect: RAPTOR doc-store delete
-    guard_boundary: function entry before lookup/delete
-    operation: DELETE_RAPTOR_CHUNKS
-    test_id: test_legacy_raptor_cleanup_denies_before_docstore_delete
   - id: DM-MUT-023
     entrypoint: task_executor_refactor.raptor_utils.delete_raptor_chunks
     service_chain: RAPTOR marker lookup -> doc-store summary delete

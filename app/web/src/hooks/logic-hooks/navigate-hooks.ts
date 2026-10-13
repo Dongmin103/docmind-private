@@ -195,15 +195,6 @@ export const useNavigatePage = () => {
     [navigate],
   );
 
-  const navigateToDataSourceDetail = useCallback(
-    (id?: string) => {
-      navigate(
-        `${Routes.UserSetting}${Routes.DataSource}${Routes.DataSourceDetailPage}?id=${id}`,
-      );
-    },
-    [navigate],
-  );
-
   const navigateToDataflowResult = useCallback(
     (props: NavigateToDataflowResultProps) => () => {
       const params: string[] = [];
@@ -252,7 +243,6 @@ export const useNavigatePage = () => {
     navigateToDataflowResult,
     navigateToDataFile,
     navigateToCompilation,
-    navigateToDataSourceDetail,
     navigateToMemory,
     navigateToMemoryList,
     navigateToModelSetting,

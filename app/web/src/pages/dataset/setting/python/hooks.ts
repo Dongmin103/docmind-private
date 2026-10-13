@@ -55,7 +55,6 @@ export const useFetchKnowledgeConfigurationOnMount = (
         'permission',
         'language',
         'parser_config',
-        'connectors',
         'pagerank',
         'avatar',
       ]),

@@ -12,7 +12,6 @@ from api.apps.services import file_api_service
 from api.db import FileType
 from api.db.db_models import DocmindAuditEvent, DocmindCatalogVersion, DocmindFolderVersionDocument, Task
 from api.db.joint_services import user_account_service
-from api.db.services.connector_service import ConnectorService, SyncLogsService
 from api.db.services.document_service import (
     DOCMIND_PROTECTED_EVIDENCE_ERROR_CODE,
     DocumentService,
@@ -268,21 +267,6 @@ async def test_dataset_delete_denies_before_first_document_mutation(monkeypatch)
     assert result == DOCMIND_PROTECTED_EVIDENCE_ERROR_CODE
 
 
-def test_connector_rebuild_denies_before_sync_log_or_document_mutation(monkeypatch):
-    conn = SimpleNamespace(source="source", id="connector-1", config={})
-    docs = [SimpleNamespace(id="doc-1")]
-    monkeypatch.setattr(ConnectorService, "get_by_id", lambda _connector_id: (True, conn))
-    monkeypatch.setattr(DocumentService, "query", lambda **_kwargs: docs)
-    monkeypatch.setattr(
-        DocumentService,
-        "assert_documents_docmind_evidence_mutable",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(DocmindProtectedEvidenceError("CONNECTOR", 1)),
-    )
-    monkeypatch.setattr(SyncLogsService, "filter_delete", lambda *_args: pytest.fail("sync logs deleted"))
-
-    assert ConnectorService.rebuild("kb-1", "connector-1", "tenant-1") == DOCMIND_PROTECTED_EVIDENCE_ERROR_CODE
-
-
 def test_reupload_denies_before_blob_read_storage_or_document_update(monkeypatch):
     kb = SimpleNamespace(id="kb-1", tenant_id="tenant-1", name="KB", parser_config={}, parser_id="naive")
     doc = SimpleNamespace(id="doc-1", kb_id="kb-1", location="old.pdf", content_hash="old")
@@ -456,11 +440,7 @@ def _function_source(relative_path: str, function_name: str) -> str:
         ("api/apps/services/dataset_api_service.py", "run_index", 'assert_documents_docmind_evidence_mutable', "queue_raptor_o_graphrag_tasks"),
         ("api/apps/services/dataset_api_service.py", "delete_index", 'assert_documents_docmind_evidence_mutable', "REDIS_CONN.set"),
         ("api/apps/services/dataset_api_service.py", "run_embedding", '"REBUILD_DOCUMENT_EMBEDDINGS"', "DocumentService.run"),
-        ("api/db/services/connector_service.py", "rebuild", '"CONNECTOR_REBUILD"', "SyncLogsService.filter_delete"),
-        ("api/db/services/connector_service.py", "cleanup_stale_documents_for_task", '"CONNECTOR_PRUNE_STALE_DOCUMENTS"', "FileService.delete_docs"),
-        ("rag/svr/task_executor.py", "do_handle_task", 'TASK_EXECUTOR_', "progress_callback"),
         ("rag/svr/task_executor_refactor/task_handler.py", "handle", 'TASK_EXECUTOR_', "_bind_embedding_model"),
-        ("rag/svr/task_executor.py", "delete_raptor_chunks", '"DELETE_RAPTOR_CHUNKS"', "docStoreConn.delete"),
         ("rag/svr/task_executor_refactor/raptor_utils.py", "delete_raptor_chunks", '"DELETE_RAPTOR_CHUNKS"', "docStoreConn.delete"),
     ],
 )
@@ -488,7 +468,7 @@ def test_inventory_has_unique_complete_rows_and_stable_contract():
     assert inventory["denial_code"] == DOCMIND_PROTECTED_EVIDENCE_ERROR_CODE
     assert inventory["protected_lifecycle_states"] == ["READY", "PUBLISHED", "SUPERSEDED"]
     assert inventory["health_independent"] is True
-    assert len(rows) == 50
+    assert len(rows) == 46
     assert len({row["id"] for row in rows}) == len(rows)
     assert len({row["test_id"] for row in rows}) == len(rows)
     assert all(required <= set(row) for row in rows)

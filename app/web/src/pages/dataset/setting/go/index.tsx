@@ -20,22 +20,14 @@ import {
   useResetParserConfigOnPipelineChange,
 } from '@/hooks/use-pipeline-operator';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import ChunkMethodLearnMore from '../python/chunk-method-learn-more';
-import LinkDataSource, {
-  IDataSourceNodeProps,
-} from './components/link-data-source';
 import { formSchema } from './form-schema';
 import { GeneralForm } from './general-form';
-import {
-  useConnectorHandlers,
-  useFetchDatasetSettingOnMount,
-  usePipelineDataList,
-  useSaveDatasetSetting,
-} from './hooks';
+import { useFetchDatasetSettingOnMount, useSaveDatasetSetting } from './hooks';
 
 export default function DatasetSetting() {
   const { t } = useTranslation();
@@ -56,23 +48,12 @@ export default function DatasetSetting() {
       language: 'English',
       embedding_model: '',
       pagerank: 0,
-      connectors: [],
     },
   });
 
-  const {
-    knowledgeDetails,
-    loading: datasetSettingLoading,
-    sourceData,
-  } = useFetchDatasetSettingOnMount(form);
+  const { knowledgeDetails, loading: datasetSettingLoading } =
+    useFetchDatasetSettingOnMount(form);
   const { handleSave, loading: saveLoading } = useSaveDatasetSetting();
-
-  const [sourceDataState, setSourceDataState] =
-    useState<IDataSourceNodeProps[]>();
-
-  useEffect(() => {
-    setSourceDataState(sourceData);
-  }, [sourceData]);
 
   const parseType = useWatch({
     control: form.control,
@@ -143,9 +124,6 @@ export default function DatasetSetting() {
     [handleSave],
   );
 
-  const { handleLinkOrEditSubmit, unbindFunc, handleAutoParse } =
-    useConnectorHandlers(form, sourceDataState, setSourceDataState);
-
   const handleOperatorValuesChange = useCallback(
     (operatorId: string, values: any) => {
       const currentParserConfig = form.getValues('parser_config') || {};
@@ -156,8 +134,6 @@ export default function DatasetSetting() {
     },
     [form],
   );
-
-  const pipelineDataList = usePipelineDataList(sourceDataState);
 
   const showOperatorTabs =
     operatorNodes.length > 0 &&
@@ -215,14 +191,6 @@ export default function DatasetSetting() {
                       onOperatorValuesChange={handleOperatorValuesChange}
                     />
                   )}
-
-                  <Divider />
-                  <LinkDataSource
-                    data={pipelineDataList}
-                    handleLinkOrEditSubmit={handleLinkOrEditSubmit}
-                    unbindFunc={unbindFunc}
-                    handleAutoParse={handleAutoParse}
-                  />
                 </section>
               </div>
 

@@ -11,7 +11,6 @@ from ruamel.yaml import YAML
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 from api.db import db_models
-from api.db.services import connector_service
 from common import settings
 
 
@@ -168,15 +167,6 @@ def test_gaussdb_deadlock_retry_recognizes_psycopg_sqlstates(monkeypatch):
     assert _is_deadlock_error(OperationalError(PgError("40001")))
     assert _is_deadlock_error(OperationalError(PgError("55P03")))
     assert not _is_deadlock_error(OperationalError("syntax error"))
-
-
-def test_connector_poll_interval_uses_gaussdb_compatible_sql(monkeypatch):
-    monkeypatch.setattr(connector_service.settings, "DATABASE_TYPE", "gaussdb")
-    expr = connector_service._gaussdb_poll_interval_expr("refresh_freq")
-
-    assert "t2.refresh_freq * INTERVAL '1 minute'" in expr.sql
-    assert "make_interval" not in expr.sql
-    assert "`t2`" not in expr.sql
 
 
 def test_health_check_uses_generic_probe_for_gaussdb(monkeypatch):

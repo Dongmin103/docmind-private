@@ -31,7 +31,6 @@ import {
   LucideBox,
   LucideLogOut,
   LucideMessagesSquare,
-  LucideServer,
   LucideUnplug,
   LucideUser,
   LucideUsers,
@@ -46,11 +45,6 @@ const menuItems = (t: TFunction) => [
     label: t('setting.model'),
     key: Routes.Model,
     'data-testid': 'settings-nav-model-providers',
-  },
-  {
-    icon: <LucideServer className="size-[1em]" />,
-    label: t('setting.dataSources'),
-    key: Routes.DataSource,
   },
   {
     icon: <LucideMessagesSquare className="size-[1em]" />,

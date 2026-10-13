@@ -1,12 +1,10 @@
-# Opt-in for the Windows cloud-source test deployment only.
-# Verify that no generic RAGFlow connectors are configured before applying:
-# DEPT discovery is performed by the Windows source watcher, not datasync.
+# Recovery timing and workspace mount for the Windows cloud-source deployment.
+# The image entrypoint starts only API/admin; discovery uses the host watcher.
 services:
   ragflow-cpu:
     command:
       - --enable-adminserver
       - --init-model-provider-tables
-      - --disable-datasync
     environment:
       DOCMIND_EPHEMERAL_REAPER_INTERVAL_SECONDS: "60"
     # The existing local source overlay mounts the service modules. Include
