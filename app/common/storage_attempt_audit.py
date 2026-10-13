@@ -59,6 +59,7 @@ class StorageAttemptAudit:
             status = "error"
             raise
         finally:
+            finished_ns = perf_counter_ns()
             self._active.reset(token)
             record = {
                 "job_id": job_id,
@@ -66,7 +67,11 @@ class StorageAttemptAudit:
                 "attempt_id": uuid.uuid4().hex,
                 "started_utc": started_utc,
                 "finished_utc": datetime.now(UTC).isoformat(),
-                "duration_ns": perf_counter_ns() - started_ns,
+                "clock": "perf_counter_ns",
+                "process_id": os.getpid(),
+                "started_ns": started_ns,
+                "finished_ns": finished_ns,
+                "duration_ns": finished_ns - started_ns,
                 "status": status,
                 "methods": state["methods"],
                 "stages": state["stages"],
@@ -99,10 +104,13 @@ class StorageAttemptAudit:
             status = "error"
             raise
         finally:
+            finished_ns = perf_counter_ns()
             stage = {
                 "name": name,
                 "job_id" if job_id is not None else "parse_run_id": identifier,
-                "duration_ns": perf_counter_ns() - started_ns,
+                "started_ns": started_ns,
+                "finished_ns": finished_ns,
+                "duration_ns": finished_ns - started_ns,
                 "status": status,
             }
             with state["lock"]:

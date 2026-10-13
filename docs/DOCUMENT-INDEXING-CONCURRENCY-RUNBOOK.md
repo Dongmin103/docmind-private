@@ -32,6 +32,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/windows/Start-DocMindI
 
 A=문서 1/복호화 1, B=문서 2/복호화 1. 같은 모델·청킹·배치·manifest·캐시 조건에서 A/B 순서를 교차해 각각 3회 수행한다. 시작부터 마지막 문서 검색 가시성 및 모든 정리 완료까지를 측정한다. 호스트 `TimingRoot`와 서버 `StorageAttemptAudit`의 단계별 단조 시각을 사용한다. 겹친 단계의 합계를 전체 시간으로 사용하지 않는다.
 
+서버 감사 기록의 attempt 및 stage에 `started_ns`/`finished_ns`를 기록한다. `clock=perf_counter_ns`, `process_id`가 같은 단일 API 실행 안에서 문서 A의 `embedding`과 문서 B의 `parse_http`/전처리 구간이 실제로 겹치는지 비교한다. 프로세스 재시작 또는 서로 다른 호스트의 monotonic 값은 직접 비교하지 않는다. 임베딩 요청 구간 사이의 빈 시간과 nvidia-smi의 GPU 유휴 표본을 함께 본다. HTTP 임베딩 구간에는 요청 대기·전송도 포함되므로 이 구간 전체를 GPU 계산 시간으로 간주하지 않는다. 목표는 임베딩을 중복 실행하는 것이 아니라 준비 단계와 GPU 작업 사이의 대기를 줄이는 것이다.
+
 `app/scripts/benchmark_docmind_indexing_concurrency.py`는 명시적으로 전달한 명령의 전체 시간과 장치 전체 GPU 사용량을 수집한다. 실행 명령이 검색 가능·정리 완료를 실제로 검사하고 실패 시 0이 아닌 코드로 종료해야 한다. 이 도구 자체가 문서를 재인덱싱하거나 성공 상태를 검증하지 않는다. timeout은 실패이며 원격 작업의 종료/정리를 보장하지 않는다. 실패한 실행과 GPU 표본이 없는 실행은 비교에서 제외하고 원인을 해결한다.
 
 ```powershell
