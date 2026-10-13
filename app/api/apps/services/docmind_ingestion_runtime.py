@@ -338,7 +338,8 @@ class ProductionTemporaryParserInputRunner:
     def _task_context(task_payload: dict, workspace: TemporaryParserWorkspace, config: ParserPlatformConfig):
         from api.db.services.task_service import has_canceled
         from rag.graphrag.utils import chat_limiter
-        from rag.svr.task_executor_limiter import chunk_limiter, embed_limiter, kg_limiter, minio_limiter
+        from rag.svr.task_executor_limiter import chunk_limiter, kg_limiter, minio_limiter
+        from api.apps.services.docmind_ingestion_limits import embedding_requests
         from rag.svr.task_executor_refactor.recording_context import _NULL_RECORDING_CONTEXT
         from rag.svr.task_executor_refactor.task_context import TaskCallbacks, TaskContext, TaskLimiters
 
@@ -348,7 +349,7 @@ class ProductionTemporaryParserInputRunner:
                 chat=chat_limiter,
                 minio=minio_limiter,
                 chunk=chunk_limiter,
-                embed=embed_limiter,
+                embed=embedding_requests,
                 kg=kg_limiter,
             ),
             callbacks=TaskCallbacks(
