@@ -10,8 +10,8 @@ $loops=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.DoWhileS
 $workerLoop=$loops[-1].Extent.Text
 function Invoke-TestLoop {
     param([string]$Mode,[switch]$OnePass,[switch]$Preview,[switch]$Targeted)
-    $Once=[bool]$OnePass;$PreviewOnly=$false;$ClaimJobId=if($Targeted){'target-job'}else{''};$ClaimSourceId='';$SkipRetries=$false
-    $allowedClaimFormats=@();$previewEnabled=[bool]$Preview;$consecutivePreviewClaims=0
+    $Once=[bool]$OnePass;$Purpose=if($Preview -and -not $Targeted){'preview'}else{'ingest'};$ClaimJobId=if($Targeted){'target-job'}else{''};$ClaimSourceId='';$SkipRetries=$false
+    $allowedClaimFormats=@();$previewEnabled=[bool]$Preview;
     $lastReceiptReplayAt=[DateTimeOffset]::UtcNow.AddDays(1);$cleanupReceiptReplaySeconds=30
     $config=[pscustomobject]@{worker_id='worker-test'};$claimLeaseSeconds=300;$claimPath='/ingest';$previewClaimPath='/preview';$PollSeconds=5
     $lastFencingTokenByJob=@{};$script:jobs=0;$script:sleeps=0;$script:claims=[Collections.Generic.List[string]]::new()
@@ -51,7 +51,7 @@ Assert-True ($result.Jobs -eq 0 -and $result.Sleeps -eq 1) 'Claim failure did no
 $result=Invoke-TestLoop -Mode success -OnePass
 Assert-True ($result.Jobs -eq 1 -and $result.Sleeps -eq 0) 'Once did not perform one pass.'
 $result=Invoke-TestLoop -Mode success -Preview
-Assert-True (($result.Claims -join ',') -eq '/preview,/preview,/preview,/ingest') 'Preview fairness lost the ingestion turn after three previews.'
+Assert-True (($result.Claims -join ',') -eq '/preview,/preview,/preview,/preview') 'Preview worker claimed ingestion.'
 $result=Invoke-TestLoop -Mode success -Preview -Targeted -OnePass
 Assert-True (($result.Claims -join ',') -eq '/ingest') 'Targeted ingestion claim was replaced by a preview.'
 
@@ -98,4 +98,4 @@ try {
     if(-not $resolved.StartsWith($base+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Unsafe worker-test cleanup.'}
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
-'PASS: continuous claims, finalized failures, idle/error backoff, Once, preview fairness and targeted ingestion.'
+'PASS: continuous claims, finalized failures, idle/error backoff, Once, isolated preview claims and targeted ingestion.'

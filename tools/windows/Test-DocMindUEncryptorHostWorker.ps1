@@ -253,10 +253,10 @@ try {
     Assert-True ($previewReplay.acknowledged -eq 1) 'Preview cleanup receipt was not replayed separately.'
     $workerScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Start-DocMindUEncryptorHostWorker.ps1') -Raw
     Assert-True $workerScript.Contains("'/api/v1/cloud-sync/host-worker/preview/claim'") 'Preview claim endpoint contract is missing.'
-    Assert-True $workerScript.Contains('$consecutivePreviewClaims -ge 3') 'Preview fairness bound is missing.'
+    Assert-True $workerScript.Contains('$claimOrder = @($Purpose)') 'Role-only claims missing.'
     Assert-True $workerScript.Contains('preview_enabled') 'Preview opt-in switch is missing.'
-    Assert-True $workerScript.Contains('if ($PreviewOnly -and -not $previewEnabled)') 'Preview-only smoke must refuse a disabled preview config.'
-    Assert-True $workerScript.Contains('if ($PreviewOnly) { @(''preview'') }') 'Preview-only smoke must not claim ingestion.'
+    Assert-True $workerScript.Contains('if (($Purpose -eq ''preview'') -and -not $previewEnabled)') 'Preview-only smoke must refuse a disabled preview config.'
+    Assert-True $workerScript.Contains('$claimOrder = @($Purpose)') 'Preview-only smoke must not claim ingestion.'
     Assert-True (-not $workerScript.Contains('Invoke-DocMindSourceReconciliation.ps1')) 'Decrypt worker must leave source reconciliation to the independent watcher.'
 
     Write-Output 'Host worker self-test passed: HMAC/tamper, lease-bounded ACK timeout, explicit Content-Length, ACL idempotency, path boundary, full-scan/deletion proof, fencing, reaping, and purpose-isolated durable cleanup-receipt replay.'
