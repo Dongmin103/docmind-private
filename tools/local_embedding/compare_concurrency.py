@@ -14,10 +14,13 @@ from service import EmbeddingService, GTEEngine, Handler, RequestError
 
 
 class BatchEngine(GTEEngine):
-    """Retain production length policy except the explicit short-input batch cap."""
-    def __init__(self, config, short_batch=8):
+    """Experimental short-input cap and optional minimum real-token fraction."""
+    min_token_fill = 0
+
+    def __init__(self, config, short_batch=8, min_token_fill=0):
         super().__init__(config)
         self.short_batch = short_batch
+        self.min_token_fill = min_token_fill
 
     def encode(self, texts):
         lengths = [len(ids) for ids in self.tokenizer(texts, truncation=False)['input_ids']]
@@ -30,6 +33,17 @@ class BatchEngine(GTEEngine):
             n = lengths[order[offset]]
             size = 1 if n > 2048 else 2 if n > 1024 else self.short_batch
             ids = order[offset:offset + size]
+            if n <= 1024 and self.min_token_fill:
+                # Sorted lengths make the average fill decrease as this group grows.
+                selected = [ids[0]]
+                real_tokens = n
+                for index in ids[1:]:
+                    next_tokens = real_tokens + lengths[index]
+                    if next_tokens * 100 < self.min_token_fill * n * (len(selected) + 1):
+                        break
+                    selected.append(index)
+                    real_tokens = next_tokens
+                ids = selected
             for i, vector in zip(ids, self._retry([texts[i] for i in ids])):
                 out[i] = vector
             offset += len(ids)
@@ -96,6 +110,7 @@ def main():
     parser.add_argument('--events', required=True)
     parser.add_argument('--inference-slots', type=int, choices=[1, 2], default=2)
     parser.add_argument('--short-batch', type=int, choices=[8, 16], default=8)
+    parser.add_argument('--min-token-fill', type=int, choices=[0, 85], default=0)
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text(encoding='utf-8-sig'))
     events = Path(args.events)
@@ -108,7 +123,7 @@ def main():
             with events.open('a', encoding='utf-8') as output:
                 output.write(json.dumps(event, separators=(',', ':')) + '\n')
 
-    engine = BatchEngine(config, args.short_batch)
+    engine = BatchEngine(config, args.short_batch, args.min_token_fill)
     engine.encode(['서비스 준비 확인'])
     engine.torch.cuda.synchronize()
     engine.tokenizer = SerializedTokenizer(engine.tokenizer, record)
@@ -133,6 +148,7 @@ def main():
         try:
             # Same tokenizer/model/normalization and adaptive batch policy as service.py.
             x = engine.tokenizer(texts, padding=True, truncation=False, return_tensors='pt')
+            real_tokens = int(x['attention_mask'].sum().item())
             h2d_start = time.perf_counter()
             x = x.to('cuda')
             h2d_seconds = time.perf_counter() - h2d_start
@@ -153,7 +169,8 @@ def main():
                 raise RuntimeError('Invalid embedding output')
             result = vectors.tolist()
             record({'event': 'batch', 'epoch': time.time(), 'items': len(texts),
-                    'tokens_padded': int(x['input_ids'].numel()), 'gpu_seconds': gpu_seconds,
+                    'tokens_padded': int(x['input_ids'].numel()), 'tokens_real': real_tokens,
+                    'gpu_seconds': gpu_seconds,
                     'model_enqueue_wall_seconds': enqueue_seconds, 'h2d_wall_seconds': h2d_seconds,
                     'd2h_and_gpu_wait_wall_seconds': copy_wait_seconds,
                     'output_conversion_seconds': time.perf_counter() - output_start})
@@ -173,8 +190,9 @@ def main():
     server.service = service
     record({'event': 'ready', 'epoch': time.time(), 'concurrency': args.inference_slots,
             'short_batch': args.short_batch,
+            'min_token_fill': args.min_token_fill,
             'streams': [s.cuda_stream for s in streams]})
-    print(f'GTE comparison ready: one model, slots={args.inference_slots}, short_batch={args.short_batch}', flush=True)
+    print(f'GTE comparison ready: slots={args.inference_slots}, short_batch={args.short_batch}, min_token_fill={args.min_token_fill}', flush=True)
     server.serve_forever()
 
 

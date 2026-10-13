@@ -16,6 +16,36 @@ class Stream:
 
 
 class Tests(unittest.TestCase):
+    def test_bucket_separates_large_length_gaps(self):
+        engine = BatchEngine.__new__(BatchEngine)
+        engine.short_batch = 16
+        engine.min_token_fill = 85
+        engine.tokenizer = lambda texts, **kwargs: {'input_ids': [range(int(t)) for t in texts]}
+        calls = []
+        def retry(texts):
+            calls.append(texts)
+            return texts
+        engine._retry = retry
+        texts = ['95', '1000', '20', '900', '100', '19']
+        self.assertEqual(engine.encode(texts), (texts, sum(map(int, texts))))
+        self.assertEqual(calls, [['1000', '900'], ['100', '95'], ['20', '19']])
+        for group in calls:
+            self.assertGreaterEqual(sum(map(int, group)) * 100, 85 * max(map(int, group)) * len(group))
+
+    def test_bucket_keeps_full_16_at_1024_boundary(self):
+        engine = BatchEngine.__new__(BatchEngine)
+        engine.short_batch = 16
+        engine.min_token_fill = 85
+        engine.tokenizer = lambda texts, **kwargs: {'input_ids': [range(int(t)) for t in texts]}
+        calls = []
+        def retry(texts):
+            calls.append(texts)
+            return texts
+        engine._retry = retry
+        texts = ['1024'] * 17
+        self.assertEqual(engine.encode(texts), (texts, 17 * 1024))
+        self.assertEqual([len(group) for group in calls], [16, 1])
+
     def test_short_batch_16_preserves_order_and_token_count(self):
         engine = BatchEngine.__new__(BatchEngine)
         engine.short_batch = 16
