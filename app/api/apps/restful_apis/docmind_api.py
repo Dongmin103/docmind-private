@@ -59,9 +59,19 @@ def _artifact_page_cap(args) -> int | None:
     return cap
 
 
+def _verify_worker_in_thread(**signed_request) -> None:
+    # Open lazily inside verify, after header/HMAC checks, and release in the
+    # same worker thread. Invalid requests must not acquire a DB connection.
+    try:
+        docmind_worker_auth.verify(**signed_request)
+    finally:
+        DocmindIngestionJob._meta.database.close()
+
+
 async def _authenticate_worker(body: bytes) -> str:
     key_id = str(request.headers.get("X-DocMind-Key-Id") or "")
-    docmind_worker_auth.verify(
+    await asyncio.to_thread(
+        _verify_worker_in_thread,
         method=request.method,
         path_and_query=_worker_path_and_query(),
         body=body,
