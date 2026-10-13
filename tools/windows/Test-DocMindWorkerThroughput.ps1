@@ -82,11 +82,12 @@ try {
     $lease=[pscustomobject]@{job_id='synthetic-job';source_id='synthetic-source';document_id='synthetic-document';version_id='synthetic-version';relative_path='sample.pdf';ciphertext_sha256=(Get-DocMindFileSha256 -LiteralPath $sourceFile);fencing_token=1L;lease_expires_at=[DateTimeOffset]::UtcNow.AddMinutes(5).ToString('o')}
     function Assert-ExecutableIdentity {return ('a'*64)}
     function Save-HostTiming {}
-    $script:leaseRevoked=$false;$script:leaseChecks=0
+    $script:leaseRevoked=$false;$script:leaseChecks=0;$script:validationTimeoutMin=10;$script:validationTimeoutMax=10
     function Invoke-SignedJsonRequest {
         param($Method,$RelativeUri,$Body,$RequestTimeoutSeconds)
         Assert-True ($Method -eq 'POST' -and $RelativeUri -eq '/jobs/synthetic-job/validate') 'Ingestion validation used an unexpected endpoint.'
         Assert-True ($Body.worker_id -eq $config.worker_id -and $Body.version_id -eq $lease.version_id -and $Body.fencing_token -eq $lease.fencing_token) 'Ingestion validation omitted lease identity.'
+        Assert-True ($RequestTimeoutSeconds -ge $script:validationTimeoutMin -and $RequestTimeoutSeconds -le $script:validationTimeoutMax) 'Ingestion validation request did not use its bounded budget.'
         $script:leaseChecks++
         if($script:leaseRevoked){throw 'API_HTTP_409'}
         return [pscustomobject]@{Body=[Text.Encoding]::UTF8.GetBytes((@{valid=$true;lease_expires_at=$lease.lease_expires_at}|ConvertTo-Json -Compress))}
@@ -150,6 +151,18 @@ try {
     try{Invoke-LeasedDecryptJob -Lease $lease -Purpose ingest -Finalized ([ref]$finalized)}catch{$caught=$_.Exception.Message}
     Assert-True ($caught -eq 'LEASE_EXPIRED_BEFORE_DECRYPT' -and $script:decryptStarts -eq 0 -and $finalized) 'Expired queued ingestion started decryption or lost cleanup.'
     $lease.lease_expires_at=$originalLeaseExpiry
+    function Enter-DocMindDecryptGate {
+        param($ControlRoot,$DeadlineUtc,$ValidateLease)
+        & $ValidateLease
+        throw 'BOUNDARY_VALIDATED'
+    }
+    $script:validationTimeoutMin=1;$script:validationTimeoutMax=2
+    $lease.lease_expires_at=[DateTimeOffset]::UtcNow.AddSeconds(13).ToString('o')
+    $caught='';$finalized=$false;$script:leaseChecks=0
+    try{Invoke-LeasedDecryptJob -Lease $lease -Purpose ingest -Finalized ([ref]$finalized)}catch{$caught=$_.Exception.Message}
+    Assert-True ($caught -eq 'BOUNDARY_VALIDATED' -and $script:leaseChecks -eq 1 -and $script:decryptStarts -eq 0 -and $finalized) 'Validation exceeded the remaining lease safety budget.'
+    $lease.lease_expires_at=$originalLeaseExpiry
+    $script:validationTimeoutMin=10;$script:validationTimeoutMax=10
     # A server-side revocation during a long wait must prevent decrypt launch
     # even though the captured expiry and source bytes are still valid.
     function Enter-DocMindDecryptGate {

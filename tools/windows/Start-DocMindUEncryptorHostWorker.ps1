@@ -298,6 +298,13 @@ function Invoke-SignedBytesRequest {
             }
             return [pscustomobject]@{ StatusCode = [int]$response.StatusCode; Body = $responseBytes }
         } finally { $response.Dispose() }
+    } catch {
+        $transportError = $_.Exception
+        while ($null -ne $transportError) {
+            if ($transportError -is [OperationCanceledException]) { throw 'API_REQUEST_TIMEOUT' }
+            $transportError = $transportError.InnerException
+        }
+        throw
     } finally {
         $request.Dispose()
         $client.Dispose()
@@ -451,7 +458,13 @@ function Invoke-LeasedDecryptJob {
         }
         $validateLease = {
             if ([DateTimeOffset]::UtcNow.AddSeconds($decryptSafetySeconds) -ge $leaseExpiry) { throw 'LEASE_EXPIRED_BEFORE_DECRYPT' }
-            $validationResult = Invoke-SignedJsonRequest -Method 'POST' -RelativeUri ("$jobsPath/$([Uri]::EscapeDataString([string]$Lease.job_id))/validate") -Body @{ worker_id = [string]$config.worker_id; version_id = [string]$Lease.version_id; fencing_token = [Int64]$Lease.fencing_token } -RequestTimeoutSeconds 1
+            $validationTimeoutSeconds = 1
+            if ($Purpose -eq 'ingest') {
+                $remainingSeconds = [int][Math]::Floor(($deadline - [DateTimeOffset]::UtcNow).TotalSeconds)
+                if ($remainingSeconds -lt 1) { throw 'LEASE_EXPIRED_BEFORE_DECRYPT' }
+                $validationTimeoutSeconds = [int][Math]::Min(10, $remainingSeconds)
+            }
+            $validationResult = Invoke-SignedJsonRequest -Method 'POST' -RelativeUri ("$jobsPath/$([Uri]::EscapeDataString([string]$Lease.job_id))/validate") -Body @{ worker_id = [string]$config.worker_id; version_id = [string]$Lease.version_id; fencing_token = [Int64]$Lease.fencing_token } -RequestTimeoutSeconds $validationTimeoutSeconds
             $validation = [Text.Encoding]::UTF8.GetString($validationResult.Body) | ConvertFrom-Json
             if ($validation.valid -ne $true -or (ConvertTo-DocMindDateTimeOffset -Value $validation.lease_expires_at -Name 'lease_expires_at') -ne $leaseExpiry) {
                 if ($Purpose -eq 'preview') { throw 'PREVIEW_STALE_WORKER_RESULT' }
