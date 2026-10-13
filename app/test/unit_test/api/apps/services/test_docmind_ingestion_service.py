@@ -1424,30 +1424,46 @@ def test_long_stage_connection_recycle_closes_and_reconnects_before_activation()
     assert events == ["closed", ("connected", True)]
 
 
-def test_long_stage_connection_recycle_discards_only_current_pooled_connection():
-    events = []
+def test_long_stage_connection_recycle_discards_only_current_pooled_connection(tmp_path):
+    import sqlite3
+    import threading
+    from playhouse.pool import PooledSqliteDatabase
 
-    class PooledDatabase:
-        database = "rag_flow_dev"
+    database = PooledSqliteDatabase(str(tmp_path / "pool.db"), check_same_thread=False)
+    other_ready = threading.Event()
+    recycled = threading.Event()
+    errors = []
 
-        @staticmethod
-        def in_transaction():
-            return False
+    def other_request():
+        try:
+            database.connect()
+            connection = database.connection()
+            other_ready.set()
+            assert recycled.wait(5)
+            assert database.connection() is connection
+            assert connection.execute("SELECT 1").fetchone() == (1,)
+        except Exception as error:
+            errors.append(error)
+        finally:
+            database.close()
 
-        @staticmethod
-        def manual_close():
-            events.append("discarded")
-
-        @staticmethod
-        def close():
-            pytest.fail("pooled close would return the stale socket to the pool")
-
-        @staticmethod
-        def connect(*, reuse_if_open):
-            events.append(("connected", reuse_if_open))
-
-    service._recycle_database_connection_after_long_stage(PooledDatabase())
-    assert events == ["discarded", ("connected", True)]
+    thread = threading.Thread(target=other_request)
+    thread.start()
+    try:
+        assert other_ready.wait(5)
+        database.connect()
+        original = database.connection()
+        service._recycle_database_connection_after_long_stage(database)
+        assert database.connection() is not original
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            original.execute("SELECT 1")
+        assert database.connection().execute("SELECT 1").fetchone() == (1,)
+    finally:
+        recycled.set()
+        thread.join(6)
+        database.close_all()
+    assert not thread.is_alive()
+    assert not errors, repr(errors)
 
 
 def test_long_stage_connection_recycle_rejects_transaction_leak():
@@ -1466,16 +1482,20 @@ def test_connection_recycle_and_concurrent_close_do_not_invert_pool_locks(tmp_pa
     normal_locked = threading.Event()
     pool_taken = threading.Event()
     recycler_ready = threading.Event()
+    ordinary_closing = threading.Event()
     errors = []
 
     class BoundedLock:
         def __init__(self, *, pool=False):
-            self.lock = threading.RLock()
+            self.lock = threading.RLock() if pool else threading.Lock()
             self.pool = pool
 
         def __enter__(self):
             if not self.lock.acquire(timeout=2):
                 raise TimeoutError("database/pool lock inversion")
+            if not self.pool and threading.current_thread().name == "ordinary" and ordinary_closing.is_set():
+                normal_locked.set()
+                pool_taken.wait(.5)
             if self.pool and threading.current_thread().name == "recycler" and normal_locked.is_set():
                 pool_taken.set()
             return self
@@ -1503,16 +1523,12 @@ def test_connection_recycle_and_concurrent_close_do_not_invert_pool_locks(tmp_pa
         try:
             assert recycler_ready.wait(3)
             database.connect()
-            with database._lock:
-                normal_locked.set()
-                # The old implementation enters the pool while this thread
-                # owns the DB lock. Correct ordering waits outside the pool.
-                pool_taken.wait(.5)
-                database.close()
+            ordinary_closing.set()
+            database.close()
         except Exception as error:
             errors.append(error)
 
-    threads = [threading.Thread(target=recycle, name="recycler"), threading.Thread(target=ordinary_close)]
+    threads = [threading.Thread(target=recycle, name="recycler"), threading.Thread(target=ordinary_close, name="ordinary")]
     for thread in threads:
         thread.start()
     for thread in threads:

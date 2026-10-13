@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Protocol
 
 from peewee import IntegrityError
+from playhouse.pool import PooledDatabase
 
 from api.db.db_models import (
     DocmindFolder,
@@ -488,17 +489,19 @@ def _recycle_database_connection_after_long_stage(database=None) -> None:
         return
     if database.in_transaction():
         raise DocmindIngestionError("DOCMIND_INGESTION_DATABASE_TRANSACTION_LEAK")
-    manual_close = getattr(database, "manual_close", None)
-    if callable(manual_close):
-        # PooledDatabase.close() only returns the connection to the pool.  An
-        # immediate connect can therefore reacquire the same socket that went
-        # stale while Docling/OCR was running.  manual_close() discards just
-        # this request's connection without disrupting concurrent requests.
-        # Peewee close/connect take the DB lock before the pool lock, whereas
-        # manual_close takes them in reverse order. Keep one lock order when
-        # recycling concurrently with request cleanup or health checks.
-        with getattr(database, "_lock", nullcontext()):
-            manual_close()
+    if isinstance(database, PooledDatabase):
+        if not database.is_closed():
+            connection = database.connection()
+            # Remove this thread's socket from the pool before closing it so
+            # another request cannot borrow it. Release the pool lock before
+            # close() acquires Peewee's non-reentrant DB lock; manual_close()
+            # holds the pool lock across close() and can invert that order.
+            with database._pool_lock:
+                database._in_use.pop(database.conn_key(connection), None)
+            try:
+                database.close()
+            finally:
+                database._close(connection, close_conn=True)
     elif not database.is_closed():
         database.close()
     database.connect(reuse_if_open=True)
