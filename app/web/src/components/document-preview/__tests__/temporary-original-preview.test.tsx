@@ -66,6 +66,7 @@ describe('temporary original preview', () => {
     ['PREVIEW_QUEUE_FULL', 429, '미리보기 대기열이 가득 찼습니다. 잠시 후 다시 시도해 주세요.'],
     ['PREVIEW_QUEUE_TIMEOUT', 410, '미리보기 대기 시간이 120초를 초과했습니다. 다시 시도해 주세요.'],
     ['PREVIEW_PROCESS_TIMEOUT', 504, '페이지 준비 시간이 60초를 초과했습니다.'],
+    ['PREVIEW_DECRYPT_BUSY', 409, '다른 문서의 복호화가 진행 중입니다. 잠시 후 다시 시도해 주세요.'],
   ])('explains %s without calling it general overload', async (code, status, message) => {
     mockFetch.mockResolvedValue(response(status as number, { error: code }));
     render(<TemporaryOriginalPreview documentId="d" sourceVersionId="v" chunkSetId="c" />);
@@ -144,7 +145,7 @@ describe('temporary original preview', () => {
   });
 
   it('sends a durable close when the page exits while a preview is queued', async () => {
-    mockFetch.mockImplementation((url: string, options: RequestInit) => {
+    mockFetch.mockImplementation((_url: string, options: RequestInit) => {
       if (options.method === 'POST') return Promise.resolve(response(202, { ...ReadySession, status: 'QUEUED' }));
       if (options.method === 'DELETE') return Promise.resolve(response(204));
       return Promise.resolve(response(200, { ...ReadySession, status: 'QUEUED' }));
@@ -187,7 +188,7 @@ describe('temporary original preview', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '원문 보기' }));
     await act(async () => {
-      await jest.advanceTimersByTimeAsync(2000);
+      await jest.advanceTimersByTimeAsync(1000);
     });
     expect(screen.getByTestId('native-viewer')).toHaveAttribute('data-highlights', '1');
     await act(async () => {
@@ -229,5 +230,26 @@ describe('temporary original preview', () => {
       expect.objectContaining({ method: 'DELETE' }),
     );
     unmount();
+  });
+
+  it('shows decrypt preparation and stops polling and heartbeat on cancel', async () => {
+    jest.useFakeTimers();
+    mockFetch.mockImplementation((_url: string, options: RequestInit) => Promise.resolve(
+      response(options.method === 'DELETE' ? 204 : 200, { ...ReadySession, status: 'DECRYPTING' }),
+    ));
+    const { unmount } = render(<TemporaryOriginalPreview documentId="d" sourceVersionId="source-v1" chunkSetId="chunks-v1" />);
+    fireEvent.click(screen.getByRole('button', { name: '원문 보기' }));
+    await act(async () => { await jest.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByText('복호화 준비 중입니다.')).toBeInTheDocument();
+    expect(mockFetch.mock.calls.filter(([, options]) => options.method === 'GET')).toHaveLength(1);
+    const signal = mockFetch.mock.calls[0][1].signal as AbortSignal;
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    expect(signal.aborted).toBe(true);
+    const count = mockFetch.mock.calls.length;
+    await act(async () => { await jest.advanceTimersByTimeAsync(60000); });
+    expect(mockFetch).toHaveBeenCalledTimes(count);
+    unmount();
+    expect(jest.getTimerCount()).toBe(0);
+    jest.useRealTimers();
   });
 });

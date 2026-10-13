@@ -38,6 +38,7 @@ const DocumentPreview = function ({
   highlights,
   setWidthAndHeight,
   url,
+  onFirstPageRendered,
 }: PreviewProps & Partial<IProps>) {
   const isPdf = fileType === 'pdf';
 
@@ -47,6 +48,7 @@ const DocumentPreview = function ({
         <section className="h-full">
           <PdfPreviewer
             className={className}
+            onFirstPageRendered={onFirstPageRendered}
             highlights={highlights}
             setWidthAndHeight={setWidthAndHeight}
             url={url}

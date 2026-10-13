@@ -95,7 +95,7 @@ foreach ($source in @($config.sources)) {
 if ($sources.Count -eq 0) { throw 'At least one source is required.' }
 if (-not [string]::IsNullOrWhiteSpace($TimingRoot)) {
     $TimingRoot = [IO.Path]::GetFullPath($TimingRoot)
-    if (-not $ClaimSourceId -or $ClaimSourceId -ne 'dept-2-e2e') { throw 'HOST_TIMING_REQUIRES_DEPT2_SCOPE' }
+    if ($Purpose -eq 'ingest' -and (-not $ClaimSourceId -or $ClaimSourceId -ne 'dept-2-e2e')) { throw 'HOST_TIMING_REQUIRES_DEPT2_SCOPE' }
     [IO.Directory]::CreateDirectory($TimingRoot) | Out-Null
     Protect-DocMindJobDirectory -LiteralPath $TimingRoot
 }
@@ -118,7 +118,6 @@ function Save-HostTiming {
         $record = [ordered]@{
             job_id = [string]$Lease.job_id
             fencing_token = [Int64]$Lease.fencing_token
-            source_id = [string]$Lease.source_id
             extension = $Extension.ToLowerInvariant()
             started_utc = $StartedUtc
             finished_utc = [DateTimeOffset]::UtcNow.ToString('o')
@@ -126,7 +125,8 @@ function Save-HostTiming {
             error_code = $Code
             durations_ns = [ordered]@{
                 source_verify = Get-HostTimingSpan $Marks.start $Marks.preflight
-                decrypt = Get-HostTimingSpan $Marks.preflight $Marks.decrypt
+                lock_wait = Get-HostTimingSpan $Marks.preflight $Marks.lock_acquired
+                decrypt = Get-HostTimingSpan $Marks.lock_acquired $Marks.decrypt
                 post_decrypt_verify = Get-HostTimingSpan $Marks.decrypt $Marks.verify
                 delivery_roundtrip = Get-HostTimingSpan $Marks.verify $Marks.delivery
                 host_cleanup = Get-HostTimingSpan $Marks.cleanup_start $Marks.cleanup_end
@@ -401,7 +401,7 @@ function Invoke-LeasedDecryptJob {
     if ($null -ne $Finalized) { $Finalized.Value = $false }
     $hostClock = [Diagnostics.Stopwatch]::StartNew()
     $hostStartedUtc = [DateTimeOffset]::UtcNow.ToString('o')
-    $marks = @{ start = [Int64]0; preflight = $null; decrypt = $null; verify = $null; delivery = $null; cleanup_start = $null; cleanup_end = $null; end = $null }
+    $marks = @{ start = [Int64]0; preflight = $null; lock_acquired = $null; decrypt = $null; verify = $null; delivery = $null; cleanup_start = $null; cleanup_end = $null; end = $null }
     if ($Purpose -eq 'preview') { $jobsPath = $previewJobsPath }
     [IO.Directory]::CreateDirectory($workRoot) | Out-Null
     Assert-DocMindNoReparsePoint -LiteralPath $workRoot -Boundary $workRoot -Name 'Work root'

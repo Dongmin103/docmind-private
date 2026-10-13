@@ -42,6 +42,7 @@ export interface IProps {
   setWidthAndHeight?: (width: number, height: number) => void;
   url: string;
   className?: string;
+  onFirstPageRendered?: () => void;
 }
 const HighlightPopup = ({
   comment,
@@ -71,7 +72,26 @@ const PdfPreview = ({
   setWidthAndHeight,
   url,
   className,
+  onFirstPageRendered,
 }: IProps) => {
+  const renderSubscriptionRef = useRef<(() => void) | null>(null);
+  const attachRenderer = useCallback((renderer: PdfHighlighter<IHighlight> | null) => {
+    renderSubscriptionRef.current?.();
+    renderSubscriptionRef.current = null;
+    if (!renderer || !onFirstPageRendered) return;
+    let reported = false;
+    let frame: number | null = null;
+    const onRendered = (event: { pageNumber: number; error?: unknown; cssTransform?: boolean }) => {
+      if (reported || event.pageNumber !== 1 || event.error || event.cssTransform) return;
+      reported = true;
+      frame = requestAnimationFrame(onFirstPageRendered);
+    };
+    renderer.eventBus.on('pagerendered', onRendered);
+    renderSubscriptionRef.current = () => {
+      renderer.eventBus.off('pagerendered', onRendered);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [url, onFirstPageRendered]);
   const scrollHandleRef = useRef<{
     url: string;
     scrollTo: (highlight: IHighlight) => void;
@@ -201,6 +221,7 @@ const PdfPreview = ({
 
           return (
             <PdfHighlighter
+              ref={attachRenderer}
               pdfDocument={pdfDocument}
               enableAreaSelection={(event) => event.altKey}
               onScrollChange={resetHash}

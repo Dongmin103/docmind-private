@@ -31,7 +31,7 @@ const TerminalStatuses = new Set([
 ]);
 const StageLabels: Record<string, string> = {
   QUEUED: '미리보기 대기 중입니다. 최대 120초 동안 기다립니다.',
-  DECRYPTING: '원문 복호화 중입니다.',
+  DECRYPTING: '복호화 준비 중입니다.',
   PROCESSING: '페이지 준비 중입니다.',
   READY: '원문을 불러오는 중입니다.',
 };
@@ -44,6 +44,7 @@ function previewError(error: unknown): string {
       PREVIEW_QUEUE_FULL: '미리보기 대기열이 가득 찼습니다. 잠시 후 다시 시도해 주세요.',
       PREVIEW_QUEUE_TIMEOUT: '미리보기 대기 시간이 120초를 초과했습니다. 다시 시도해 주세요.',
       PREVIEW_PROCESS_TIMEOUT: '페이지 준비 시간이 60초를 초과했습니다.',
+      PREVIEW_DECRYPT_BUSY: '다른 문서의 복호화가 진행 중입니다. 잠시 후 다시 시도해 주세요.',
       PREVIEW_PROCESSOR_FAILED: '한글 문서 표시 서비스에 연결할 수 없거나 처리가 중단되었습니다.',
       PREVIEW_PROCESSING_FAILED: '문서 표시 중 오류가 발생했습니다. 다시 시도해 주세요.',
       PREVIEW_INPUT_TOO_LARGE: '원파일이 미리보기 크기 제한인 64MiB를 초과했습니다.',
@@ -177,6 +178,17 @@ export default function TemporaryOriginalPreview({
   const controllerRef = useRef<AbortController | null>(null);
   const contentUrlRef = useRef('');
   const sequenceRef = useRef(0);
+  const clickStartedRef = useRef<number | null>(null);
+  const firstPageReportedRef = useRef(false);
+  const onFirstPageRendered = useCallback(() => {
+    if (clickStartedRef.current === null || firstPageReportedRef.current || controllerRef.current?.signal.aborted) return;
+    firstPageReportedRef.current = true;
+    // Only timing; no document/session identity, URLs or credentials.
+    performance.measure('docmind-preview-click-to-first-page', {
+      start: clickStartedRef.current,
+      end: performance.now(),
+    });
+  }, []);
   const chunkSetRef = useRef(chunkSetId);
   const identityRef = useRef({ documentId, sourceVersionId });
   const onChunkSetChangedRef = useRef(onChunkSetChanged);
@@ -188,6 +200,7 @@ export default function TemporaryOriginalPreview({
     sequenceRef.current += 1;
     controllerRef.current?.abort();
     controllerRef.current = null;
+    clickStartedRef.current = null;
     if (contentUrlRef.current) URL.revokeObjectURL(contentUrlRef.current);
     contentUrlRef.current = '';
     const previous = sessionRef.current;
@@ -226,6 +239,8 @@ export default function TemporaryOriginalPreview({
   const start = useCallback(() => {
     if (!sourceVersionId || !chunkSetId || busy || ['doc', 'ppt'].includes(sourceFormat?.toLowerCase() ?? '')) return;
     release();
+    clickStartedRef.current = performance.now();
+    firstPageReportedRef.current = false;
     setSession(null);
     setContentUrl('');
     setError('');
@@ -310,11 +325,16 @@ export default function TemporaryOriginalPreview({
             return;
           }
           await new Promise<void>((resolve) => {
-            const timer = window.setTimeout(resolve, 2000);
-            controller.signal.addEventListener('abort', () => {
-              window.clearTimeout(timer);
+            const finish = () => {
+              controller.signal.removeEventListener('abort', abort);
               resolve();
-            }, { once: true });
+            };
+            const timer = window.setTimeout(finish, 1000);
+            const abort = () => {
+              window.clearTimeout(timer);
+              finish();
+            };
+            controller.signal.addEventListener('abort', abort, { once: true });
           });
           if (!isCurrent()) return;
           try {
@@ -411,6 +431,7 @@ export default function TemporaryOriginalPreview({
                 highlights={safeHighlights}
                 setWidthAndHeight={setWidthAndHeight}
                 url={contentUrl}
+                onFirstPageRendered={onFirstPageRendered}
               />
             </div>
           )}
