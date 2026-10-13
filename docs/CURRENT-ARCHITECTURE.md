@@ -2,6 +2,8 @@
 
 ## 현재 상태
 
+2026-10-14 추가: Python 외부 커넥터 API·데이터 소스 화면과 별도 task executor/datasync를 제거하고 클라우드 인덱싱 공통 처리만 유지했다. 복호화 5초 대기를 작업 임대 예산으로 수정해 배포했으며, 244개 전체 1회 실측은 정상 223개/12,460벡터, 시작·정리 포함 315.2초였다. OCR 18개와 기존 형식 오류 3개는 색인 제외다. 변경·부하·검증 한계는 [정리 및 실측 기록](CLOUD-ONLY-CLEANUP-2026-10-14.md)을 참조한다.
+
 2026-10-12 로컬 개발 배포: Windows GPU의 인증된 OpenAI 호환 GTE 서비스 → 기존 Docker 모델 어댑터 → Elasticsearch `q_768_vec` 경로를 사용한다. 데이터셋/tenant 기본 임베딩은 GTE로 전환했다. 아래 초기 스냅샷의 BGE-M3 설명은 이전 상태이며, 현재 구성은 [배포 기록](LOCAL-GTE-DEPLOYMENT-2026-10-12.md)이 우선한다.
 
 app/는 2026-09-21 커스텀 소스 스냅샷에서 시작했으며, 현재 개발 브랜치는 제품 경로의 OpenViking route/catalog generation/publish와 배포 의존성을 제거하고 공통 scope/C128 검색으로 전환했다. 원본 HEAD는 432dd7e6f98796b875beb41dd1abf2ced3ad8d5b이며 실제 환경설정·개인키·문서 데이터는 포함하지 않는다. 이 checkout의 변경이 운영 이미지에 배포됐거나 운영 서비스가 중지됐다는 뜻은 아니다.
