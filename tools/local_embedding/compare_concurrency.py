@@ -22,34 +22,6 @@ class BatchEngine(GTEEngine):
         self.short_batch = short_batch
         self.min_token_fill = min_token_fill
 
-    def encode(self, texts):
-        lengths = [len(ids) for ids in self.tokenizer(texts, truncation=False)['input_ids']]
-        if max(lengths) > 8192:
-            raise RequestError('Input exceeds 8192 GTE tokens; nothing was truncated')
-        order = sorted(range(len(texts)), key=lambda i: lengths[i], reverse=True)
-        out = [None] * len(texts)
-        offset = 0
-        while offset < len(order):
-            n = lengths[order[offset]]
-            size = 1 if n > 2048 else 2 if n > 1024 else self.short_batch
-            ids = order[offset:offset + size]
-            if n <= 1024 and self.min_token_fill:
-                # Sorted lengths make the average fill decrease as this group grows.
-                selected = [ids[0]]
-                real_tokens = n
-                for index in ids[1:]:
-                    next_tokens = real_tokens + lengths[index]
-                    if next_tokens * 100 < self.min_token_fill * n * (len(selected) + 1):
-                        break
-                    selected.append(index)
-                    real_tokens = next_tokens
-                ids = selected
-            for i, vector in zip(ids, self._retry([texts[i] for i in ids])):
-                out[i] = vector
-            offset += len(ids)
-        return out, sum(lengths)
-
-
 class SerializedTokenizer:
     def __init__(self, tokenizer, record=None):
         self.tokenizer = tokenizer

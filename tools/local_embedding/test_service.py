@@ -38,6 +38,15 @@ class EngineTests(unittest.TestCase):
         class OOM(Exception):pass
         self.oom=OOM
         self.engine.torch=SimpleNamespace(cuda=SimpleNamespace(OutOfMemoryError=OOM,empty_cache=lambda:None))
+    def test_production_bucket_separates_padding_and_restores_order(self):
+        texts=['95','1000','20','900','100','19']
+        vectors,tokens=self.engine.encode(texts)
+        self.assertEqual(vectors,[[int(t)] for t in texts])
+        self.assertEqual(tokens,sum(map(int,texts)))
+        self.assertEqual(self.calls,[['1000','900'],['100','95'],['20','19']])
+    def test_production_short_batch_cap_is_16(self):
+        self.engine.encode(['1024']*17)
+        self.assertEqual([len(c) for c in self.calls],[16,1])
     def test_token_boundary(self):
         self.assertEqual(self.engine.encode(['8192']),([[8192]],8192))
         self.calls.clear()

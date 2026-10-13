@@ -116,6 +116,20 @@ def _pool_document(number, *, ocr=False):
     return result['job_id']
 
 
+def test_four_slots_hold_failed_cleanup_and_reject_fifth(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '4')
+    ids = [_pool_document(n) for n in range(5)]
+    claimed = [service.claim_next(f'pool-{n}', ingestion_pool_size=4) for n in range(4)]
+    assert len({job.job_id for job in claimed}) == 4
+    assert service.claim_next('standalone-worker') is None
+    DocmindIngestionJob.update(lifecycle_state='FAILED', host_cleanup_state='PENDING').where(DocmindIngestionJob.id == ids[0]).execute()
+    assert service.claim_next('pool-0', ingestion_pool_size=4) is None
+    DocmindIngestionJob.update(host_cleanup_state='COMPLETE').where(DocmindIngestionJob.id == ids[0]).execute()
+    assert service.claim_next('pool-0', ingestion_pool_size=4).job_id == ids[4]
+    with pytest.raises(service.DocmindIngestionError, match='DOCMIND_INGESTION_REQUEST_INVALID'):
+        service.claim_next('invalid', ingestion_pool_size=5)
+
+
 def test_pool_caps_active_documents_and_requires_enabled_server(ingestion_db, monkeypatch):
     monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '1')
     _pool_document(1)
@@ -180,7 +194,7 @@ def test_concurrent_claim_threads_never_exceed_pool_capacity(ingestion_db, monke
             assert DocmindIngestionJob.select().where(DocmindIngestionJob.lifecycle_state == 'DECRYPTING').count() == 3
 
 
-@pytest.mark.parametrize('capacity,ocr', [(1, False), (2, False), (3, False), (1, True), (2, True), (3, True)])
+@pytest.mark.parametrize('capacity,ocr', [(1, False), (2, False), (3, False), (4, False), (1, True), (2, True), (3, True), (4, True)])
 def test_pool_reclaims_lost_claim_response_after_lease_expiry(ingestion_db, monkeypatch, capacity, ocr):
     monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', str(capacity))
     job_id = _pool_document(1, ocr=ocr)

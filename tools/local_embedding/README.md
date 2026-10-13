@@ -2,7 +2,10 @@
 
 Authenticated OpenAI-compatible embeddings for the Windows DocMind deployment.
 Uses GTE CLS pooling, L2 normalization, 768 dimensions, FP32 eager CUDA inference,
-and a single GPU execution lock. No CPU fallback or silent model-token truncation.
+and a single GPU execution lock. Short inputs (up to 1024 tokens) use batches of
+up to 16 with at least 85% real tokens after padding; inputs up to 2048 use 2,
+and longer inputs use 1. Output order and token limits are preserved.
+No CPU fallback or silent model-token truncation.
 Inputs over 8192 model tokens fail with HTTP 400; an OOM splits the batch and a
 single-input OOM returns 503. Request bodies, credentials and vectors are not logged.
 
@@ -35,7 +38,8 @@ POST `/v1/embeddings` requires `Authorization: Bearer SECRET`; accepts model
 `gte-multilingual-base`, one string or 1–64 strings, float encoding, dimensions768.
 Request bodies are capped at 8 MiB. A GPU queue wait can take up to180 seconds;
 that is not a guarantee that an upstream shorter timeout can accommodate arbitrary
-long-input traffic. Current ingestion concurrency is2, external batch size32.
+long-input traffic. Embedding HTTP concurrency is 2 and external batch size is 32. The selected
+document pool uses 4 slots, 2 parser processes and a 4-core parser quota.
 
 The installed task, private runtime paths, migration and measured load limits are
 documented in `docs/LOCAL-GTE-DEPLOYMENT-2026-10-12.md`. Keep the experiment venv
