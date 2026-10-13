@@ -1,10 +1,12 @@
 # Preview worker isolation
 
 2026-10-13 (Asia/Seoul). Implementation and isolated verification record.
-Live deployment is **on hold**: the observed cgroup peaks exceed the proposed
-90% gate. This does not diagnose database corruption or a current database
-outage. cgroup `memory.peak` includes earlier load; the collector never resets
-it or masks a container restart as a new baseline.
+Live isolation was applied for **user acceptance testing** after the user's
+explicit request to deploy and test it. The observed cgroup peaks still exceed
+the proposed 90% gate; the memory and full browser criteria remain unpassed.
+This does not diagnose database corruption or a current database outage.
+cgroup `memory.peak` includes earlier load; the collector never resets it or
+masks a container restart as a new baseline.
 
 ## Runtime contract
 
@@ -169,13 +171,13 @@ termination failure, worker restart and Rollback remain separate scenarios.
 - Observed available-memory minima: Windows 2249.5MiB, WSL 2838.3MiB;
   WSL swap peak/end 67.0MiB. The main application's sampled current-memory
   maximum was 3761.3MiB/4096MiB (91.8%); historical peaks were also retained.
-- Memory gate fails on existing cgroup peaks. No limits, BGE service, model
+- Before deployment, the memory gate failed on existing cgroup peaks. No limits, BGE service, model
   bindings, production tasks, containers, source files or database data were
   changed. Read-only queries found GTE on the one dataset and one tenant default,
   with zero BGE bindings in those fields. This does not prove BGE receives no
   requests from every remaining path; BGE use remains
   unconfirmed and no stop/removal is authorized here.
-- Live Apply, live representative preview/ingest/cleanup ACK, twenty browser
+- At implementation verification time, live Apply, representative preview/ingest/cleanup ACK, twenty browser
   first-page trials, full format matrix and a passing fifteen-minute candidate
   load test have **not** been performed. No before/after browser p95 or extra
   worker idle-memory guarantee is claimed.
@@ -187,5 +189,34 @@ termination failure, worker restart and Rollback remain separate scenarios.
   regress READY back to QUEUED. No second review pass is claimed.
 
 Original private recovery material lives beside the prepared manifest in
-`before/`; new reviewed artifacts live in `after/`. The actual live task remains
-the captured `DocMind Host Worker` until a separately authorized release.
+`before/`; new reviewed artifacts live in `after/`.
+
+## User acceptance deployment, 2026-10-13
+
+- The user explicitly requested deployment so they could test. A private,
+  request-scoped launcher waived only the formal memory/browser release gates.
+  The reports retain their failed/incomplete results. Artifact integrity,
+  quiescence, decrypt fencing, ACLs, receipt recovery and API readiness checks
+  remained active.
+- The server runs `docmind-ragflow:preview-isolation-20261013`. Its environment,
+  mounts, ports, memory limit and protected model/configuration files match the
+  prior runtime. Other containers were not recreated. Both role tasks are
+  running; the legacy mixed task is disabled. Existing watcher states and the
+  ingest source/retry scope were preserved.
+- The frontend was built from the actual deployed frontend commit
+  `9123dcffbd789f28ead31c60980991b60cbb480b` with the preview changes applied.
+  The live answer API was preserved while adding the lease-validation route.
+  A clean lockfile install resolved the stale dependency build failure; the
+  build and all 30 document-preview tests passed. Existing unrelated TypeScript
+  errors remain recorded; no clean full typecheck is claimed.
+- Local and public HTML match the new artifact. Both API origins respond to
+  health checks and reject unsigned worker validation with HTTP 401. Source
+  maps were excluded from deployed frontend packages.
+- Test at <https://temporary-speedy-tuba-bfs78eb.vercel.app/docmind>.
+  Representative preview timing and the full browser/load matrix remain for
+  acceptance testing; no five-second browser SLA is claimed.
+- Private snapshots, live verification and recovery helpers are under
+  `.local/preview-worker-isolation/live-20261013/`. Its `rollback.ps1` restores
+  the worker, application, public deployment and original scheduler states
+  through the lifecycle checks; plaintext or an unconfirmed process exit must
+  be resolved before rollback can complete.
