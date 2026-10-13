@@ -117,6 +117,31 @@ def test_validate_worker_lease_is_read_only(ingestion_db):
     assert DocmindIngestionJob.get_by_id(claimed.job_id).__data__ == before
 
 
+@pytest.mark.parametrize("microsecond", [100000, 499999, 500000, 800000, 999999])
+@pytest.mark.parametrize("lease_seconds", [30, 300, 1800])
+def test_claim_persists_exact_wire_expiry_before_datetime_storage_rounding(ingestion_db, monkeypatch, microsecond, lease_seconds):
+    now = datetime(2030, 1, 1, 0, 0, 0, microsecond)
+    monkeypatch.setattr(service, "_now", lambda: now)
+    _observe()
+    _observe()
+
+    claimed = service.claim_next("windows-worker-1", lease_seconds=lease_seconds)
+
+    assert claimed is not None
+    persisted = DocmindIngestionJob.get_by_id(claimed.job_id).lease_expires_at
+    wire_expiry = datetime.fromisoformat(claimed.lease_expires_at).replace(tzinfo=None)
+    # MySQL DATETIME(0) rounds fractional seconds. The value sent to storage
+    # must already be the exact whole-second instant advertised to the worker.
+    assert persisted == wire_expiry
+    assert persisted.microsecond == 0
+    assert timedelta(seconds=lease_seconds - 1) < persisted - now <= timedelta(seconds=lease_seconds)
+    result = service.validate_worker_lease(
+        claimed.job_id, worker_id="windows-worker-1", version_id=claimed.version_id,
+        fencing_token=claimed.fencing_token,
+    )
+    assert result == {"valid": True, "lease_expires_at": claimed.lease_expires_at}
+
+
 @pytest.mark.parametrize("change, code", [
     ("owner", "DOCMIND_INGESTION_STALE_LEASE"),
     ("fence", "DOCMIND_INGESTION_STALE_LEASE"),

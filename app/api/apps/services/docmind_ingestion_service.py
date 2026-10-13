@@ -1163,7 +1163,9 @@ def _claim_next(
         if job.pdf_ocr_requested and lease_seconds < 1500:
             raise DocmindIngestionError("DOCMIND_PDF_OCR_LEASE_TOO_SHORT")
         next_fence = job.fencing_token + 1
-        expires = now + timedelta(seconds=lease_seconds)
+        # Persist the same whole-second instant sent to the worker; MySQL
+        # DATETIME(0) can otherwise round fractional seconds up on write.
+        expires = (now + timedelta(seconds=lease_seconds)).replace(microsecond=0)
         changed = (
             DocmindIngestionJob.update(
                 lifecycle_state="DECRYPTING",
