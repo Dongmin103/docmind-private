@@ -441,15 +441,21 @@ function Invoke-LeasedDecryptJob {
         [IO.Directory]::CreateDirectory($jobDirectory) | Out-Null
         Protect-DocMindJobDirectory -LiteralPath $jobDirectory
         Write-JobState -JobDirectory $jobDirectory -Lease $Lease -State 'DECRYPTING'
-        $deadline = $leaseExpiry.AddSeconds(-10)
-        $waitLimit = if ($Purpose -eq 'preview') { 30 } else { 5 }
-        if ($deadline -gt [DateTimeOffset]::UtcNow.AddSeconds($waitLimit)) { $deadline = [DateTimeOffset]::UtcNow.AddSeconds($waitLimit) }
+        $decryptSafetySeconds = [Math]::Max(10, $leaseSafetySeconds)
+        $deadline = $leaseExpiry.AddSeconds(-$decryptSafetySeconds)
+        # Ingestion queues behind the single host decryptor for the remaining
+        # lease budget. Interactive previews retain their bounded response wait.
+        if ($Purpose -eq 'preview') {
+            $previewDeadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+            if ($deadline -gt $previewDeadline) { $deadline = $previewDeadline }
+        }
         $validateLease = {
-            if ([DateTimeOffset]::UtcNow.AddSeconds(10) -ge $leaseExpiry) { throw 'LEASE_EXPIRED_BEFORE_DECRYPT' }
-            if ($Purpose -eq 'preview') {
-                $validationResult = Invoke-SignedJsonRequest -Method 'POST' -RelativeUri ("$previewJobsPath/$([Uri]::EscapeDataString([string]$Lease.job_id))/validate") -Body @{ worker_id = [string]$config.worker_id; version_id = [string]$Lease.version_id; fencing_token = [Int64]$Lease.fencing_token } -RequestTimeoutSeconds 1
-                $validation = [Text.Encoding]::UTF8.GetString($validationResult.Body) | ConvertFrom-Json
-                if ($validation.valid -ne $true -or (ConvertTo-DocMindDateTimeOffset -Value $validation.lease_expires_at -Name 'lease_expires_at') -ne $leaseExpiry) { throw 'PREVIEW_STALE_WORKER_RESULT' }
+            if ([DateTimeOffset]::UtcNow.AddSeconds($decryptSafetySeconds) -ge $leaseExpiry) { throw 'LEASE_EXPIRED_BEFORE_DECRYPT' }
+            $validationResult = Invoke-SignedJsonRequest -Method 'POST' -RelativeUri ("$jobsPath/$([Uri]::EscapeDataString([string]$Lease.job_id))/validate") -Body @{ worker_id = [string]$config.worker_id; version_id = [string]$Lease.version_id; fencing_token = [Int64]$Lease.fencing_token } -RequestTimeoutSeconds 1
+            $validation = [Text.Encoding]::UTF8.GetString($validationResult.Body) | ConvertFrom-Json
+            if ($validation.valid -ne $true -or (ConvertTo-DocMindDateTimeOffset -Value $validation.lease_expires_at -Name 'lease_expires_at') -ne $leaseExpiry) {
+                if ($Purpose -eq 'preview') { throw 'PREVIEW_STALE_WORKER_RESULT' }
+                throw 'DOCMIND_INGESTION_STALE_LEASE'
             }
         }
         $gate = Enter-DocMindDecryptGate -ControlRoot $controlRoot -DeadlineUtc $deadline -ValidateLease $validateLease
@@ -459,7 +465,7 @@ function Invoke-LeasedDecryptJob {
         if (-not (Test-DocMindFixedTimeHexEqual (Get-DocMindFileSha256 -LiteralPath $sourceFile) $sourceHashBefore)) { throw 'SOURCE_FINGERPRINT_MISMATCH' }
         if (-not (Test-DocMindFixedTimeHexEqual (Assert-ExecutableIdentity) $executableHashBefore)) { throw 'INPUT_FINGERPRINT_CHANGED' }
         & $validateLease | Out-Null
-        $processTimeout = [int][Math]::Min($timeoutSeconds, [Math]::Floor(($leaseExpiry - [DateTimeOffset]::UtcNow).TotalSeconds - 10))
+        $processTimeout = [int][Math]::Min($timeoutSeconds, [Math]::Floor(($leaseExpiry - [DateTimeOffset]::UtcNow).TotalSeconds - $decryptSafetySeconds))
         if ($processTimeout -lt 1) { throw 'LEASE_EXPIRED_BEFORE_DECRYPT' }
         Invoke-DocMindDecryptProcess -Gate $gate -Executable $executable -SourceFile $sourceFile -OutputFile $outputFile -TimeoutSeconds $processTimeout
         if (-not (Test-Path -LiteralPath $outputFile -PathType Leaf)) { throw 'OUTPUT_MISSING' }

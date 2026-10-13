@@ -1235,6 +1235,14 @@ def _leased_job(job_id: str, worker_id: str, fencing_token: int) -> DocmindInges
     return job
 
 
+def validate_worker_lease(job_id: str, *, worker_id: str, version_id: str, fencing_token: int) -> dict:
+    """Check current decrypt authority without renewing or changing the job."""
+    job = _leased_job(job_id, worker_id, fencing_token)
+    if job.version_id != _valid_identifier(version_id, max_length=32):
+        raise DocmindIngestionError("DOCMIND_INGESTION_VERSION_MISMATCH")
+    return {"valid": True, "lease_expires_at": job.lease_expires_at.isoformat(timespec="seconds") + "Z"}
+
+
 def accept_decrypted_artifact(
     job_id: str,
     *,

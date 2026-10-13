@@ -60,7 +60,8 @@ Assert-True (($result.Claims -join ',') -eq '/ingest') 'Targeted ingestion claim
 # Exercise the actual decrypt-job cleanup/status path with a synthetic local
 # executable. Only external transport is replaced; no real uEncryptor or API.
 . (Join-Path $PSScriptRoot 'DocMindUEncryptorHostWorker.Common.ps1')
-Invoke-Expression ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'DocMindDecryptGate.ps1')).Replace('Global\DocMind-uEncryptor2-SingleRun', ('Local\DocMind-ThroughputTest-' + [Guid]::NewGuid().ToString('n'))))
+$testMutexName='Local\DocMind-ThroughputTest-'+[Guid]::NewGuid().ToString('n')
+Invoke-Expression ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'DocMindDecryptGate.ps1')).Replace('Global\DocMind-uEncryptor2-SingleRun', $testMutexName))
 $base=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../.local/worker-throughput-tests'))
 $testRoot=Join-Path $base ([Guid]::NewGuid().ToString('n'))
 [IO.Directory]::CreateDirectory($testRoot)|Out-Null
@@ -77,10 +78,19 @@ try {
     $sourceRoot=Join-Path $testRoot 'source';[IO.Directory]::CreateDirectory($sourceRoot)|Out-Null
     $sourceFile=Join-Path $sourceRoot 'sample.pdf';[IO.File]::WriteAllText($sourceFile,'synthetic only')
     $sources=@{'synthetic-source'=$sourceRoot};$workRoot=Join-Path $testRoot 'work';$receiptRoot=Join-Path $testRoot 'receipts'
-    $jobsPath='/jobs';$leaseSafetySeconds=5;$timeoutSeconds=5;$MaxPdfPages=0;$config=[pscustomobject]@{worker_id='synthetic-worker'}
+    $jobsPath='/jobs';$previewJobsPath='/previews';$leaseSafetySeconds=5;$timeoutSeconds=5;$MaxPdfPages=0;$config=[pscustomobject]@{worker_id='synthetic-worker'}
     $lease=[pscustomobject]@{job_id='synthetic-job';source_id='synthetic-source';document_id='synthetic-document';version_id='synthetic-version';relative_path='sample.pdf';ciphertext_sha256=(Get-DocMindFileSha256 -LiteralPath $sourceFile);fencing_token=1L;lease_expires_at=[DateTimeOffset]::UtcNow.AddMinutes(5).ToString('o')}
     function Assert-ExecutableIdentity {return ('a'*64)}
     function Save-HostTiming {}
+    $script:leaseRevoked=$false;$script:leaseChecks=0
+    function Invoke-SignedJsonRequest {
+        param($Method,$RelativeUri,$Body,$RequestTimeoutSeconds)
+        Assert-True ($Method -eq 'POST' -and $RelativeUri -eq '/jobs/synthetic-job/validate') 'Ingestion validation used an unexpected endpoint.'
+        Assert-True ($Body.worker_id -eq $config.worker_id -and $Body.version_id -eq $lease.version_id -and $Body.fencing_token -eq $lease.fencing_token) 'Ingestion validation omitted lease identity.'
+        $script:leaseChecks++
+        if($script:leaseRevoked){throw 'API_HTTP_409'}
+        return [pscustomobject]@{Body=[Text.Encoding]::UTF8.GetBytes((@{valid=$true;lease_expires_at=$lease.lease_expires_at}|ConvertTo-Json -Compress))}
+    }
     function Invoke-SignedBytesRequest {throw $script:artifactError}
     function Send-WorkerStatus {
         param($Lease,$State,$ErrorCode,$CleanupComplete,$Purpose)
@@ -94,6 +104,90 @@ try {
         Assert-True ($caught -eq $code -and $finalized -and $script:statusCalls -eq 1) 'Actual artifact failure did not retain its error and confirmed cleanup/status signal.'
         Assert-True (@(Get-ChildItem -LiteralPath $workRoot -Directory).Count -eq 0) 'Failed artifact left temporary plaintext.'
     }
+    # Hold the real isolated gate beyond the old five-second ingestion cap.
+    # The actual worker must then reach artifact delivery and complete cleanup.
+    $holderScript=Join-Path $testRoot 'hold-gate.ps1'
+    $holderReady=Join-Path $testRoot 'holder.ready'
+    [IO.File]::WriteAllText($holderScript, @'
+param($Name,$Ready)
+$m=[Threading.Mutex]::new($false,$Name)
+try {
+    [void]$m.WaitOne()
+    [IO.File]::WriteAllText($Ready,'ready')
+    Start-Sleep -Seconds 7
+} finally { $m.ReleaseMutex();$m.Dispose() }
+'@)
+    $holder=Start-Process powershell.exe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$holderScript+'"'),('-Name "'+$testMutexName+'"'),('-Ready "'+$holderReady+'"')) -WindowStyle Hidden -PassThru
+    try {
+        $readyDeadline=[DateTimeOffset]::UtcNow.AddSeconds(15)
+        while(-not (Test-Path -LiteralPath $holderReady)){
+            if($holder.HasExited -or [DateTimeOffset]::UtcNow -gt $readyDeadline){throw 'Synthetic mutex holder did not start.'}
+            Start-Sleep -Milliseconds 20
+        }
+        $script:artifactError='API_HTTP_503';$script:statusFails=$false;$script:statusCalls=0;$finalized=$false;$caught=''
+        $waitClock=[Diagnostics.Stopwatch]::StartNew()
+        try{Invoke-LeasedDecryptJob -Lease $lease -Purpose ingest -Finalized ([ref]$finalized)}catch{$caught=$_.Exception.Message}
+        Assert-True ($caught -eq 'API_HTTP_503' -and $finalized -and $script:statusCalls -eq 1) ('Queued ingestion failed before artifact delivery: '+$caught)
+        Assert-True ($waitClock.Elapsed.TotalSeconds -gt 5) 'Regression did not exercise a wait over five seconds.'
+    } finally { $holder.WaitForExit();$holder.Dispose() }
+
+    # Waiting must not outlive the lease safety budget or launch a decryptor.
+    $originalGateFunction=${function:Enter-DocMindDecryptGate}
+    $originalDecryptFunction=${function:Invoke-DocMindDecryptProcess}
+    $originalLeaseExpiry=$lease.lease_expires_at
+    $script:decryptStarts=0
+    function Invoke-DocMindDecryptProcess { $script:decryptStarts++;throw 'UNEXPECTED_DECRYPT_START' }
+    function Enter-DocMindDecryptGate {
+        param($ControlRoot,$DeadlineUtc,$ValidateLease)
+        $expected=(ConvertTo-DocMindDateTimeOffset -Value $lease.lease_expires_at -Name 'expiry').AddSeconds(-10)
+        Assert-True ([Math]::Abs(($DeadlineUtc-$expected).TotalMilliseconds) -lt 100) 'Ingestion gate did not use the lease safety budget.'
+        Start-Sleep -Milliseconds 2200
+        & $ValidateLease
+        throw 'VALIDATION_DID_NOT_REJECT_EXPIRED_LEASE'
+    }
+    $lease.lease_expires_at=[DateTimeOffset]::UtcNow.AddSeconds(12).ToString('o')
+    $caught='';$finalized=$false;$script:statusCalls=0
+    try{Invoke-LeasedDecryptJob -Lease $lease -Purpose ingest -Finalized ([ref]$finalized)}catch{$caught=$_.Exception.Message}
+    Assert-True ($caught -eq 'LEASE_EXPIRED_BEFORE_DECRYPT' -and $script:decryptStarts -eq 0 -and $finalized) 'Expired queued ingestion started decryption or lost cleanup.'
+    $lease.lease_expires_at=$originalLeaseExpiry
+    # A server-side revocation during a long wait must prevent decrypt launch
+    # even though the captured expiry and source bytes are still valid.
+    function Enter-DocMindDecryptGate {
+        param($ControlRoot,$DeadlineUtc,$ValidateLease)
+        & $ValidateLease
+        $script:leaseRevoked=$true
+        & $ValidateLease
+        throw 'VALIDATION_DID_NOT_REJECT_REVOKED_LEASE'
+    }
+    $caught='';$finalized=$false;$script:leaseChecks=0
+    try{Invoke-LeasedDecryptJob -Lease $lease -Purpose ingest -Finalized ([ref]$finalized)}catch{$caught=$_.Exception.Message}
+    Assert-True ($caught -eq 'API_HTTP_409' -and $script:leaseChecks -eq 2 -and $script:decryptStarts -eq 0 -and $finalized) 'Revoked queued ingestion started decryption or lost cleanup.'
+    $script:leaseRevoked=$false
+    # A lease revoked after gate admission is checked again just before launch.
+    function Enter-DocMindDecryptGate {
+        param($ControlRoot,$DeadlineUtc,$ValidateLease)
+        $acquired=& $originalGateFunction -ControlRoot $ControlRoot -DeadlineUtc $DeadlineUtc -ValidateLease $ValidateLease
+        $script:leaseRevoked=$true
+        return $acquired
+    }
+    $caught='';$finalized=$false
+    try{Invoke-LeasedDecryptJob -Lease $lease -Purpose ingest -Finalized ([ref]$finalized)}catch{$caught=$_.Exception.Message}
+    Assert-True ($caught -eq 'API_HTTP_409' -and $script:decryptStarts -eq 0 -and $finalized) 'Revocation after gate acquisition started decryption.'
+    $script:leaseRevoked=$false
+    # Preview waiting remains capped at thirty seconds, independently of the
+    # longer ingestion lease. Exercise the actual worker's selected deadline.
+    function Enter-DocMindDecryptGate {
+        param($ControlRoot,$DeadlineUtc,$ValidateLease)
+        $seconds=($DeadlineUtc-[DateTimeOffset]::UtcNow).TotalSeconds
+        Assert-True ($seconds -gt 28 -and $seconds -le 30) 'Preview wait cap changed.'
+        throw 'PREVIEW_DECRYPT_BUSY'
+    }
+    $caught='';$finalized=$false
+    try{Invoke-LeasedDecryptJob -Lease $lease -Purpose preview -Finalized ([ref]$finalized)}catch{$caught=$_.Exception.Message}
+    Assert-True ($caught -eq 'PREVIEW_DECRYPT_BUSY' -and $script:decryptStarts -eq 0 -and $finalized) 'Preview deadline regression or missing cleanup.'
+    ${function:Enter-DocMindDecryptGate}=$originalGateFunction
+    ${function:Invoke-DocMindDecryptProcess}=$originalDecryptFunction
+
     $script:statusFails=$true;$finalized=$false
     try{Invoke-LeasedDecryptJob -Lease $lease -Finalized ([ref]$finalized)}catch{}
     Assert-True (-not $finalized) 'Failed status ACK marked actual job finalized.'

@@ -47,6 +47,11 @@ def _worker_path_and_query() -> str:
     return request.path + (f"?{query}" if query else "")
 
 
+def _validate_cloud_sync_worker_lease_in_thread(job_id: str, **identity):
+    with DocmindIngestionJob._meta.database.connection_context():
+        return docmind_ingestion_service.validate_worker_lease(job_id, **identity)
+
+
 def _artifact_page_cap(args) -> int | None:
     if not args:
         return None
@@ -264,6 +269,37 @@ async def claim_cloud_sync_job():
         return _signed_worker_response({"error": error.code}, key_id, 409)
     except Exception:
         logger.exception("DocMind host worker claim failed")
+        if key_id:
+            return _signed_worker_response({"error": "DOCMIND_INGESTION_INTERNAL_ERROR"}, key_id, 500)
+        return Response(b'{"error":"WORKER_AUTH_FAILED"}', status=401, content_type="application/json")
+
+
+@manager.route("/cloud-sync/host-worker/jobs/<job_id>/validate", methods=["POST"])  # noqa: F821
+async def validate_cloud_sync_worker_lease(job_id: str):
+    body = await request.get_data()
+    key_id = ""
+    try:
+        key_id = await _authenticate_worker(body)
+        req = await request.get_json(silent=True)
+        if (
+            not isinstance(req, dict)
+            or set(req) != {"worker_id", "version_id", "fencing_token"}
+            or not isinstance(req["worker_id"], str) or not req["worker_id"]
+            or not isinstance(req["version_id"], str) or not req["version_id"]
+            or type(req["fencing_token"]) is not int or req["fencing_token"] < 1
+        ):
+            raise docmind_ingestion_service.DocmindIngestionError("DOCMIND_INGESTION_REQUEST_INVALID")
+        result = await asyncio.to_thread(
+            _validate_cloud_sync_worker_lease_in_thread, job_id,
+            worker_id=req["worker_id"], version_id=req["version_id"], fencing_token=req["fencing_token"],
+        )
+        return _signed_worker_response(result, key_id)
+    except docmind_worker_auth.WorkerAuthenticationError:
+        return Response(b'{"error":"WORKER_AUTH_FAILED"}', status=401, content_type="application/json")
+    except docmind_ingestion_service.DocmindIngestionError as error:
+        return _signed_worker_response({"error": error.code}, key_id, 409)
+    except Exception:
+        logger.exception("DocMind ingestion lease validation failed")
         if key_id:
             return _signed_worker_response({"error": "DOCMIND_INGESTION_INTERNAL_ERROR"}, key_id, 500)
         return Response(b'{"error":"WORKER_AUTH_FAILED"}', status=401, content_type="application/json")

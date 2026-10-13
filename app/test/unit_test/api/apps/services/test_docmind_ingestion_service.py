@@ -104,6 +104,57 @@ def _enqueue_and_claim():
     return discovered, claimed
 
 
+def test_validate_worker_lease_is_read_only(ingestion_db):
+    _, claimed = _enqueue_and_claim()
+    before = dict(DocmindIngestionJob.get_by_id(claimed.job_id).__data__)
+
+    result = service.validate_worker_lease(
+        claimed.job_id, worker_id="windows-worker-1", version_id=claimed.version_id,
+        fencing_token=claimed.fencing_token,
+    )
+
+    assert result == {"valid": True, "lease_expires_at": claimed.lease_expires_at}
+    assert DocmindIngestionJob.get_by_id(claimed.job_id).__data__ == before
+
+
+@pytest.mark.parametrize("change, code", [
+    ("owner", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("fence", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("expired", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("revoked", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("PARSING", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("FAILED", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("version", "DOCMIND_INGESTION_VERSION_MISMATCH"),
+    ("source_changed", "DOCMIND_INGESTION_SOURCE_CHANGED"),
+    ("source_deleted", "DOCMIND_INGESTION_SOURCE_CHANGED"),
+])
+def test_validate_worker_lease_rejects_invalidated_authority(ingestion_db, change, code):
+    _, claimed = _enqueue_and_claim()
+    kwargs = dict(worker_id="windows-worker-1", version_id=claimed.version_id, fencing_token=claimed.fencing_token)
+    if change == "owner":
+        DocmindIngestionJob.update(lease_owner="replacement-worker").execute()
+    elif change == "fence":
+        DocmindIngestionJob.update(fencing_token=claimed.fencing_token + 1).execute()
+    elif change == "expired":
+        DocmindIngestionJob.update(lease_expires_at=service._now() - timedelta(seconds=1)).execute()
+    elif change == "revoked":
+        DocmindIngestionJob.update(lease_expires_at=None).execute()
+    elif change in {"PARSING", "FAILED"}:
+        DocmindIngestionJob.update(lifecycle_state=change).execute()
+    elif change == "version":
+        kwargs["version_id"] = "another-version"
+    elif change == "source_changed":
+        DocmindSourceDocument.update(observed_ciphertext_sha256="c" * 64).execute()
+    else:
+        DocmindSourceDocument.update(deleted_at=service._now()).execute()
+    before = dict(DocmindIngestionJob.get_by_id(claimed.job_id).__data__)
+
+    with pytest.raises(service.DocmindIngestionError, match=code):
+        service.validate_worker_lease(claimed.job_id, **kwargs)
+
+    assert DocmindIngestionJob.get_by_id(claimed.job_id).__data__ == before
+
+
 def _pool_document(number, *, ocr=False):
     document_id = f'pool-document-{number}'
     path = f'reports/pool-{number}.pdf'
