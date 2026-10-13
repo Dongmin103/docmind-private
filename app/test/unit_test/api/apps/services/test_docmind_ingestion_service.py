@@ -1459,6 +1459,69 @@ def test_long_stage_connection_recycle_rejects_transaction_leak():
         service._recycle_database_connection_after_long_stage(database)
 
 
+def test_connection_recycle_and_concurrent_close_do_not_invert_pool_locks(tmp_path):
+    import threading
+    from playhouse.pool import PooledSqliteDatabase
+
+    normal_locked = threading.Event()
+    pool_taken = threading.Event()
+    recycler_ready = threading.Event()
+    errors = []
+
+    class BoundedLock:
+        def __init__(self, *, pool=False):
+            self.lock = threading.RLock()
+            self.pool = pool
+
+        def __enter__(self):
+            if not self.lock.acquire(timeout=2):
+                raise TimeoutError("database/pool lock inversion")
+            if self.pool and threading.current_thread().name == "recycler" and normal_locked.is_set():
+                pool_taken.set()
+            return self
+
+        def __exit__(self, *_args):
+            self.lock.release()
+
+    database = PooledSqliteDatabase(str(tmp_path / "pool.db"), check_same_thread=False)
+    database._lock = BoundedLock()
+    database._pool_lock = BoundedLock(pool=True)
+
+    def recycle():
+        try:
+            database.connect()
+            original = database.connection()
+            recycler_ready.set()
+            assert normal_locked.wait(3)
+            service._recycle_database_connection_after_long_stage(database)
+            assert database.connection() is not original
+            database.close()
+        except Exception as error:
+            errors.append(error)
+
+    def ordinary_close():
+        try:
+            assert recycler_ready.wait(3)
+            database.connect()
+            with database._lock:
+                normal_locked.set()
+                # The old implementation enters the pool while this thread
+                # owns the DB lock. Correct ordering waits outside the pool.
+                pool_taken.wait(.5)
+                database.close()
+        except Exception as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=recycle, name="recycler"), threading.Thread(target=ordinary_close)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(6)
+    assert not any(thread.is_alive() for thread in threads)
+    database.close_all()
+    assert not errors, repr(errors)
+
+
 @pytest.mark.parametrize(
     ("error", "expected_code"),
     [

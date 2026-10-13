@@ -494,7 +494,11 @@ def _recycle_database_connection_after_long_stage(database=None) -> None:
         # immediate connect can therefore reacquire the same socket that went
         # stale while Docling/OCR was running.  manual_close() discards just
         # this request's connection without disrupting concurrent requests.
-        manual_close()
+        # Peewee close/connect take the DB lock before the pool lock, whereas
+        # manual_close takes them in reverse order. Keep one lock order when
+        # recycling concurrently with request cleanup or health checks.
+        with getattr(database, "_lock", nullcontext()):
+            manual_close()
     elif not database.is_closed():
         database.close()
     database.connect(reuse_if_open=True)
