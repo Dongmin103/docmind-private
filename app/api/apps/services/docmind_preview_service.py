@@ -543,6 +543,16 @@ def _leased(session_id: str, worker_id: str, version_id: str, fencing_token: int
     return session
 
 
+def validate_worker_lease(session_id: str, *, worker_id: str, version_id: str, fencing_token: int) -> dict:
+    """Check current decrypt authority without renewing or changing the session."""
+    _require_enabled()
+    session = _leased(session_id, worker_id, version_id, fencing_token)
+    if session.lifecycle_state != "DECRYPTING" or session.expires_at <= _now():
+        raise PreviewError("PREVIEW_STALE_WORKER_RESULT")
+    _source_matches_session(session, check_access=True)
+    return {"valid": True, "lease_expires_at": session.lease_expires_at.isoformat()}
+
+
 def _processor(endpoint: str, payload: dict, timeout: int) -> dict:
     base = os.getenv("DOCMIND_PREVIEW_PROCESSOR_URL", "http://docmind-preview-processor:8090").rstrip("/")
     try:

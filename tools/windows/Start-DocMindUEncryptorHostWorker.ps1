@@ -293,11 +293,11 @@ function Invoke-SignedBytesRequest {
 }
 
 function Invoke-SignedJsonRequest {
-    param([string]$Method, [string]$RelativeUri, $Body)
+    param([string]$Method, [string]$RelativeUri, $Body, [int]$RequestTimeoutSeconds = 30)
     $json = $Body | ConvertTo-Json -Compress -Depth 6
     $bytes = [Text.Encoding]::UTF8.GetBytes($json)
     $content = [Net.Http.ByteArrayContent]::new($bytes)
-    return Invoke-SignedBytesRequest -Method $Method -RelativeUri $RelativeUri -ContentSha256 (Get-DocMindBytesSha256 -Bytes $bytes) -Content $content -ContentType 'application/json'
+    return Invoke-SignedBytesRequest -Method $Method -RelativeUri $RelativeUri -ContentSha256 (Get-DocMindBytesSha256 -Bytes $bytes) -Content $content -ContentType 'application/json' -RequestTimeoutSeconds $RequestTimeoutSeconds
 }
 
 function Send-WorkerStatus {
@@ -434,12 +434,19 @@ function Invoke-LeasedDecryptJob {
         if ($deadline -gt [DateTimeOffset]::UtcNow.AddSeconds($waitLimit)) { $deadline = [DateTimeOffset]::UtcNow.AddSeconds($waitLimit) }
         $validateLease = {
             if ([DateTimeOffset]::UtcNow.AddSeconds(10) -ge $leaseExpiry) { throw 'LEASE_EXPIRED_BEFORE_DECRYPT' }
+            if ($Purpose -eq 'preview') {
+                $validationResult = Invoke-SignedJsonRequest -Method 'POST' -RelativeUri ("$previewJobsPath/$([Uri]::EscapeDataString([string]$Lease.job_id))/validate") -Body @{ worker_id = [string]$config.worker_id; version_id = [string]$Lease.version_id; fencing_token = [Int64]$Lease.fencing_token } -RequestTimeoutSeconds 1
+                $validation = [Text.Encoding]::UTF8.GetString($validationResult.Body) | ConvertFrom-Json
+                if ($validation.valid -ne $true -or (ConvertTo-DocMindDateTimeOffset -Value $validation.lease_expires_at -Name 'lease_expires_at') -ne $leaseExpiry) { throw 'PREVIEW_STALE_WORKER_RESULT' }
+            }
         }
         $gate = Enter-DocMindDecryptGate -ControlRoot $controlRoot -DeadlineUtc $deadline -ValidateLease $validateLease
         $marks.lock_acquired = Get-HostTimingNanoseconds $hostClock
         # Validate the local file again after waiting, immediately before launch.
         $sourceFile = Resolve-DocMindSourceFile -Root $sources[[string]$Lease.source_id] -RelativePath ([string]$Lease.relative_path)
         if (-not (Test-DocMindFixedTimeHexEqual (Get-DocMindFileSha256 -LiteralPath $sourceFile) $sourceHashBefore)) { throw 'SOURCE_FINGERPRINT_MISMATCH' }
+        if (-not (Test-DocMindFixedTimeHexEqual (Assert-ExecutableIdentity) $executableHashBefore)) { throw 'INPUT_FINGERPRINT_CHANGED' }
+        & $validateLease | Out-Null
         $processTimeout = [int][Math]::Min($timeoutSeconds, [Math]::Floor(($leaseExpiry - [DateTimeOffset]::UtcNow).TotalSeconds - 10))
         if ($processTimeout -lt 1) { throw 'LEASE_EXPIRED_BEFORE_DECRYPT' }
         Invoke-DocMindDecryptProcess -Gate $gate -Executable $executable -SourceFile $sourceFile -OutputFile $outputFile -TimeoutSeconds $processTimeout

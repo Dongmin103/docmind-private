@@ -22,6 +22,49 @@ class PreviewError(RuntimeError):
         self.code, self.status = code, status
 
 
+@pytest.mark.parametrize("authenticated, body, expected", [
+    (False, {"worker_id": "w", "version_id": "v", "fencing_token": 1}, 401),
+    (True, {"worker_id": "w", "version_id": "v", "fencing_token": 1}, 200),
+    (True, {"worker_id": "w", "version_id": "v", "fencing_token": True}, 400),
+    (True, {"worker_id": "w", "version_id": "v", "fencing_token": 1, "extend": 300}, 400),
+])
+async def test_validate_worker_route_authentication_and_signed_envelope(authenticated, body, expected):
+    class WorkerAuthenticationError(RuntimeError):
+        pass
+
+    calls = []
+
+    async def authenticate(_body):
+        if not authenticated:
+            raise WorkerAuthenticationError()
+        return "worker-key"
+
+    def validate(session_id, **kwargs):
+        calls.append((session_id, kwargs))
+        return {"valid": True, "lease_expires_at": "2030-01-01T00:00:00+00:00"}
+
+    namespace = {
+        "asyncio": asyncio, "request": request, "_authenticate_worker": authenticate,
+        "docmind_worker_auth": SimpleNamespace(WorkerAuthenticationError=WorkerAuthenticationError),
+        "docmind_preview_service": SimpleNamespace(PreviewError=PreviewError, validate_worker_lease=validate),
+        "_preview_db": lambda fn, *args, **kwargs: fn(*args, **kwargs), "logger": logging.getLogger(__name__),
+        "_signed_worker_response": lambda data, key, status=200: (data, status, {"X-Signed-Key": key}),
+        "_preview_json": lambda data, status=200: (data, status, {}),
+    }
+    tree = ast.parse(SOURCE.read_text(encoding="utf-8"))
+    definitions = [n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "validate_preview_worker_lease"]
+    assert definitions, "Worker validation route missing"
+    definitions[0].decorator_list = []
+    exec(compile(ast.Module(body=definitions, type_ignores=[]), str(SOURCE), "exec"), namespace)
+    app = Quart(__name__)
+    async with app.test_request_context("/validate", method="POST", json=body):
+        data, status, headers = await namespace["validate_preview_worker_lease"]("session")
+    assert status == expected
+    assert bool(calls) == (expected == 200)
+    if authenticated:
+        assert headers["X-Signed-Key"] == "worker-key"
+
+
 @pytest.fixture
 def routes(tmp_path):
     path = tmp_path / "input.pdf"

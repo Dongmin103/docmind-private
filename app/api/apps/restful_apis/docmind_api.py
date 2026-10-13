@@ -429,6 +429,35 @@ async def upload_preview_artifact(preview_id: str):
         return _signed_worker_response({"error": "PREVIEW_INTERNAL_ERROR"}, key_id, 500) if key_id else _preview_json({"error": "WORKER_AUTH_FAILED"}, 401)
 
 
+@manager.route("/cloud-sync/host-worker/previews/<preview_id>/validate", methods=["POST"])  # noqa: F821
+async def validate_preview_worker_lease(preview_id: str):
+    body = await request.get_data()
+    key_id = ""
+    try:
+        key_id = await _authenticate_worker(body)
+        req = await request.get_json(silent=True)
+        if (
+            not isinstance(req, dict)
+            or set(req) != {"worker_id", "version_id", "fencing_token"}
+            or not isinstance(req["worker_id"], str) or not req["worker_id"]
+            or not isinstance(req["version_id"], str) or not req["version_id"]
+            or type(req["fencing_token"]) is not int or req["fencing_token"] < 1
+        ):
+            raise docmind_preview_service.PreviewError("PREVIEW_REQUEST_INVALID", 400)
+        result = await asyncio.to_thread(
+            _preview_db, docmind_preview_service.validate_worker_lease, preview_id,
+            worker_id=req["worker_id"], version_id=req["version_id"], fencing_token=req["fencing_token"],
+        )
+        return _signed_worker_response(result, key_id)
+    except docmind_worker_auth.WorkerAuthenticationError:
+        return _preview_json({"error": "WORKER_AUTH_FAILED"}, 401)
+    except docmind_preview_service.PreviewError as error:
+        return _signed_worker_response({"error": error.code}, key_id, error.status)
+    except Exception:
+        logger.exception("DocMind preview lease validation failed")
+        return _signed_worker_response({"error": "PREVIEW_INTERNAL_ERROR"}, key_id, 500) if key_id else _preview_json({"error": "WORKER_AUTH_FAILED"}, 401)
+
+
 @manager.route("/cloud-sync/host-worker/previews/<preview_id>/status", methods=["POST"])  # noqa: F821
 async def update_preview_worker_status(preview_id: str):
     body = await request.get_data()

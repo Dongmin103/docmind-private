@@ -92,11 +92,13 @@ function Enter-DocMindDecryptGate {
     $acquired = $false
     try {
         while (-not $acquired) {
+            $validationClock = [Diagnostics.Stopwatch]::StartNew()
             if ($ValidateLease) { & $ValidateLease | Out-Null }
             if (Test-Path -LiteralPath (Join-Path $ControlRoot 'blocked.json')) { throw 'DECRYPT_GATE_BLOCKED' }
             $remaining = ($DeadlineUtc - [DateTimeOffset]::UtcNow).TotalMilliseconds
             if ($remaining -le 0) { throw 'PREVIEW_DECRYPT_BUSY' }
-            try { $acquired = $mutex.WaitOne([int][Math]::Min(1000, $remaining)) }
+            $pollWait = [Math]::Max(0, 1000 - $validationClock.ElapsedMilliseconds)
+            try { $acquired = $mutex.WaitOne([int][Math]::Min($pollWait, $remaining)) }
             catch [Threading.AbandonedMutexException] {
                 $acquired = $true
                 Set-DocMindGateBlocked -ControlRoot $ControlRoot -Reason 'ABANDONED_MUTEX'
@@ -104,6 +106,7 @@ function Enter-DocMindDecryptGate {
         }
         Assert-DocMindDecryptControlSafe -ControlRoot $ControlRoot
         if ($ValidateLease) { & $ValidateLease | Out-Null }
+        if ([DateTimeOffset]::UtcNow -ge $DeadlineUtc) { throw 'PREVIEW_DECRYPT_BUSY' }
         return [pscustomobject]@{ Mutex = $mutex; ControlRoot = $ControlRoot; Released = $false; ProcessExitConfirmed = $true }
     } catch {
         if ($acquired) { $mutex.ReleaseMutex() }
