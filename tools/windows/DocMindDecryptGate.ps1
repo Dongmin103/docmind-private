@@ -14,12 +14,15 @@ namespace DocMind {
   [StructLayout(LayoutKind.Sequential)] struct EXTENDED_LIMIT { public BASIC_LIMIT basic; public IO_COUNTERS io; public UIntPtr processMemory,jobMemory,peakProcess,peakJob; }
   [StructLayout(LayoutKind.Sequential)] struct ACCOUNTING { public long a,b,c,d; public uint faults,total,active,terminated; }
   [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] struct STARTUP { public uint cb; public string reserved,desktop,title; public uint x,y,xsize,ysize,xchars,ychars,fill,flags; public ushort show,reserved2; public IntPtr bytes,input,output,error; }
+  [StructLayout(LayoutKind.Sequential)] struct STARTUP_EX { public STARTUP startup; public IntPtr attributes; }
   [StructLayout(LayoutKind.Sequential)] struct PROCESS_INFO { public IntPtr process,thread; public uint pid,tid; }
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateJobObject(IntPtr security,string name);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int kind,ref EXTENDED_LIMIT info,uint size);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool QueryInformationJobObject(IntPtr job,int kind,out ACCOUNTING info,uint size,IntPtr length);
-  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool CreateProcess(string app,System.Text.StringBuilder command,IntPtr ps,IntPtr ts,bool inherit,uint flags,IntPtr env,string directory,ref STARTUP start,out PROCESS_INFO info);
-  [DllImport("kernel32.dll", SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool CreateProcess(string app,System.Text.StringBuilder command,IntPtr ps,IntPtr ts,bool inherit,uint flags,IntPtr env,string directory,ref STARTUP_EX start,out PROCESS_INFO info);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool InitializeProcThreadAttributeList(IntPtr list,int count,uint flags,ref IntPtr size);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool UpdateProcThreadAttribute(IntPtr list,uint flags,IntPtr attribute,IntPtr value,IntPtr size,IntPtr previous,IntPtr returned);
+  [DllImport("kernel32.dll")] static extern void DeleteProcThreadAttributeList(IntPtr list);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateJobObject(IntPtr job,uint code);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateProcess(IntPtr process,uint code);
   [DllImport("kernel32.dll")] static extern uint ResumeThread(IntPtr thread);
@@ -29,11 +32,20 @@ namespace DocMind {
    job=CreateJobObject(IntPtr.Zero,null); if(job==IntPtr.Zero) throw new Win32Exception();
    var limits=new EXTENDED_LIMIT(); limits.basic.flags=0x2000;
    if(!SetInformationJobObject(job,9,ref limits,(uint)Marshal.SizeOf(limits))) { Dispose(); throw new Win32Exception(); }
-   var startup=new STARTUP(); startup.cb=(uint)Marshal.SizeOf(startup); PROCESS_INFO child;
+   var startup=new STARTUP_EX(); startup.startup.cb=(uint)Marshal.SizeOf(startup); PROCESS_INFO child;
    var command=new System.Text.StringBuilder("\""+exe+"\" \""+source+"\" \""+output+"\" /dec");
-   if(!CreateProcess(exe,command,IntPtr.Zero,IntPtr.Zero,false,0x08000004,IntPtr.Zero,null,ref startup,out child)) { Dispose(); throw new Win32Exception(); }
+   IntPtr size=IntPtr.Zero; InitializeProcThreadAttributeList(IntPtr.Zero,1,0,ref size);
+   startup.attributes=Marshal.AllocHGlobal(size); var jobPointer=Marshal.AllocHGlobal(IntPtr.Size); bool initialized=false;
    try {
-    if(!AssignProcessToJobObject(job,child.process)) { TerminateProcess(child.process,1); throw new Win32Exception(); }
+    if(!InitializeProcThreadAttributeList(startup.attributes,1,0,ref size)) throw new Win32Exception();
+    initialized=true; Marshal.WriteIntPtr(jobPointer,job);
+    // JOB_LIST makes membership atomic with process creation, closing the
+    // parent-death gap between CreateProcess and AssignProcessToJobObject.
+    if(!UpdateProcThreadAttribute(startup.attributes,0,new IntPtr(0x2000d),jobPointer,new IntPtr(IntPtr.Size),IntPtr.Zero,IntPtr.Zero)) throw new Win32Exception();
+    if(!CreateProcess(exe,command,IntPtr.Zero,IntPtr.Zero,false,0x08080004,IntPtr.Zero,null,ref startup,out child)) throw new Win32Exception();
+   } catch { Dispose(); throw; }
+   finally { if(initialized) DeleteProcThreadAttributeList(startup.attributes); Marshal.FreeHGlobal(startup.attributes); Marshal.FreeHGlobal(jobPointer); }
+   try {
     Process=Process.GetProcessById((int)child.pid);
     var processHandle=Process.Handle;
     if(ResumeThread(child.thread)==0xffffffff) { TerminateJobObject(job,1); throw new Win32Exception(); }

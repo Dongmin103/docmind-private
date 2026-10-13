@@ -58,7 +58,7 @@ Assert-True (($result.Claims -join ',') -eq '/ingest') 'Targeted ingestion claim
 # Exercise the actual decrypt-job cleanup/status path with a synthetic local
 # executable. Only external transport is replaced; no real uEncryptor or API.
 . (Join-Path $PSScriptRoot 'DocMindUEncryptorHostWorker.Common.ps1')
-. (Join-Path $PSScriptRoot 'DocMindDecryptGate.ps1')
+Invoke-Expression ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'DocMindDecryptGate.ps1')).Replace('Global\DocMind-uEncryptor2-SingleRun', ('Local\DocMind-ThroughputTest-' + [Guid]::NewGuid().ToString('n'))))
 $base=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../.local/worker-throughput-tests'))
 $testRoot=Join-Path $base ([Guid]::NewGuid().ToString('n'))
 [IO.Directory]::CreateDirectory($testRoot)|Out-Null

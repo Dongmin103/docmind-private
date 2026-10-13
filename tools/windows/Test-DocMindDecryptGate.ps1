@@ -5,12 +5,16 @@ Set-StrictMode -Version Latest
 $helper = Join-Path $PSScriptRoot 'DocMindDecryptGate.ps1'
 if (-not (Test-Path -LiteralPath $helper)) { throw 'Decrypt gate helper is missing.' }
 . (Join-Path $PSScriptRoot 'DocMindUEncryptorHostWorker.Common.ps1')
-. $helper
 function Assert-True([bool]$Value, [string]$Message) { if (-not $Value) { throw $Message } }
 function Assert-Code([scriptblock]$Action, [string]$Code) { $caught = ''; try { & $Action } catch { $caught = $_.Exception.Message }; Assert-True ($caught -eq $Code) ('Expected ' + $Code + ', got ' + $caught) }
 $base = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../.local/decrypt-gate-tests'))
 $root = Join-Path $base ([Guid]::NewGuid().ToString('n'))
 [IO.Directory]::CreateDirectory($root) | Out-Null
+$isolatedHelper = Join-Path $root 'gate.ps1'
+[IO.File]::WriteAllText($isolatedHelper, ([IO.File]::ReadAllText($helper).Replace('Global\DocMind-uEncryptor2-SingleRun', ('Local\DocMind-GateTest-' + [Guid]::NewGuid().ToString('n')))))
+$helper = $isolatedHelper
+. $helper
+
 try {
     $exe = Join-Path $root 'synthetic.exe'
     Add-Type -TypeDefinition 'using System; using System.IO; using System.Threading; public class GateSynthetic { public static int Main(string[] a) { File.WriteAllText(a[1]+".started", "started"); Thread.Sleep(int.Parse(File.ReadAllText(a[0]))); File.WriteAllText(a[1], "synthetic"); return 0; } }' -OutputAssembly $exe -OutputType ConsoleApplication
