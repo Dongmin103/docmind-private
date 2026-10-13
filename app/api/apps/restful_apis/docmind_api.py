@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 def _claim_cloud_sync_job_in_thread(
     worker_id: str, lease_seconds: int, allowed_formats: list[str] | None, skip_retries: bool,
     claim_source_id: str | None, claim_job_id: str | None,
+    ingestion_pool_size: int | None = None,
 ):
     with DocmindIngestionJob._meta.database.connection_context():
         docmind_ingestion_service.maintain_parser_workspaces()
@@ -37,6 +38,7 @@ def _claim_cloud_sync_job_in_thread(
             worker_id, lease_seconds=lease_seconds, allowed_formats=allowed_formats,
             skip_retries=skip_retries, claim_source_id=claim_source_id,
             claim_job_id=claim_job_id,
+            ingestion_pool_size=ingestion_pool_size,
         )
 
 
@@ -217,7 +219,7 @@ async def claim_cloud_sync_job():
         req = await request.get_json(silent=True)
         if (
             not isinstance(req, dict)
-            or set(req) - {"worker_id", "protocol_version", "lease_seconds", "allowed_formats", "skip_retries", "claim_source_id", "claim_job_id", "single_claim"}
+            or set(req) - {"worker_id", "protocol_version", "lease_seconds", "allowed_formats", "skip_retries", "claim_source_id", "claim_job_id", "single_claim", "ingestion_pool_size"}
             or req.get("protocol_version") != 1
         ):
             raise docmind_ingestion_service.DocmindIngestionError("DOCMIND_INGESTION_REQUEST_INVALID")
@@ -235,9 +237,15 @@ async def claim_cloud_sync_job():
             raise docmind_ingestion_service.DocmindIngestionError("DOCMIND_INGESTION_LEASE_INVALID")
         if not isinstance(skip_retries, bool):
             raise docmind_ingestion_service.DocmindIngestionError("DOCMIND_INGESTION_REQUEST_INVALID")
+        pool_args = ()
+        if 'ingestion_pool_size' in req:
+            size = req['ingestion_pool_size']
+            if type(size) is not int or size not in (1, 2):
+                raise docmind_ingestion_service.DocmindIngestionError('DOCMIND_INGESTION_REQUEST_INVALID')
+            pool_args = (size,)
         job = await asyncio.to_thread(
             _claim_cloud_sync_job_in_thread, worker_id, lease_seconds, allowed_formats, skip_retries,
-            claim_source_id, claim_job_id,
+            claim_source_id, claim_job_id, *pool_args,
         )
         return _signed_worker_response({"job": job.to_dict() if job else None}, key_id)
     except docmind_worker_auth.WorkerAuthenticationError:

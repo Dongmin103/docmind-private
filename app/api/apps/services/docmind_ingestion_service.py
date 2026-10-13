@@ -1067,10 +1067,33 @@ def _claimable_jobs(
     return query
 
 
-def claim_next(
+_ingestion_claim_lock = threading.Lock()
+
+
+def claim_next(worker_id: str, *, lease_seconds: int = 300, allowed_formats: list[str] | None = None,
+               skip_retries: bool = False, claim_source_id: str | None = None,
+               claim_job_id: str | None = None, ingestion_pool_size: int | None = None) -> WorkerDecryptRequest | None:
+    limit = int(os.environ.get('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '1'))
+    if limit not in (1, 2):
+        raise DocmindIngestionError('DOCMIND_INGESTION_POOL_CONFIG_INVALID')
+    if ingestion_pool_size is not None:
+        if type(ingestion_pool_size) is not int or ingestion_pool_size not in (1, 2):
+            raise DocmindIngestionError('DOCMIND_INGESTION_REQUEST_INVALID')
+        if ingestion_pool_size > limit:
+            raise DocmindIngestionError('DOCMIND_INGESTION_POOL_NOT_ENABLED')
+    # One API process owns pool admission. SQL fencing still protects each job.
+    # Include standalone callers while pool mode is enabled.
+    with _ingestion_claim_lock:
+        return _claim_next(worker_id, lease_seconds=lease_seconds, allowed_formats=allowed_formats,
+            skip_retries=skip_retries, claim_source_id=claim_source_id, claim_job_id=claim_job_id,
+            admission_limit=limit if limit == 2 or ingestion_pool_size is not None else None)
+
+
+def _claim_next(
     worker_id: str, *, lease_seconds: int = 300, allowed_formats: list[str] | None = None,
     skip_retries: bool = False, claim_source_id: str | None = None,
     claim_job_id: str | None = None,
+    admission_limit: int | None = None,
 ) -> WorkerDecryptRequest | None:
     worker_id = _valid_identifier(worker_id, max_length=128)
     if lease_seconds < 30 or lease_seconds > 1800:
@@ -1102,6 +1125,16 @@ def claim_next(
     ).order_by(DocmindIngestionJob.create_time.asc()).first()
     if candidate is None:
         return None
+    if admission_limit is not None:
+        active = DocmindIngestionJob.select().where(
+            DocmindIngestionJob.lifecycle_state.in_({'CLAIMED', 'DECRYPTING', 'DELIVERED', 'PARSING', 'INDEXING', 'CLEANUP', 'CLEANUP_FAILED'})
+            | (DocmindIngestionJob.host_cleanup_state == 'PENDING')
+        )
+        count = active.count()
+        if count >= admission_limit or active.where(DocmindIngestionJob.pdf_ocr_requested == True).exists():  # noqa: E712
+            return None
+        if candidate.pdf_ocr_requested and count:
+            return None
     database = DocmindIngestionJob._meta.database
     now = _now()
     with database.atomic():

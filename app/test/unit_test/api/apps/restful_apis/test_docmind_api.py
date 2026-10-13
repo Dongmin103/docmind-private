@@ -50,16 +50,20 @@ def test_exact_claim_route_rejects_missing_or_invalid_single_claim(monkeypatch, 
     assert (status, payload) == (409, {"error": "DOCMIND_INGESTION_REQUEST_INVALID"})
 
 
-def test_exact_claim_route_forwards_signed_job_id(monkeypatch):
+@pytest.mark.parametrize('pool_size', [None, 2])
+def test_exact_claim_route_forwards_signed_job_id(monkeypatch, pool_size):
     target = "a" * 32
 
     async def get_data():
         return b"signed-request"
 
     async def get_json(*_args, **_kwargs):
-        return {"worker_id": "worker-1", "protocol_version": 1,
+        request_body = {"worker_id": "worker-1", "protocol_version": 1,
                 "claim_source_id": "dept-2-e2e", "allowed_formats": ["pptx"],
                 "skip_retries": True, "claim_job_id": target, "single_claim": True}
+        if pool_size is not None:
+            request_body['ingestion_pool_size'] = pool_size
+        return request_body
 
     async def authenticate(_body):
         return "worker-key-1"
@@ -72,7 +76,8 @@ def test_exact_claim_route_forwards_signed_job_id(monkeypatch):
 
     status, payload = asyncio.run(docmind_api.claim_cloud_sync_job())
     assert (status, payload) == (200, {"job": None})
-    assert seen == [("worker-1", 300, ["pptx"], True, "dept-2-e2e", target)]
+    expected = ("worker-1", 300, ["pptx"], True, "dept-2-e2e", target)
+    assert seen == [expected if pool_size is None else (*expected, pool_size)]
 
 
 @pytest.mark.parametrize(

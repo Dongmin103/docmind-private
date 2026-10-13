@@ -104,6 +104,80 @@ def _enqueue_and_claim():
     return discovered, claimed
 
 
+def _pool_document(number, *, ocr=False):
+    document_id = f'pool-document-{number}'
+    path = f'reports/pool-{number}.pdf'
+    service.register_source_document_mapping('tenant-1', project_id='project-1', source_id='home-test1',
+        document_id=document_id, folder_id='folder-1', relative_path=path)
+    _observe(document_id=document_id, relative_path=path)
+    result = _observe(document_id=document_id, relative_path=path)
+    if ocr:
+        DocmindIngestionJob.update(pdf_ocr_requested=True).where(DocmindIngestionJob.id == result['job_id']).execute()
+    return result['job_id']
+
+
+def test_pool_caps_active_documents_and_requires_enabled_server(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '1')
+    _pool_document(1)
+    with pytest.raises(service.DocmindIngestionError, match='DOCMIND_INGESTION_POOL_NOT_ENABLED'):
+        service.claim_next('pool-0', ingestion_pool_size=2)
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '2')
+    _pool_document(2); _pool_document(3)
+    first = service.claim_next('pool-0', ingestion_pool_size=2)
+    second = service.claim_next('pool-1', ingestion_pool_size=2)
+    assert first and second and first.job_id != second.job_id
+    assert service.claim_next('standalone-worker') is None
+
+
+def test_pool_ocr_waits_for_active_document_and_blocks_new_claims(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '2')
+    regular = _pool_document(1)
+    assert service.claim_next('pool-0', ingestion_pool_size=2)
+    ocr = _pool_document(2, ocr=True)
+    assert service.claim_next('pool-1', ingestion_pool_size=2, lease_seconds=1800) is None
+    DocmindIngestionJob.update(lifecycle_state='COMPLETE', host_cleanup_state='COMPLETE').where(DocmindIngestionJob.id == regular).execute()
+    claimed = service.claim_next('pool-1', ingestion_pool_size=2, lease_seconds=1800)
+    assert claimed.job_id == ocr
+    _pool_document(3)
+    assert service.claim_next('pool-0', ingestion_pool_size=2) is None
+
+
+def test_pool_holds_slot_until_host_cleanup(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '2')
+    ids = [_pool_document(n) for n in range(3)]
+    for n in range(2): assert service.claim_next(f'pool-{n}', ingestion_pool_size=2)
+    DocmindIngestionJob.update(lifecycle_state='FAILED', host_cleanup_state='PENDING').where(DocmindIngestionJob.id == ids[0]).execute()
+    assert service.claim_next('pool-0', ingestion_pool_size=2) is None
+    DocmindIngestionJob.update(host_cleanup_state='COMPLETE').where(DocmindIngestionJob.id == ids[0]).execute()
+    assert service.claim_next('pool-0', ingestion_pool_size=2) is not None
+
+
+def test_concurrent_claim_threads_never_exceed_pool_capacity(ingestion_db, monkeypatch, tmp_path):
+    import sqlite3
+    import threading
+    from contextlib import closing
+    from concurrent.futures import ThreadPoolExecutor
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '2')
+    for n in range(4): _pool_document(n)
+    path = str(tmp_path / 'claims.sqlite')
+    with closing(sqlite3.connect(path)) as target:
+        ingestion_db.connection().backup(target)
+    database = SqliteDatabase(path, timeout=5)
+    barrier = threading.Barrier(4)
+    def claim(n):
+        barrier.wait(timeout=5)
+        with database.connection_context():
+            result = service.claim_next(f'pool-{n}', ingestion_pool_size=2)
+            return result.job_id if result else None
+    with database.bind_ctx(MODELS):
+        with ThreadPoolExecutor(4) as pool:
+            ids = list(pool.map(claim, range(4)))
+        assert len([value for value in ids if value]) == 2
+        assert len(set(value for value in ids if value)) == 2
+        with database.connection_context():
+            assert DocmindIngestionJob.select().where(DocmindIngestionJob.lifecycle_state == 'DECRYPTING').count() == 2
+
+
 def test_observation_requires_repeat_and_is_idempotent(ingestion_db):
     assert _observe() == {"state": "WAITING_SOURCE_STABLE", "stable_observations": 1}
     second = _observe()
