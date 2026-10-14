@@ -50,7 +50,6 @@ interface IProps extends Partial<IRemoveMessageById>, IRegenerateMessage {
   clickDocumentButton?: (documentId: string, chunk: IReferenceChunk) => void;
   index: number;
   showLikeButton?: boolean;
-  showLoudspeaker?: boolean;
   isLast?: boolean;
 }
 
@@ -66,7 +65,6 @@ const MessageItem = ({
   removeMessageById,
   regenerateMessage,
   showLikeButton = true,
-  showLoudspeaker = true,
   visibleAvatar = true,
   nickname,
   isLast = false,
@@ -141,8 +139,6 @@ const MessageItem = ({
                   content={messageContent}
                   prompt={item.prompt}
                   showLikeButton={showLikeButton}
-                  audioBinary={item.audio_binary}
-                  showLoudspeaker={showLoudspeaker}
                 ></AssistantGroupButton>
               )
             ) : (

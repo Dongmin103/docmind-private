@@ -45,7 +45,9 @@ def get_parser(parser_id: str):
     Returns:
         The parser module for the given parser ID.
     """
-    from rag.app import laws, paper, presentation, manual, qa, table, book, resume, picture, naive, one, audio, email, tag
+    if str(parser_id).lower() == "audio":
+        raise ValueError("Unsupported parser selection: audio")
+    from rag.app import laws, paper, presentation, manual, qa, table, book, resume, picture, naive, one, email, tag
 
     factory = {
         "general": naive,
@@ -60,7 +62,6 @@ def get_parser(parser_id: str):
         ParserType.RESUME.value: resume,
         ParserType.PICTURE.value: picture,
         ParserType.ONE.value: one,
-        ParserType.AUDIO.value: audio,
         ParserType.EMAIL.value: email,
         ParserType.TAG.value: tag,
     }

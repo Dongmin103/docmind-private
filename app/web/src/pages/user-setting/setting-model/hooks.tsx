@@ -14,72 +14,15 @@
  *  limitations under the License.
  */
 
-import { useSetModalState } from '@/hooks/common-hooks';
-import {
-  useAddInstanceModel,
-  useAddProviderInstance,
-  useFetchAddedProviders,
-  useFetchProviderInstances,
-  useVerifyProviderConnection,
-} from '@/hooks/use-llm-request';
-import {
-  IAddProviderInstanceRequestBody,
-  IModelInfo,
-} from '@/interfaces/request/llm';
-import { useCallback, useMemo, useState } from 'react';
-import { splitProviderPayload } from './payload-utils';
+
+import { useFetchAddedProviders, useFetchProviderInstances, useVerifyProviderConnection } from '@/hooks/use-llm-request';
+import { IModelInfo } from '@/interfaces/request/llm';
+import { useCallback, useMemo } from 'react';
+
 
 export type VerifyResult = {
   isValid: boolean | null;
   logs: string;
-};
-
-/**
- * Unified Provider instance submission hook
- * Internally handles both verify and save modes
- */
-const useSubmitProviderInstance = () => {
-  const { addProviderInstance } = useAddProviderInstance();
-  const { addInstanceModel } = useAddInstanceModel();
-
-  return useCallback(
-    async (payload: IAddProviderInstanceRequestBody, isVerify = false) => {
-      if (isVerify) {
-        return addProviderInstance({ ...payload, verify: true });
-      }
-
-      // Multi-model flow: when model_info is provided as an array, the
-      // backend is expected to create the instance and all listed models
-      // in a single addProviderInstance call. Skip the instance/model split.
-      if (Array.isArray((payload as any).model_info)) {
-        return addProviderInstance(payload as IAddProviderInstanceRequestBody);
-      }
-
-      const { instancePayload, modelPayload } = splitProviderPayload(payload);
-      const hasModelPayload =
-        !!modelPayload.model_name && !!modelPayload.model_type;
-
-      const instanceRet = await addProviderInstance({
-        ...instancePayload,
-        llm_factory: payload.llm_factory,
-        instance_name: payload.instance_name,
-      } as IAddProviderInstanceRequestBody);
-      if (instanceRet.code !== 0 || !hasModelPayload) {
-        return instanceRet;
-      }
-
-      if (!hasModelPayload) {
-        return { code: 0, data: null } as any;
-      }
-
-      return addInstanceModel({
-        provider_name: payload.llm_factory,
-        instance_name: payload.instance_name,
-        ...modelPayload,
-      });
-    },
-    [addProviderInstance, addInstanceModel],
-  );
 };
 
 export const useFetchInstanceNameSet = (providerName: string) => {
@@ -141,64 +84,4 @@ export const useVerifyConnection = () => {
     },
     [verifyProviderConnection],
   );
-};
-
-// ============ Hooks for retained special modals ============
-// Bedrock has been migrated to an inline instance card
-// (BedrockInstanceCard); these legacy modal hooks are kept only
-// for backward-compat references.
-
-export const useSubmitBedrock = () => {
-  const [saveLoading, setSaveLoading] = useState(false);
-  const submitProviderInstance = useSubmitProviderInstance();
-  const verifyConnection = useVerifyConnection();
-  const {
-    visible: bedrockAddingVisible,
-    hideModal: hideBedrockAddingModal,
-    showModal: showBedrockAddingModal,
-  } = useSetModalState();
-
-  const onBedrockAddingOk = useCallback(
-    async (payload: IAddProviderInstanceRequestBody, isVerify = false) => {
-      if (!isVerify) {
-        setSaveLoading(true);
-      }
-      const { instancePayload, modelPayload } = splitProviderPayload(payload);
-      if (isVerify) {
-        return verifyConnection(
-          payload.llm_factory as string,
-          JSON.stringify(instancePayload.api_key),
-          instancePayload.base_url,
-          instancePayload.region,
-          [modelPayload],
-        );
-      }
-      const ret = await submitProviderInstance(
-        {
-          ...instancePayload,
-          max_tokens: modelPayload.max_tokens,
-          model_info: [modelPayload],
-        },
-        false,
-      );
-      setSaveLoading(false);
-      if (ret.code === 0) {
-        hideBedrockAddingModal();
-      }
-    },
-    [
-      hideBedrockAddingModal,
-      submitProviderInstance,
-      setSaveLoading,
-      verifyConnection,
-    ],
-  );
-
-  return {
-    bedrockAddingLoading: saveLoading,
-    onBedrockAddingOk,
-    bedrockAddingVisible,
-    hideBedrockAddingModal,
-    showBedrockAddingModal,
-  };
 };

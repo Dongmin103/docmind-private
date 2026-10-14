@@ -30,7 +30,6 @@ from collections import Counter
 from dateutil.parser import parse as datetime_parse
 
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from deepdoc.parser.figure_parser import vision_figure_parser_figure_xlsx_wrapper
 from common.constants import MAXIMUM_TASK_PAGE_NUMBER
 from deepdoc.parser.utils import get_text
 from rag.nlp import rag_tokenizer, tokenize, tokenize_table
@@ -88,23 +87,6 @@ class Excel(ExcelParser):
             ws = wb[sheet_name]
             images = Excel._extract_images_from_worksheet(ws, sheetname=sheet_name)
             pending_cell_images = []
-            if images:
-                image_descriptions = vision_figure_parser_figure_xlsx_wrapper(
-                    images=images,
-                    callback=callback,
-                    lang=lang,
-                    **kwargs,
-                )
-                if image_descriptions and len(image_descriptions) == len(images):
-                    for i, bf in enumerate(image_descriptions):
-                        desc = bf[0][1]
-                        images[i]["image_description"] = "\n".join(desc) if isinstance(desc, list) else str(desc)
-                    for img in images:
-                        if img["span_type"] == "single_cell" and img.get("image_description"):
-                            pending_cell_images.append(img)
-                        else:
-                            flow_images.append(img)
-
             try:
                 rows = Excel._get_rows_limited(ws)
             except Exception as e:

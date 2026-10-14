@@ -17,9 +17,7 @@
 import json
 import logging
 import math
-import os
 import re
-import tempfile
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -105,7 +103,6 @@ _DEFAULT_PROMPT_CONFIG = {
     "parameters": [{"key": "knowledge", "optional": False}, {"key": "date", "optional": True}],
     "empty_response": "Sorry! No relevant content was found in the knowledge base!",
     "quote": True,
-    "tts": False,
     "refine_multiturn": True,
 }
 _DEFAULT_DIRECT_CHAT_PROMPT_CONFIG = {
@@ -114,7 +111,6 @@ _DEFAULT_DIRECT_CHAT_PROMPT_CONFIG = {
     "parameters": [],
     "empty_response": "",
     "quote": False,
-    "tts": False,
     "refine_multiturn": True,
 }
 _DEFAULT_RERANK_MODELS = {"BAAI/bge-reranker-v2-m3", "maidalun1020/bce-reranker-base_v1"}
@@ -1079,98 +1075,6 @@ async def update_message_feedback(chat_id, session_id, msg_id):
         return get_json_result(data=_build_session_response(conv_dict))
     except Exception as ex:
         return server_error_response(ex)
-
-
-@manager.route("/chat/audio/speech", methods=["POST"])  # noqa: F821
-@login_required
-async def tts():
-    req = await get_request_json()
-    text = req["text"]
-
-    try:
-        default_tts_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.TTS)
-    except Exception as e:
-        return get_data_error_result(message=str(e))
-
-    tts_mdl = LLMBundle(current_user.id, default_tts_model_config)
-
-    def stream_audio():
-        try:
-            for txt in re.split(r"[，。/《》？；：！\n\r:;]+", text):
-                for chunk in tts_mdl.tts(txt):
-                    yield chunk
-        except Exception as e:
-            yield ("data:" + json.dumps({"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e)}}, ensure_ascii=False)).encode("utf-8")
-
-    resp = Response(stream_audio(), mimetype="audio/mpeg")
-    resp.headers.add_header("Cache-Control", "no-cache")
-    resp.headers.add_header("Connection", "keep-alive")
-    resp.headers.add_header("X-Accel-Buffering", "no")
-    return resp
-
-
-@manager.route("/chat/audio/transcription", methods=["POST"])  # noqa: F821
-@login_required
-async def transcription():
-    req = await request.form
-    stream_mode = req.get("stream", "false").lower() == "true"
-    files = await request.files
-    if "file" not in files:
-        return get_data_error_result(message="Missing 'file' in multipart form-data")
-
-    uploaded = files["file"]
-
-    ALLOWED_EXTS = {
-        ".wav",
-        ".mp3",
-        ".m4a",
-        ".aac",
-        ".flac",
-        ".ogg",
-        ".webm",
-        ".opus",
-        ".wma",
-    }
-
-    filename = uploaded.filename or ""
-    suffix = os.path.splitext(filename)[-1].lower()
-    if suffix not in ALLOWED_EXTS:
-        return get_data_error_result(message=f"Unsupported audio format: {suffix}. Allowed: {', '.join(sorted(ALLOWED_EXTS))}")
-
-    fd, temp_audio_path = tempfile.mkstemp(suffix=suffix)
-    os.close(fd)
-    await uploaded.save(temp_audio_path)
-
-    try:
-        default_asr_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.ASR)
-    except Exception as e:
-        return get_data_error_result(message=str(e))
-
-    asr_mdl = LLMBundle(current_user.id, default_asr_model_config)
-    if not stream_mode:
-        text = asr_mdl.transcription(temp_audio_path)
-        try:
-            os.remove(temp_audio_path)
-        except Exception as e:
-            logging.error(f"Failed to remove temp audio file: {str(e)}")
-        if "**ERROR**" in text:
-            return get_data_error_result(message=text)
-        return get_json_result(data={"text": text})
-
-    async def event_stream():
-        try:
-            for evt in asr_mdl.stream_transcription(temp_audio_path):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            err = {"event": "error", "text": str(e)}
-            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
-        finally:
-            try:
-                os.remove(temp_audio_path)
-            except Exception as e:
-                logging.error(f"Failed to remove temp audio file: {str(e)}")
-
-    return Response(event_stream(), content_type="text/event-stream")
 
 
 @manager.route("/chat/recommendation", methods=["POST"])  # noqa: F821

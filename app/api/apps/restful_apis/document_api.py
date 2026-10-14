@@ -556,8 +556,6 @@ async def _upload_web_document(dataset_id, kb, tenant_id):
         }
         if doc["type"] == FileType.VISUAL:
             doc["parser_id"] = ParserType.PICTURE.value
-        if doc["type"] == FileType.AURAL:
-            doc["parser_id"] = ParserType.AUDIO.value
         if re.search(r"\.(ppt|pptx|pages)$", filename):
             doc["parser_id"] = ParserType.PRESENTATION.value
         if re.search(r"\.(eml)$", filename):

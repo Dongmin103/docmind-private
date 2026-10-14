@@ -187,6 +187,9 @@ class ChunkService:
         ctx.recording_context.record("file_size_exceeded", False)
         ctx.recording_context.record("parser_id", ctx.parser_id)
 
+        from common.parser_config_utils import validate_task_parser_identity
+        validate_task_parser_identity(ctx)
+
         parser_platform_document = None
         if ctx.parse_run_id:
             from api.db.services.parser_run_service import ParserRunService

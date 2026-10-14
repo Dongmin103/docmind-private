@@ -21,43 +21,14 @@ import re
 from deepdoc.parser.utils import get_text
 from rag.app import naive
 from rag.nlp import rag_tokenizer, tokenize
-from deepdoc.parser import PdfParser, ExcelParser, HtmlParser
-from deepdoc.parser.figure_parser import vision_figure_parser_docx_wrapper_naive
-from rag.app.naive import by_plaintext, PARSERS
+from deepdoc.parser import ExcelParser, HtmlParser
+from rag.app.naive import PARSERS
 from api.db.joint_services.tenant_model_service import get_composite_model_name_by_id
 from common.constants import MAXIMUM_PAGE_NUMBER, MAXIMUM_TASK_PAGE_NUMBER
 from common.parser_config_utils import normalize_layout_recognizer
 
 
 logger = logging.getLogger(__name__)
-
-
-class Pdf(PdfParser):
-    def __call__(self, filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, zoomin=3, callback=None):
-        from timeit import default_timer as timer
-
-        start = timer()
-        callback(msg="OCR started")
-        self.__images__(filename if not binary else binary, zoomin, from_page, to_page, callback)
-        callback(msg="OCR finished ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._layouts_rec(zoomin, drop=False)
-        callback(0.63, "Layout analysis ({:.2f}s)".format(timer() - start))
-        logging.debug("layouts cost: {}s".format(timer() - start))
-
-        start = timer()
-        self._table_transformer_job(zoomin)
-        callback(0.65, "Table analysis ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._text_merge()
-        callback(0.67, "Text merged ({:.2f}s)".format(timer() - start))
-        tbls = self._extract_table_figure(True, zoomin, True, True)
-        self._concat_downward()
-
-        sections = [(b["text"], self.get_position(b, zoomin)) for i, b in enumerate(self.boxes)]
-        return [(txt, "") for txt, _ in sorted(sections, key=lambda x: (x[-1][0][0], x[-1][0][3], x[-1][0][1]))], tbls
 
 
 def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang="Chinese", callback=None, **kwargs):
@@ -91,7 +62,6 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             lang or "English",
             len(image_idxs),
         )
-        vision_figure_parser_docx_wrapper_naive(cks, image_idxs, callback, lang=lang, **kwargs)
         sections = [ck["text"] for ck in cks if ck.get("text")]
         callback(0.8, "Finish parsing.")
 
@@ -109,7 +79,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
         name = layout_recognizer.strip().lower()
-        parser = PARSERS.get(name, by_plaintext)
+        parser = PARSERS[name]
         callback(0.1, "Start to parse.")
 
         sections, tbls, pdf_parser = parser(
@@ -119,7 +89,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             to_page=to_page,
             lang=lang,
             callback=callback,
-            pdf_cls=Pdf,
+
             layout_recognizer=layout_recognizer,
             mineru_llm_name=parser_model_name,
             mistral_ocr_llm_name=parser_model_name,

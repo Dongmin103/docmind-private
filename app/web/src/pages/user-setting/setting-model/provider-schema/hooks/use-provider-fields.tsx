@@ -135,19 +135,10 @@ export const useProviderFields = ({
             }
             return mt === 'chat' || mt === 'vision' || mt === 'image2text';
           };
-        case 'modelTypeIncludesTtsAndNotExists':
-          return (values: any) => {
-            if (!hideWhenInstanceExists(values)) return false;
-            const mt = values?.model_type;
-            if (Array.isArray(mt)) return mt.includes('tts');
-            return mt === 'tts';
-          };
         // Driven by the provider catalog (`GET /providers`): a provider needs a
         // base_url iff it advertises one or more URLs in its `url` map.
         case 'showBaseUrl':
           return () => (baseUrlOptions?.length ?? 0) > 0;
-        case 'showGroupId':
-          return () => llmFactory?.toLowerCase() === 'Minimax'.toLowerCase();
         default:
           return undefined;
       }
@@ -222,8 +213,7 @@ export const useProviderFields = ({
           disabled: !!viewMode && !LIST_MODEL_FIELD_NAMES.has(field.name),
           dependencies:
             field.shouldRender === 'modelTypeIncludesChat' ||
-            field.shouldRender === 'modelTypeSupportsToolCall' ||
-            field.shouldRender === 'modelTypeIncludesTtsAndNotExists'
+            field.shouldRender === 'modelTypeSupportsToolCall'
               ? ['model_type']
               : ['model_type', 'instance_name'].includes(field.name)
                 ? ['model_type', 'instance_name']

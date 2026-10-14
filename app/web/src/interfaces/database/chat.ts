@@ -1,4 +1,4 @@
-import { MessageType, WebSearchProvider } from '@/constants/chat';
+import { MessageType } from '@/constants/chat';
 
 export interface IDocumentDownloadInfo {
   doc_id: string;
@@ -12,18 +12,12 @@ export interface PromptConfig {
   parameters: Parameter[];
   prologue: string;
   system: string;
-  tts?: boolean;
   quote: boolean;
   keyword: boolean;
   refine_multiturn: boolean;
   use_kg: boolean;
   reasoning?: boolean;
   cross_languages?: Array<string>;
-  tavily_api_key?: string;
-  querit_api_key?: string;
-  serply_api_key?: string;
-  youcom_api_key?: string;
-  web_search_provider?: WebSearchProvider;
   toc_enhance?: boolean;
   reference_metadata?: {
     include?: boolean;
@@ -116,7 +110,6 @@ export interface Message {
   doc_ids?: string[];
   prompt?: string;
   id?: string;
-  audio_binary?: string;
   data?: any;
   files?: (File | UploadResponseDataType)[];
   chatBoxId?: string;
@@ -158,7 +151,6 @@ export interface IAnswer {
   conversationId?: string;
   prompt?: string;
   id?: string;
-  audio_binary?: string;
   data?: any;
   chatBoxId?: string;
 }
@@ -207,8 +199,6 @@ export interface IExternalChatInfo {
   avatar?: string;
   title: string;
   prologue?: string;
-  has_tavily_key?: boolean;
-  has_web_search_provider?: boolean;
   llm_id?: string;
 }
 

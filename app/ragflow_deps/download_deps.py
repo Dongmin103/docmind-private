@@ -67,7 +67,6 @@ def get_urls(use_china_mirrors=False) -> list[Union[str, list[str]]]:
 
 
 repos = [
-    "InfiniFlow/text_concat_xgb_v1.0",
     "InfiniFlow/deepdoc",
 ]
 

@@ -16,46 +16,32 @@
 
 import { PromptIcon } from '@/assets/icon/next-icon';
 import CopyToClipboard from '@/components/copy-to-clipboard';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { IRemoveMessageById } from '@/hooks/logic-hooks';
 import { cn } from '@/lib/utils';
 import { removeThinkSection } from '@/utils/chat';
-import {
-  LucidePauseCircle,
-  LucideRefreshCw,
-  LucideThumbsDown,
-  LucideThumbsUp,
-  LucideTrash2,
-  LucideVolume2,
-} from 'lucide-react';
+import { LucideRefreshCw, LucideThumbsDown, LucideThumbsUp, LucideTrash2 } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+
 import FeedbackDialog from '../feedback-dialog';
 import { PromptDialog } from '../prompt-dialog';
 import { Button } from '../ui/button';
-import { useRemoveMessage, useSendFeedback, useSpeech } from './hooks';
+import { useRemoveMessage, useSendFeedback } from './hooks';
 
 interface IProps {
   messageId: string;
   content: string;
   prompt?: string;
   showLikeButton: boolean;
-  audioBinary?: string;
-  showLoudspeaker?: boolean;
 }
 
 export const AssistantGroupButton = ({
   messageId,
   content,
   prompt,
-  audioBinary,
   showLikeButton,
-  showLoudspeaker = true,
 }: IProps) => {
   const { visible, hideModal, showModal, onFeedbackOk, loading } =
     useSendFeedback(messageId);
@@ -64,8 +50,6 @@ export const AssistantGroupButton = ({
     hideModal: hidePromptModal,
     showModal: showPromptModal,
   } = useSetModalState();
-  const { t } = useTranslation();
-  const { handleRead, ref, isPlaying } = useSpeech(content, audioBinary);
 
   const copyText = useMemo(() => removeThinkSection(content), [content]);
 
@@ -86,27 +70,7 @@ export const AssistantGroupButton = ({
           avoidButtonWrapper
         />
 
-        {showLoudspeaker && (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="transparent"
-                  size="icon-xs"
-                  className="border-0"
-                  onClick={handleRead}
-                >
-                  <span>
-                    {isPlaying ? <LucidePauseCircle /> : <LucideVolume2 />}
-                  </span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('chat.read')}</TooltipContent>
-            </Tooltip>
 
-            <audio src="" ref={ref}></audio>
-          </>
-        )}
         {showLikeButton && (
           <>
             <Button
@@ -172,11 +136,11 @@ export const UserGroupButton = ({
   removeMessageById,
   regenerateMessage,
 }: UserGroupButtonProps) => {
+  const { t } = useTranslation();
   const { onRemoveMessage, loading } = useRemoveMessage(
     messageId,
     removeMessageById,
   );
-  const { t } = useTranslation();
 
   return (
     <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">

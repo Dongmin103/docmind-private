@@ -18,118 +18,11 @@ import logging
 import copy
 import re
 
-from deepdoc.parser.figure_parser import vision_figure_parser_pdf_wrapper
-from common.constants import ParserType, MAXIMUM_PAGE_NUMBER
+from common.constants import MAXIMUM_PAGE_NUMBER
 from rag.nlp import rag_tokenizer, tokenize, tokenize_table, add_positions, bullets_category, title_frequency, tokenize_chunks, attach_media_context
-from deepdoc.parser import PdfParser
-import numpy as np
 from api.db.joint_services.tenant_model_service import get_composite_model_name_by_id
-from rag.app.naive import by_plaintext, PARSERS
+from rag.app.naive import PARSERS
 from common.parser_config_utils import normalize_layout_recognizer
-
-
-class Pdf(PdfParser):
-    def __init__(self):
-        self.model_species = ParserType.PAPER.value
-        super().__init__()
-
-    def __call__(self, filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, zoomin=3, callback=None):
-        from timeit import default_timer as timer
-
-        start = timer()
-        callback(msg="OCR started")
-        self.__images__(filename if not binary else binary, zoomin, from_page, to_page, callback)
-        callback(msg="OCR finished ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._layouts_rec(zoomin)
-        callback(0.63, "Layout analysis ({:.2f}s)".format(timer() - start))
-        logging.debug(f"layouts cost: {timer() - start}s")
-
-        start = timer()
-        self._table_transformer_job(zoomin)
-        callback(0.68, "Table analysis ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._text_merge()
-        tbls = self._extract_table_figure(True, zoomin, True, True)
-        column_width = np.median([b["x1"] - b["x0"] for b in self.boxes])
-        self._concat_downward()
-        self._filter_forpages()
-        callback(0.75, "Text merged ({:.2f}s)".format(timer() - start))
-
-        # clean mess
-        if column_width < self.page_images[0].size[0] / zoomin / 2:
-            logging.debug("two_column................... {} {}".format(column_width, self.page_images[0].size[0] / zoomin / 2))
-            self.boxes = self.sort_X_by_page(self.boxes, column_width / 2)
-        for b in self.boxes:
-            b["text"] = re.sub(r"([\t 　]|\u3000){2,}", " ", b["text"].strip())
-
-        def _begin(txt):
-            return re.match("[0-9. 一、i]*(introduction|abstract|摘要|引言|keywords|key words|关键词|background|背景|目录|前言|contents)", txt.lower().strip())
-
-        if from_page > 0:
-            return {
-                "title": "",
-                "authors": "",
-                "abstract": "",
-                "sections": [(b["text"] + self._line_tag(b, zoomin), b.get("layoutno", "")) for b in self.boxes if re.match(r"(text|title)", b.get("layoutno", "text"))],
-                "tables": tbls,
-            }
-        # get title and authors
-        title = ""
-        authors = []
-        i = 0
-        while i < min(32, len(self.boxes) - 1):
-            b = self.boxes[i]
-            i += 1
-            if b.get("layoutno", "").find("title") >= 0:
-                title = b["text"]
-                if _begin(title):
-                    title = ""
-                    break
-                for j in range(3):
-                    next_idx = i + j
-                    if next_idx >= len(self.boxes):
-                        break
-                    candidate = self.boxes[next_idx]["text"]
-                    if _begin(candidate):
-                        break
-                    if "@" in candidate:
-                        break
-                    authors.append(candidate)
-                break
-        # get abstract
-        abstr = ""
-        i = 0
-        while i + 1 < min(32, len(self.boxes)):
-            b = self.boxes[i]
-            i += 1
-            txt = b["text"].lower().strip()
-            if re.match("(abstract|摘要)", txt):
-                if len(txt.split()) > 32 or len(txt) > 64:
-                    abstr = txt + self._line_tag(b, zoomin)
-                    break
-                txt = self.boxes[i]["text"].lower().strip()
-                if len(txt.split()) > 32 or len(txt) > 64:
-                    abstr = txt + self._line_tag(self.boxes[i], zoomin)
-                i += 1
-                break
-        if not abstr:
-            i = 0
-
-        callback(0.8, "Page {}~{}: Text merging finished".format(from_page, min(to_page, self.total_page)))
-        for b in self.boxes:
-            logging.debug("{} {}".format(b["text"], b.get("layoutno")))
-        logging.debug("{}".format(tbls))
-
-        return {
-            "title": title,
-            "authors": " ".join(authors),
-            "abstract": abstr,
-            "sections": [(b["text"] + self._line_tag(b, zoomin), b.get("layoutno", "")) for b in self.boxes[i:] if re.match(r"(text|title)", b.get("layoutno", "text"))],
-            "tables": tbls,
-        }
 
 
 def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang="Chinese", callback=None, **kwargs):
@@ -152,42 +45,29 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
         name = layout_recognizer.strip().lower()
-        pdf_parser = PARSERS.get(name, by_plaintext)
+        pdf_parser = PARSERS[name]
         callback(0.1, "Start to parse.")
 
-        if name == "deepdoc":
-            pdf_parser = Pdf()
-            paper = pdf_parser(filename if not binary else binary, from_page=from_page, to_page=to_page, callback=callback)
-            sections = paper.get("sections", [])
-        else:
-            kwargs.pop("parse_method", None)
-            kwargs.pop("mineru_llm_name", None)
-            sections, tables, pdf_parser = pdf_parser(
-                filename=filename,
-                binary=binary,
-                from_page=from_page,
-                to_page=to_page,
-                lang=lang,
-                callback=callback,
-                pdf_cls=Pdf,
-                layout_recognizer=layout_recognizer,
-                mineru_llm_name=parser_model_name,
-                mistral_ocr_llm_name=parser_model_name,
-                parse_method="paper",
-                **kwargs,
-            )
+        kwargs.pop("parse_method", None)
+        kwargs.pop("mineru_llm_name", None)
+        sections, tables, pdf_parser = pdf_parser(
+            filename=filename,
+            binary=binary,
+            from_page=from_page,
+            to_page=to_page,
+            lang=lang,
+            callback=callback,
 
-            paper = {"title": filename, "authors": " ", "abstract": "", "sections": sections, "tables": tables}
+            layout_recognizer=layout_recognizer,
+            mineru_llm_name=parser_model_name,
+            mistral_ocr_llm_name=parser_model_name,
+            parse_method="paper",
+            **kwargs,
+        )
+
+        paper = {"title": filename, "authors": " ", "abstract": "", "sections": sections, "tables": tables}
 
         tbls = paper["tables"]
-        if name != "mineru":
-            tbls = vision_figure_parser_pdf_wrapper(
-                tbls=tbls,
-                sections=sections,
-                callback=callback,
-                lang=lang,
-                **kwargs,
-            )
         paper["tables"] = tbls
     else:
         raise NotImplementedError("file type not supported yet(pdf supported)")

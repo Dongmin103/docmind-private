@@ -496,11 +496,11 @@ def test_async_chat_final_event_carries_decorated_answer(monkeypatch):
         "filter_by_tenant",
         lambda tenant_id: None,
     )
-    # get_models returns (kbs, embd_mdl, rerank_mdl, chat_mdl, tts_mdl)
+    # get_models returns (kbs, embd_mdl, rerank_mdl, chat_mdl)
     monkeypatch.setattr(
         dialog_service,
         "get_models",
-        lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl, None),
+        lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl),
     )
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {})
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])
@@ -558,7 +558,7 @@ def test_async_chat_langfuse_uses_start_observation(monkeypatch):
     monkeypatch.setattr(
         dialog_service,
         "get_models",
-        lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl, None),
+        lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl),
     )
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {})
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])
@@ -620,7 +620,7 @@ def test_async_chat_langfuse_observation_includes_session_id(monkeypatch):
     monkeypatch.setattr(
         dialog_service,
         "get_models",
-        lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl, None),
+        lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl),
     )
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {})
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])
@@ -670,17 +670,15 @@ def test_get_models_passes_langfuse_trace_context_to_llm_bundles(monkeypatch):
 
     dialog = _make_dialog(None)
     dialog.rerank_id = "rerank-1"
-    dialog.prompt_config["tts"] = True
     trace_context = {"trace_id": "trace-id"}
 
     dialog_service.get_models(dialog, trace_context=trace_context, langfuse_session_id="session-1")
 
-    assert len(captured) == 4
+    assert len(captured) == 3
     assert {model_type for _, model_type, _ in captured} == {
         dialog_service.LLMType.EMBEDDING,
         dialog_service.LLMType.CHAT,
         dialog_service.LLMType.RERANK,
-        dialog_service.LLMType.TTS,
     }
     for _, _, kwargs in captured:
         assert kwargs["trace_context"] is trace_context
@@ -720,7 +718,7 @@ def test_async_chat_continues_when_langfuse_observation_start_fails(monkeypatch)
     monkeypatch.setattr(
         dialog_service,
         "get_models",
-        lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl, None),
+        lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl),
     )
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {})
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])

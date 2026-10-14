@@ -18,47 +18,35 @@
 import { LlmIcon } from '@/components/svg-icon';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/input';
-import { APIMapUrl, LLMFactory } from '@/constants/llm';
+import { APIMapUrl } from '@/constants/llm';
 import { useFetchAvailableProviders } from '@/hooks/use-llm-request';
 import { sortLLmFactoryListBySpecifiedOrder } from '@/utils/common-util';
-import { ArrowUpRight, Plus, Star } from 'lucide-react';
+import { ArrowUpRight, Plus } from 'lucide-react';
 import { FC, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export const mapModelKey = {
   image2text: 'VLM',
-  speech2text: 'ASR',
   chat: 'LLM',
   vision: 'VLM',
   embedding: 'Embedding',
-  asr: 'ASR',
   rerank: 'Rerank',
-  tts: 'TTS',
-  ocr: 'OCR',
 };
 
 const orderMap: Record<ModelType, number> = {
   chat: 1,
   embedding: 2,
   rerank: 3,
-  tts: 4,
-  asr: 5,
-  speech2text: 5,
   image2text: 6,
   vision: 6,
-  ocr: 7,
 };
 
 type ModelType =
   | 'chat'
   | 'embedding'
   | 'rerank'
-  | 'tts'
-  | 'asr'
-  | 'speech2text'
   | 'image2text'
-  | 'vision'
-  | 'ocr';
+  | 'vision';
 
 export const sortModelTypes = (modelTypes: string[]) => {
   return [...modelTypes].sort(
@@ -211,22 +199,7 @@ export const AvailableModels: FC<{
                     <ArrowUpRight size={16} />
                   </Button>
                 )}
-                {model.name === LLMFactory.AIMLAPI && (
-                  // Recommended badge: the star always shows; the label appears
-                  // only when the card (container) is wide enough to fit it
-                  // alongside the Add button — otherwise it collapses to just
-                  // the star.
-                  <span
-                    className="shrink-0 inline-flex items-center gap-1 text-state-success"
-                    title={t('setting.recommended')}
-                    aria-label={t('setting.recommended')}
-                  >
-                    <Star size={14} className="shrink-0 fill-current" />
-                    <span className="hidden @[20rem]:inline text-xs font-medium whitespace-nowrap">
-                      {t('setting.recommended')}
-                    </span>
-                  </span>
-                )}
+
               </div>
 
               <Button

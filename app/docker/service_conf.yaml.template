@@ -56,8 +56,6 @@ user_default_llm:
 #     embedding_model:
 #       name: 'bge-m3'
 #     rerank_model: 'bge-reranker-v2'
-#     asr_model:
-#       model: 'whisper-large-v3' # alias of name
 #     image2text_model: ''
 # oauth:
 #   oauth2:

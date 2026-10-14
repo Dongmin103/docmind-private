@@ -59,7 +59,6 @@ def create_new_user(user_info: dict) -> dict:
         "name": user_info["nickname"] + "‘s Kingdom",
         "llm_id": settings.CHAT_MDL,
         "embd_id": settings.EMBEDDING_MDL,
-        "asr_id": settings.ASR_MDL,
         "parser_ids": settings.PARSERS,
         "img2txt_id": settings.VISION_MDL,
         "rerank_id": settings.RERANK_MDL,

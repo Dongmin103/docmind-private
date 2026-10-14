@@ -16,8 +16,7 @@
 
 import { DynamicForm, DynamicFormRef } from '@/components/dynamic-form';
 import { LLMFactory } from '@/constants/llm';
-import { useCallback, type RefObject } from 'react';
-import { AimlapiGetKeyButton } from '../aimlapi-get-key-button';
+import { type RefObject } from 'react';
 import { DRAFT_INSTANCE_SENTINEL, DraftModeCardProps } from '../interface';
 import { ModelsSection } from '../models-section';
 import VerifyButton from '../verify-button';
@@ -48,15 +47,6 @@ export function DraftModeCard({
   setDraftName,
   verifyTransform,
 }: DraftModeCardProps) {
-  // On success, fold the OAuth-issued key into the current form values so it
-  // lands in the (editable) api_key field without clobbering other inputs.
-  const handleAimlapiKey = useCallback(
-    (key: string) => {
-      const current = formRef.current?.getValues() ?? {};
-      formRef.current?.reset({ ...current, api_key: key });
-    },
-    [formRef],
-  );
 
   return (
     <div className="px-5 py-3 flex flex-col gap-4 bg-bg-card rounded-xl ">
@@ -76,9 +66,7 @@ export function DraftModeCard({
         resetOptions={{ keepDirtyValues: true }}
       />
 
-      {providerName === LLMFactory.AIMLAPI && (
-        <AimlapiGetKeyButton onKey={handleAimlapiKey} />
-      )}
+
 
       {providerName !== LLMFactory.OpenAiAPICompatible && (
         <div className="pt-3">

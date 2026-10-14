@@ -105,7 +105,6 @@ def init_superuser(nickname=DEFAULT_SUPERUSER_NICKNAME, email=DEFAULT_SUPERUSER_
         "name": user_info["nickname"] + "‘s Kingdom",
         "llm_id": settings.CHAT_MDL,
         "embd_id": settings.EMBEDDING_MDL,
-        "asr_id": settings.ASR_MDL,
         "parser_ids": settings.PARSERS,
         "img2txt_id": settings.VISION_MDL,
         "rerank_id": settings.RERANK_MDL,

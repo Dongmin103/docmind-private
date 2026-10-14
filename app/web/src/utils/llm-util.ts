@@ -167,8 +167,6 @@ type ModelParamMap = {
 const modelParamMap: ModelParamMap = {
   llm_id: 'tenant_llm_id',
   embd_id: 'tenant_embd_id',
-  asr_id: 'tenant_asr_id',
-  tts_id: 'tenant_tts_id',
   img2txt_id: 'tenant_img2txt_id',
   rerank_id: 'tenant_rerank_id',
 };

@@ -132,14 +132,14 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
             yield (
                 "data:"
                 + json.dumps(
-                    {"code": 0, "message": "", "data": {"answer": conv["message"][0]["content"], "reference": {}, "audio_binary": None, "id": None, "session_id": session_id}}, ensure_ascii=False
+                    {"code": 0, "message": "", "data": {"answer": conv["message"][0]["content"], "reference": {}, "id": None, "session_id": session_id}}, ensure_ascii=False
                 )
                 + "\n\n"
             )
             yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
             return
         else:
-            answer = {"answer": conv["message"][0]["content"], "reference": {}, "audio_binary": None, "id": None, "session_id": session_id}
+            answer = {"answer": conv["message"][0]["content"], "reference": {}, "id": None, "session_id": session_id}
             yield answer
             return
 

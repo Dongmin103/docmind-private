@@ -128,6 +128,8 @@ class TaskHandler:
     async def handle(self) -> None:
         """Handle a document processing task."""
         ctx = self._task_context
+        from common.parser_config_utils import validate_task_parser_identity
+        validate_task_parser_identity(ctx)
         task_type = self._validate_task_type(ctx.task_type)
         task_id = ctx.id
 

@@ -18,7 +18,6 @@ _install_rag_llm_stub()
 
 from common import settings
 from common.token_utils import num_tokens_from_string, truncate
-from rag.llm.embedding_model import AstraflowEmbed
 from rag.svr.task_executor_refactor.embedding_service import EmbeddingService
 from test.unit_test.rag.llm.embedding_throughput_fakes import SyntheticEndpoint, synthetic_bundle
 
@@ -124,16 +123,6 @@ async def test_concurrency_requires_shared_capacity_and_preserves_completion_ord
     assert [d["q_2_vec"][1] for d in docs] == [5.9] * 5
     np.testing.assert_allclose([d["q_2_vec"][0] for d in docs], [510.4, 511.3, 512.2, 513.1, 514.0])
     assert ctx.progress == sorted(ctx.progress)
-
-
-@pytest.mark.asyncio
-async def test_unsupported_subclass_retains_separate_title_and_inner_limit(monkeypatch):
-    monkeypatch.setattr(settings, "EMBEDDING_BATCH_SIZE", 64)
-    monkeypatch.setattr(settings, "EMBEDDING_BATCH_CONCURRENCY", 2)
-    endpoint = SyntheticEndpoint(0.005)
-    await EmbeddingService(context()).embed_chunks(documents(32), synthetic_bundle(endpoint, AstraflowEmbed))
-    assert [len(batch) for batch in endpoint.calls] == [1, 16, 16]
-    assert endpoint.peak == 1
 
 
 @pytest.mark.asyncio

@@ -1044,8 +1044,6 @@ class ModelIdConfigStage(MigrationStage):
         "knowledgebase",
         "document",
         "dialog",
-        "memory",
-        "evaluation_runs",
     ]
     target_tables = source_tables
 
@@ -1054,23 +1052,18 @@ class ModelIdConfigStage(MigrationStage):
         "embd_id",
         "embedding_model",
         "rerank_id",
-        "asr_id",
         "img2txt_id",
-        "tts_id",
-        "ocr_id",
     }
     search_config_model_id_fields = {"chat_id"}
     scan_batch_size = 500
     string_columns = {
-        "tenant": ("llm_id", "embd_id", "asr_id", "img2txt_id", "rerank_id", "tts_id", "ocr_id"),
+        "tenant": ("llm_id", "embd_id", "img2txt_id", "rerank_id"),
         "knowledgebase": ("embd_id",),
         "dialog": ("llm_id", "rerank_id"),
-        "memory": ("embd_id", "llm_id"),
     }
     json_columns = {
         "knowledgebase": ("parser_config",),
         "document": ("parser_config",),
-        "evaluation_runs": ("config_snapshot",),
     }
 
     def normalize_model_id(self, value):
@@ -1558,13 +1551,9 @@ class ModelTypeMergeStage(MigrationStage):
     MODEL_TYPE_STR_TO_INT = {
         "chat": 1,  # 0b0000001
         "embedding": 2,  # 0b0000010
-        "asr": 4,  # 0b0000100
-        "speech2text": 4,  # 0b0000100 legacy alias
         "vision": 8,  # 0b0001000
         "image2text": 8,  # 0b0001000 legacy alias
         "rerank": 16,  # 0b0010000
-        "tts": 32,  # 0b0100000
-        "ocr": 64,  # 0b1000000
     }
 
     def current_timestamp(self) -> int:
@@ -1730,12 +1719,12 @@ class ModelTypeMergeStage(MigrationStage):
 
 
 class TenantModelIdMigrationStage(MigrationStage):
-    """Populate tenant_*_id columns in tenant, knowledgebase, dialog, memory with tenant_model.id values."""
+    """Populate tenant_*_id columns in tenant, knowledgebase, dialog with tenant_model.id values."""
 
     name = "tenant_model_id_migration"
     description = "Populate tenant_*_id columns with tenant_model.id, converting from IntegerField to CharField (VARCHAR(32))"
-    source_tables = ["tenant_model", "tenant_model_provider", "tenant_model_instance", "tenant", "knowledgebase", "dialog", "memory"]
-    target_tables = ["tenant", "knowledgebase", "dialog", "memory"]
+    source_tables = ["tenant_model", "tenant_model_provider", "tenant_model_instance", "tenant", "knowledgebase", "dialog"]
+    target_tables = ["tenant", "knowledgebase", "dialog"]
 
     # Maps table -> list of (tenant_*_id column, legacy *_id column, model_type for lookup)
     # The legacy column holds the model_name (e.g. "gpt-4o@default@OpenAI"), we use it to find tenant_model.id
@@ -1743,11 +1732,8 @@ class TenantModelIdMigrationStage(MigrationStage):
         "tenant": [
             ("tenant_llm_id", "llm_id", "chat"),
             ("tenant_embd_id", "embd_id", "embedding"),
-            ("tenant_asr_id", "asr_id", "speech2text"),
             ("tenant_img2txt_id", "img2txt_id", "image2text"),
             ("tenant_rerank_id", "rerank_id", "rerank"),
-            ("tenant_tts_id", "tts_id", "tts"),
-            ("tenant_ocr_id", "ocr_id", "ocr"),
         ],
         "knowledgebase": [
             ("tenant_embd_id", "embd_id", "embedding"),
@@ -1756,23 +1742,15 @@ class TenantModelIdMigrationStage(MigrationStage):
             ("tenant_llm_id", "llm_id", "chat"),
             ("tenant_rerank_id", "rerank_id", "rerank"),
         ],
-        "memory": [
-            ("tenant_embd_id", "embd_id", "embedding"),
-            ("tenant_llm_id", "llm_id", "chat"),
-        ],
     }
 
     # model_type string -> binary integer mapping
     MODEL_TYPE_TO_INT = {
         "chat": 1,
         "embedding": 2,
-        "asr": 4,
-        "speech2text": 4,
         "vision": 8,
         "image2text": 8,
         "rerank": 16,
-        "tts": 32,
-        "ocr": 64,
     }
 
     scan_batch_size = 500
@@ -1868,7 +1846,7 @@ class TenantModelIdMigrationStage(MigrationStage):
 
                 # Also need tenant_id for model lookup
                 # For tenant table, the PK is the tenant_id
-                # For knowledgebase, dialog, memory we also need tenant_id
+                # For knowledgebase, dialog we also need tenant_id
                 if table_name == "tenant":
                     cursor = self.db.execute_sql(
                         f"SELECT id, `{legacy_col}` FROM `{table_name}` WHERE (`{tenant_id_col}` IS NULL OR `{tenant_id_col}` = '' OR LENGTH(`{tenant_id_col}`) <> 32) AND `{legacy_col}` IS NOT NULL AND `{legacy_col}` != ''"

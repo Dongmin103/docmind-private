@@ -33,7 +33,8 @@ from common import settings
 from common.constants import MAXIMUM_PAGE_NUMBER, MAXIMUM_TASK_PAGE_NUMBER, StatusEnum, TaskStatus
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, get_format_time
-from deepdoc.parser import PdfParser
+from common.pdf_utils import total_page_number
+from common.parser_config_utils import validate_parser_selection
 from deepdoc.parser.excel_parser import RAGFlowExcelParser
 from rag.nlp import search
 from rag.utils.redis_conn import REDIS_CONN
@@ -665,6 +666,8 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
             "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
 
+    validate_parser_selection(doc.get("parser_id"), doc.get("parser_config"))
+
     parse_task_array = []
     from rag.parser_platform.config import ParserPlatformConfig
     from rag.parser_platform.dispatch import document_source_format
@@ -678,26 +681,14 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
 
     if doc["type"] == FileType.PDF.value:
         file_bin = settings.STORAGE_IMPL.get(bucket, name)
-        pages = PdfParser.total_page_number(doc["name"], file_bin)
+        pages = total_page_number(doc["name"], file_bin)
         if pages is None:
             pages = 0
         page_size = doc["parser_config"].get("task_page_size") or 12
         if doc["parser_id"] == "paper":
             page_size = doc["parser_config"].get("task_page_size") or 22
 
-        # Splitting MinerU parsing into page-based tasks would repeatedly upload the entire PDF to the MinerU API server, increasing network bandwidth usage without improving parsing speed. The MinerU API server would also store duplicate copies of these files, wasting disk space.
-        is_mineru = False
-        layout_recognizer = doc["parser_config"].get("layout_recognize", "")
-        if isinstance(layout_recognizer, str) and len(layout_recognizer) == 32:
-            try:
-                layout_recognizer = get_composite_model_name_by_id(layout_recognizer)
-                if layout_recognizer.lower().endswith("@mineru"):
-                    is_mineru = True
-            except LookupError:
-                pass
-        if is_mineru:
-            logging.info("Document %s selected MinerU unsplit-task mode with page size %s", doc["id"], MAXIMUM_TASK_PAGE_NUMBER)
-        if doc["parser_id"] in ["one"] or doc["parser_config"].get("toc_extraction", False) or is_mineru:
+        if doc["parser_id"] == "one" or doc["parser_config"].get("toc_extraction", False):
             page_size = MAXIMUM_TASK_PAGE_NUMBER
         page_ranges = doc["parser_config"].get("pages") or [(1, MAXIMUM_PAGE_NUMBER)]
         for s, e in page_ranges:

@@ -13,13 +13,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import os
 import json
 import logging
-from peewee import IntegrityError
 from langfuse import Langfuse
 from common import settings
-from common.constants import MINERU_DEFAULT_CONFIG, MINERU_ENV_KEYS, OPENDATALOADER_DEFAULT_CONFIG, OPENDATALOADER_ENV_KEYS, PADDLEOCR_DEFAULT_CONFIG, PADDLEOCR_ENV_KEYS, LLMType
+from common.constants import LLMType
 from api.db.db_models import DB, LLMFactories, TenantLLM
 from api.db.services.common_service import CommonService
 from api.db.services.langfuse_service import TenantLangfuseService
@@ -83,14 +81,8 @@ class TenantLLMService(CommonService):
             objs = cls.query(**query_kwargs, llm_factory=fid)
 
         if (not objs) and fid:
-            if fid == "LocalAI":
-                mdlnm += "___LocalAI"
-            elif fid == "HuggingFace":
-                mdlnm += "___HuggingFace"
-            elif fid == "OpenAI-API-Compatible":
+            if fid == "OpenAI-API-Compatible":
                 mdlnm += "___OpenAI-API"
-            elif fid == "VLLM":
-                mdlnm += "___VLLM"
             query_kwargs["llm_name"] = mdlnm
             objs = cls.query(**query_kwargs, llm_factory=fid)
         if not objs:
@@ -135,20 +127,12 @@ class TenantLLMService(CommonService):
 
         if llm_type == LLMType.EMBEDDING.value:
             mdlnm = tenant.embd_id if not llm_name else llm_name
-        elif llm_type == LLMType.ASR.value:
-            mdlnm = tenant.asr_id if not llm_name else llm_name
         elif llm_type == LLMType.VISION.value:
             mdlnm = tenant.img2txt_id if not llm_name else llm_name
         elif llm_type == LLMType.CHAT.value:
             mdlnm = tenant.llm_id if not llm_name else llm_name
         elif llm_type == LLMType.RERANK:
             mdlnm = tenant.rerank_id if not llm_name else llm_name
-        elif llm_type == LLMType.TTS:
-            mdlnm = tenant.tts_id if not llm_name else llm_name
-        elif llm_type == LLMType.OCR:
-            if not llm_name:
-                raise LookupError("OCR model name is required")
-            mdlnm = llm_name
         else:
             assert False, "LLM type error"
 
@@ -164,9 +148,6 @@ class TenantLLMService(CommonService):
                 model_config["api_key_payload"] = api_key_payload
             if is_tools is not None:
                 model_config["is_tools"] = is_tools
-        elif llm_type == LLMType.EMBEDDING and fid == "Builtin" and "tei-" in os.getenv("COMPOSE_PROFILES", "") and mdlnm == os.getenv("TEI_MODEL", ""):
-            embedding_cfg = settings.EMBEDDING_CFG
-            model_config = {"llm_factory": "Builtin", "api_key": embedding_cfg["api_key"], "llm_name": mdlnm, "api_base": embedding_cfg["base_url"]}
         else:
             raise LookupError(f"Model({mdlnm}@{fid}) not authorized")
 
@@ -182,8 +163,9 @@ class TenantLLMService(CommonService):
     def model_instance(cls, model_config: dict, lang="Chinese", **kwargs):
         if not model_config:
             raise LookupError("Model config is required")
-        from rag.llm import ChatModel, CvModel, EmbeddingModel, OcrModel, RerankModel, Seq2txtModel, TTSModel
+        from rag.llm import ChatModel, CvModel, EmbeddingModel, RerankModel, validate_model_selection
 
+        validate_model_selection(model_config["llm_factory"], model_config["model_type"])
         kwargs.update({"provider": model_config["llm_factory"]})
         api_key = model_config.get("api_key_payload", model_config["api_key"])
         if model_config["model_type"] == LLMType.EMBEDDING.value:
@@ -210,31 +192,6 @@ class TenantLLMService(CommonService):
                 return None
             return ChatModel[model_config["llm_factory"]](api_key, model_config["llm_name"], base_url=model_config["api_base"], **kwargs)
 
-        elif model_config["model_type"] == LLMType.ASR.value:
-            if model_config["llm_factory"] not in Seq2txtModel:
-                logging.error("Factory not in asr model. Supported factories: %s", list(Seq2txtModel.keys()))
-                return None
-            return Seq2txtModel[model_config["llm_factory"]](key=api_key, model_name=model_config["llm_name"], lang=lang, base_url=model_config["api_base"])
-        elif model_config["model_type"] == LLMType.TTS.value:
-            if model_config["llm_factory"] not in TTSModel:
-                logging.error("Factory not in tts model. Supported factories: %s", list(TTSModel.keys()))
-                return None
-            return TTSModel[model_config["llm_factory"]](
-                api_key,
-                model_config["llm_name"],
-                base_url=model_config["api_base"],
-            )
-
-        elif model_config["model_type"] == LLMType.OCR.value:
-            if model_config["llm_factory"] not in OcrModel:
-                logging.error("Factory not in ocr model. Supported factories: %s", list(OcrModel.keys()))
-                return None
-            return OcrModel[model_config["llm_factory"]](
-                key=api_key,
-                model_name=model_config["llm_name"],
-                base_url=model_config.get("api_base", ""),
-                **kwargs,
-            )
 
         return None
 
@@ -248,12 +205,9 @@ class TenantLLMService(CommonService):
 
         llm_map = {
             LLMType.EMBEDDING.value: tenant.embd_id if not llm_name else llm_name,
-            LLMType.ASR.value: tenant.asr_id,
             LLMType.VISION.value: tenant.img2txt_id,
             LLMType.CHAT.value: tenant.llm_id if not llm_name else llm_name,
             LLMType.RERANK.value: tenant.rerank_id if not llm_name else llm_name,
-            LLMType.TTS.value: tenant.tts_id if not llm_name else llm_name,
-            LLMType.OCR.value: llm_name,
         }
 
         mdlnm = llm_map.get(llm_type)
@@ -291,190 +245,6 @@ class TenantLLMService(CommonService):
         objs = cls.model.select().where((cls.model.llm_factory == "OpenAI"), ~(cls.model.llm_name == "text-embedding-3-small"), ~(cls.model.llm_name == "text-embedding-3-large")).dicts()
         return list(objs)
 
-    @classmethod
-    def _collect_mineru_env_config(cls) -> dict | None:
-        cfg = MINERU_DEFAULT_CONFIG
-        found = False
-        for key in MINERU_ENV_KEYS:
-            val = os.environ.get(key)
-            if val:
-                found = True
-                cfg[key] = val
-        return cfg if found else None
-
-    @classmethod
-    @DB.connection_context()
-    def ensure_mineru_from_env(cls, tenant_id: str) -> str | None:
-        """
-        Ensure a MinerU OCR model exists for the tenant if env variables are present.
-        Return the existing or newly created llm_name, or None if env not set.
-        """
-        cfg = cls._collect_mineru_env_config()
-        if not cfg:
-            return None
-
-        saved_mineru_models = cls.query(tenant_id=tenant_id, llm_factory="MinerU", model_type=LLMType.OCR.value)
-
-        def _parse_api_key(raw: str) -> dict:
-            try:
-                return json.loads(raw or "{}")
-            except Exception:
-                return {}
-
-        for item in saved_mineru_models:
-            api_cfg = _parse_api_key(item.api_key)
-            normalized = {k: api_cfg.get(k, MINERU_DEFAULT_CONFIG.get(k)) for k in MINERU_ENV_KEYS}
-            if normalized == cfg:
-                return item.llm_name
-
-        used_names = {item.llm_name for item in saved_mineru_models}
-        idx = 1
-        base_name = "mineru-from-env"
-        while True:
-            candidate = f"{base_name}-{idx}"
-            if candidate in used_names:
-                idx += 1
-                continue
-
-            try:
-                cls.save(
-                    tenant_id=tenant_id,
-                    llm_factory="MinerU",
-                    llm_name=candidate,
-                    model_type=LLMType.OCR.value,
-                    api_key=json.dumps(cfg),
-                    api_base="",
-                    max_tokens=0,
-                )
-                return candidate
-            except IntegrityError:
-                logging.warning("MinerU env model %s already exists for tenant %s, retry with next name", candidate, tenant_id)
-                used_names.add(candidate)
-                idx += 1
-                continue
-
-    @classmethod
-    def _collect_paddleocr_env_config(cls) -> dict | None:
-        cfg = PADDLEOCR_DEFAULT_CONFIG
-        found = False
-        for key in PADDLEOCR_ENV_KEYS:
-            val = os.environ.get(key)
-            if val:
-                found = True
-                cfg[key] = val
-        return cfg if found else None
-
-    @classmethod
-    @DB.connection_context()
-    def ensure_paddleocr_from_env(cls, tenant_id: str) -> str | None:
-        """
-        Ensure a PaddleOCR model exists for the tenant if env variables are present.
-        Return the existing or newly created llm_name, or None if env not set.
-        """
-        cfg = cls._collect_paddleocr_env_config()
-        if not cfg:
-            return None
-
-        saved_paddleocr_models = cls.query(tenant_id=tenant_id, llm_factory="PaddleOCR", model_type=LLMType.OCR.value)
-
-        def _parse_api_key(raw: str) -> dict:
-            try:
-                return json.loads(raw or "{}")
-            except Exception:
-                return {}
-
-        for item in saved_paddleocr_models:
-            api_cfg = _parse_api_key(item.api_key)
-            normalized = {k: api_cfg.get(k, PADDLEOCR_DEFAULT_CONFIG.get(k)) for k in PADDLEOCR_ENV_KEYS}
-            if normalized == cfg:
-                return item.llm_name
-
-        used_names = {item.llm_name for item in saved_paddleocr_models}
-        idx = 1
-        base_name = "paddleocr-from-env"
-        while True:
-            candidate = f"{base_name}-{idx}"
-            if candidate in used_names:
-                idx += 1
-                continue
-
-            try:
-                cls.save(
-                    tenant_id=tenant_id,
-                    llm_factory="PaddleOCR",
-                    llm_name=candidate,
-                    model_type=LLMType.OCR.value,
-                    api_key=json.dumps(cfg),
-                    api_base="",
-                    max_tokens=0,
-                )
-                return candidate
-            except IntegrityError:
-                logging.warning("PaddleOCR env model %s already exists for tenant %s, retry with next name", candidate, tenant_id)
-                used_names.add(candidate)
-                idx += 1
-                continue
-
-    @classmethod
-    def _collect_opendataloader_env_config(cls) -> dict | None:
-        cfg = dict(OPENDATALOADER_DEFAULT_CONFIG)
-        found = False
-        for key in OPENDATALOADER_ENV_KEYS:
-            val = os.environ.get(key)
-            if val:
-                found = True
-                cfg[key] = val
-        return cfg if found else None
-
-    @classmethod
-    @DB.connection_context()
-    def ensure_opendataloader_from_env(cls, tenant_id: str) -> str | None:
-        """
-        Ensure an OpenDataLoader OCR model exists for the tenant if env variables are present.
-        Return the existing or newly created llm_name, or None if env not set.
-        """
-        cfg = cls._collect_opendataloader_env_config()
-        if not cfg:
-            return None
-
-        saved_models = cls.query(tenant_id=tenant_id, llm_factory="OpenDataLoader", model_type=LLMType.OCR.value)
-
-        def _parse_api_key(raw: str) -> dict:
-            try:
-                return json.loads(raw or "{}")
-            except Exception:
-                return {}
-
-        for item in saved_models:
-            api_cfg = _parse_api_key(item.api_key)
-            normalized = {k: api_cfg.get(k, OPENDATALOADER_DEFAULT_CONFIG.get(k)) for k in OPENDATALOADER_ENV_KEYS}
-            if normalized == cfg:
-                return item.llm_name
-
-        used_names = {item.llm_name for item in saved_models}
-        idx = 1
-        base_name = "opendataloader-from-env"
-        while True:
-            candidate = f"{base_name}-{idx}"
-            if candidate in used_names:
-                idx += 1
-                continue
-            try:
-                cls.save(
-                    tenant_id=tenant_id,
-                    llm_factory="OpenDataLoader",
-                    llm_name=candidate,
-                    model_type=LLMType.OCR.value,
-                    api_key=json.dumps(cfg),
-                    api_base="",
-                    max_tokens=0,
-                )
-                return candidate
-            except IntegrityError:
-                logging.warning("OpenDataLoader env model %s already exists for tenant %s, retry with next name", candidate, tenant_id)
-                used_names.add(candidate)
-                idx += 1
-                continue
 
     @classmethod
     @DB.connection_context()

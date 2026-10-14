@@ -103,13 +103,6 @@ cp -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
 # -----------------------------------------------------------------------------
 
 
-function ensure_docling() {
-    [[ "${USE_DOCLING}" == "true" ]] || { echo "[docling] disabled by USE_DOCLING"; return 0; }
-    DOCLING_PIN="${DOCLING_VERSION:-==2.71.0}"
-    "$PY" -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('docling') else 1)" \
-      || uv pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple --no-cache-dir "docling${DOCLING_PIN}"
-}
-
 function ensure_db_init() {
     echo "Initializing database tables..."
     "$PY" -c "from api.db.db_models import init_database_tables as init_web_db; init_web_db()"
@@ -140,7 +133,6 @@ if [[ "${INIT_MODEL_PROVIDER_TABLES}" -eq 1 ]]; then
 fi
 
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
-    ensure_docling
     ensure_db_init
 
     echo "Starting nginx..."

@@ -43,8 +43,6 @@ export default {
   listAllAddedModels: `${restAPIv1}/models`,
   defaultModel: `${restAPIv1}/models/default`,
   // AIMLAPI agent-authorization (OAuth device grant) — obtain a key from the provider dialog
-  aimlapiAuthorizeStart: `${restAPIv1}/llm/aimlapi/authorize/start`,
-  aimlapiAuthorizePoll: `${restAPIv1}/llm/aimlapi/authorize/poll`,
   listProviders: `${restAPIv1}/providers`,
   addProvider: `${restAPIv1}/providers`,
   addProviderInstance: ({ llm_factory }: { llm_factory: string }) =>
@@ -124,8 +122,6 @@ export default {
   }) =>
     `${restAPIv1}/providers/${provider_name}/instances/${instance_name}/models`,
 
-  chatsTranscriptions: `${restAPIv1}/chat/audio/transcription`,
-
   // chunk
   chunkList: (datasetId: string, documentId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks`,
@@ -155,7 +151,6 @@ export default {
   thumbup: (chatId: string, sessionId: string, msgId: string) =>
     `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/messages/${msgId}/feedback`,
   completionUrl: `${restAPIv1}/chat/completions`,
-  chatsTts: `${restAPIv1}/chat/audio/speech`,
   chatsRelatedQuestions: `${restAPIv1}/chat/recommendation`,
 
   // file manager

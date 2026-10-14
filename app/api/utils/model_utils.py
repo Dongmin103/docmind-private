@@ -23,7 +23,6 @@ def get_model_type_human(model_type: int) -> List[str]:
 
 
 _LEGACY_MODEL_TYPE_ALIASES = {
-    "speech2text": "asr",
     "image2text": "vision",
 }
 

@@ -43,8 +43,6 @@ from common.text_utils import normalize_arabic_digits
 from rag.app.tag import label_question
 from rag.prompts.generator import chunks_format, citation_prompt, cross_languages, full_question, kb_prompt, keyword_extraction, message_fit_in, PROMPT_JINJA_ENV, ASK_SUMMARY
 from common.token_utils import num_tokens_from_string
-from rag.utils.web_search_conn import create_web_search_provider, has_web_search_provider
-from rag.utils.tts_cache import synthesize_with_cache
 from common import settings
 
 
@@ -97,27 +95,6 @@ async def _hydrate_chunk_vectors(retriever, chunks, tenant_ids, kb_ids):
         cid = ck.get("chunk_id")
         if cid and cid in vectors:
             ck["vector"] = vectors[cid]
-
-
-def _normalize_internet_flag(value):
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)) and value in (0, 1):
-        return bool(value)
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off", ""}:
-            return False
-    return None
-
-
-def _should_use_web_search(prompt_config, internet=None):
-    if not has_web_search_provider(prompt_config):
-        return False
-    normalized = _normalize_internet_flag(internet)
-    return normalized is True
 
 
 def _resolve_reference_metadata(config, request_payload=None):
@@ -310,10 +287,8 @@ async def async_chat_solo(dialog, messages, stream=True, session_id=None):
     text_attachments_content, image_attachments, image_files = get_files_content(messages[-1], model_config["model_type"])
 
     prompt_config = dialog.prompt_config
-    tts_mdl = None
-    if prompt_config.get("tts"):
-        default_tts_model = get_tenant_default_model_by_type(dialog.tenant_id, LLMType.TTS)
-        tts_mdl = LLMBundle(dialog.tenant_id, default_tts_model, trace_context=chat_mdl.trace_context, langfuse_session_id=session_id)
+
+
     msg = [{"role": m["role"], "content": re.sub(r"##\d+\$\$", "", m["content"])} for m in messages if m["role"] != "system"]
     if text_attachments_content and msg:
         msg[-1]["content"] += text_attachments_content
@@ -329,9 +304,9 @@ async def async_chat_solo(dialog, messages, stream=True, session_id=None):
         async for kind, value, state in _stream_with_think_delta(stream_iter):
             if kind == "marker":
                 flags = {"start_to_think": True} if value == "<think>" else {"end_to_think": True}
-                yield {"answer": "", "reference": {}, "audio_binary": None, "prompt": "", "created_at": time.time(), "final": False, **flags}
+                yield {"answer": "", "reference": {}, "prompt": "", "created_at": time.time(), "final": False, **flags}
                 continue
-            yield {"answer": value, "reference": {}, "audio_binary": tts(tts_mdl, value), "prompt": "", "created_at": time.time(), "final": False}
+            yield {"answer": value, "reference": {}, "prompt": "", "created_at": time.time(), "final": False}
     else:
         if model_config["model_type"] == "chat":
             answer = await chat_mdl.async_chat(system_prompt, msg, dialog.llm_setting)
@@ -339,11 +314,11 @@ async def async_chat_solo(dialog, messages, stream=True, session_id=None):
             answer = await chat_mdl.async_chat(system_prompt, msg, dialog.llm_setting, images=image_files)
         user_content = msg[-1].get("content", "[content not available]")
         logging.debug("User: {}|Assistant: {}".format(user_content, answer))
-        yield {"answer": answer, "reference": {}, "audio_binary": tts(tts_mdl, answer), "prompt": "", "created_at": time.time()}
+        yield {"answer": answer, "reference": {}, "prompt": "", "created_at": time.time()}
 
 
 def get_models(dialog, trace_context=None, langfuse_session_id=None):
-    embd_mdl, chat_mdl, rerank_mdl, tts_mdl = None, None, None, None
+    embd_mdl, chat_mdl, rerank_mdl = None, None, None
     kbs = KnowledgebaseService.get_by_ids(dialog.kb_ids)
     err = validate_dataset_embedding_models(kbs)
     if err:
@@ -379,10 +354,8 @@ def get_models(dialog, trace_context=None, langfuse_session_id=None):
             rerank_model_config = resolve_model_config(dialog.tenant_id, LLMType.RERANK, dialog.rerank_id)
         rerank_mdl = LLMBundle(dialog.tenant_id, rerank_model_config, trace_context=trace_context, langfuse_session_id=langfuse_session_id)
 
-    if dialog.prompt_config.get("tts"):
-        default_tts_model_config = get_tenant_default_model_by_type(dialog.tenant_id, LLMType.TTS)
-        tts_mdl = LLMBundle(dialog.tenant_id, default_tts_model_config, trace_context=trace_context, langfuse_session_id=langfuse_session_id)
-    return kbs, embd_mdl, rerank_mdl, chat_mdl, tts_mdl
+
+    return kbs, embd_mdl, rerank_mdl, chat_mdl
 
 
 def get_files_content(last_message, model_type):
@@ -458,7 +431,6 @@ def convert_last_user_msg_to_multimodal(msg: list[dict], image_data_uris: list[s
     if not msg or not image_data_uris:
         return
 
-    factory_norm = (factory or "").strip().lower()
 
     for idx in range(len(msg) - 1, -1, -1):
         if msg[idx].get("role") != "user":
@@ -466,31 +438,6 @@ def convert_last_user_msg_to_multimodal(msg: list[dict], image_data_uris: list[s
 
         original_content = msg[idx].get("content", "")
         text = _normalize_text_from_content(original_content)
-
-        if factory_norm == "gemini":
-            parts = []
-            if text:
-                parts.append({"text": text})
-            for image in image_data_uris:
-                mime, b64 = _parse_data_uri_or_b64(str(image), default_mime="image/png")
-                parts.append({"inline_data": {"mime_type": mime, "data": b64}})
-            msg[idx]["content"] = parts
-            return
-
-        if factory_norm == "anthropic":
-            blocks = []
-            if text:
-                blocks.append({"type": "text", "text": text})
-            for image in image_data_uris:
-                mime, b64 = _parse_data_uri_or_b64(str(image), default_mime="image/png")
-                blocks.append(
-                    {
-                        "type": "image",
-                        "source": {"type": "base64", "media_type": mime, "data": b64},
-                    }
-                )
-            msg[idx]["content"] = blocks
-            return
 
         multimodal_content = []
         if isinstance(original_content, list):
@@ -577,9 +524,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     logging.debug("Begin async_chat")
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
     session_id = kwargs.get("session_id")
-    use_web_search = _should_use_web_search(dialog.prompt_config, kwargs.get("internet"))
-    logging.debug("web_search kb=%s configured=%s internet=%r enabled=%s", bool(dialog.kb_ids), has_web_search_provider(dialog.prompt_config), kwargs.get("internet"), use_web_search)
-    if not dialog.kb_ids and not use_web_search:
+    if not dialog.kb_ids:
         async for ans in async_chat_solo(dialog, messages, stream, session_id=session_id):
             yield ans
         return
@@ -629,10 +574,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             pass
 
     check_langfuse_tracer_ts = timer()
-    kbs, embd_mdl, rerank_mdl, chat_mdl, tts_mdl = get_models(dialog, trace_context=trace_context, langfuse_session_id=session_id)
-    toolcall_session, tools = kwargs.get("toolcall_session"), kwargs.get("tools")
-    if toolcall_session and tools:
-        chat_mdl.bind_tools(toolcall_session, tools)
+    kbs, embd_mdl, rerank_mdl, chat_mdl = get_models(dialog, trace_context=trace_context, langfuse_session_id=session_id)
     bind_models_ts = timer()
 
     retriever = settings.retriever
@@ -720,11 +662,6 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 if cks:
                     kbinfos["chunks"] = cks
             kbinfos["chunks"] = retriever.retrieval_by_children(kbinfos["chunks"], tenant_ids)
-        if use_web_search:
-            web_search = create_web_search_provider(prompt_config)
-            web_res = web_search.retrieve_chunks(" ".join(questions))
-            kbinfos["chunks"].extend(web_res["chunks"])
-            kbinfos["doc_aggs"].extend(web_res["doc_aggs"])
     if include_reference_metadata:
         logging.debug(
             "reference_metadata enrichment enabled for async_chat: chunk_count=%d metadata_fields=%s",
@@ -739,15 +676,14 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     retrieval_ts = timer()
     if not knowledges and prompt_config.get("empty_response"):
         empty_res = prompt_config["empty_response"]
-        logging.debug("async_chat empty_response path: empty_res=%r tts_mdl=%r", empty_res, tts_mdl)
         # HTML-escape for frontend display so DOMPurify does not strip
         # unknown tags (e.g. <abc> → &lt;abc&gt;), which would otherwise
         # leave the content blank and stall the UI on "Searching…".
         # The raw value is still used for TTS (which has its own tag-
-        # stripping in clean_tts_text).
+        # citation normalization).
         escaped_answer = html.escape(empty_res)
-        yield {"answer": escaped_answer, "reference": {}, "prompt": "", "audio_binary": None, "final": False}
-        yield {"answer": escaped_answer, "reference": kbinfos, "prompt": "\n\n### Query:\n%s" % " ".join(questions), "audio_binary": tts(tts_mdl, empty_res), "final": True}
+        yield {"answer": escaped_answer, "reference": {}, "prompt": "", "final": False}
+        yield {"answer": escaped_answer, "reference": kbinfos, "prompt": "\n\n### Query:\n%s" % " ".join(questions), "final": True}
         return
 
     # Only overwrite kwargs["knowledge"] when retrieval produced something;
@@ -898,14 +834,14 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             last_state = state
             if kind == "marker":
                 flags = {"start_to_think": True} if value == "<think>" else {"end_to_think": True}
-                yield {"answer": "", "reference": {}, "audio_binary": None, "final": False, **flags}
+                yield {"answer": "", "reference": {}, "final": False, **flags}
                 continue
-            yield {"answer": value, "reference": {}, "audio_binary": tts(tts_mdl, value), "final": False}
+            yield {"answer": value, "reference": {}, "final": False}
         full_answer = last_state.full_text if last_state else ""
         if full_answer:
             final = await decorate_answer(_extract_visible_answer(thought + full_answer))
             final["final"] = True
-            final["audio_binary"] = None
+
             final["answer"] = ""
             yield final
     else:
@@ -916,50 +852,10 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         user_content = msg[-1].get("content", "[content not available]")
         logging.debug("User: {}|Assistant: {}".format(user_content, answer))
         res = await decorate_answer(answer)
-        res["audio_binary"] = tts(tts_mdl, answer)
+
         yield res
 
     return
-
-
-
-
-def clean_tts_text(text: str) -> str:
-    if not text:
-        return ""
-
-    logging.debug("clean_tts_text BEFORE: %r", text)
-
-    text = text.encode("utf-8", "ignore").decode("utf-8", "ignore")
-
-    text = re.sub(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]", "", text)
-
-    emoji_pattern = re.compile(
-        "[\U0001f600-\U0001f64f\U0001f300-\U0001f5ff\U0001f680-\U0001f6ff\U0001f1e0-\U0001f1ff\U00002700-\U000027bf\U0001f900-\U0001f9ff\U0001fa70-\U0001faff\U0001fad0-\U0001faff]+", flags=re.UNICODE
-    )
-    text = emoji_pattern.sub("", text)
-
-    # Strip XML/SSML/HTML-like tags so the TTS engine does not hang on
-    # unclosed or unknown markup (e.g. <abc> in empty_response).
-    text = re.sub(r"<[^>]*>", "", text)
-
-    text = re.sub(r"\s+", " ", text).strip()
-
-    MAX_LEN = 500
-    if len(text) > MAX_LEN:
-        text = text[:MAX_LEN]
-
-    logging.debug("clean_tts_text AFTER: %r", text)
-    return text
-
-
-def tts(tts_mdl, text):
-    if not tts_mdl or not text:
-        return None
-    text = clean_tts_text(text)
-    if not text:
-        return None
-    return synthesize_with_cache(tts_mdl, text)
 
 
 class _ThinkStreamState:

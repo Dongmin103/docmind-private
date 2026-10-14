@@ -32,7 +32,6 @@ const {
   removeSessions,
   deleteMessage,
   thumbup,
-  chatsTts,
   chatsRelatedQuestions,
   documentInfoUpload,
 } = api;
@@ -93,10 +92,6 @@ const methods = {
   thumbup: {
     url: thumbup,
     method: 'put',
-  },
-  chatsTts: {
-    url: chatsTts,
-    method: 'post',
   },
   chatsRelatedQuestions: {
     url: chatsRelatedQuestions,

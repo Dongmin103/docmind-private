@@ -14,25 +14,10 @@
 #  limitations under the License.
 #
 import logging
-import os
 import enum
 import json
 from common import settings
-from common.constants import (
-    ActiveStatusEnum,
-    LLMType,
-    ModelTypeBinary,
-    MINERU_DEFAULT_CONFIG,
-    MINERU_ENV_KEYS,
-    MISTRAL_OCR_DEFAULT_CONFIG,
-    MISTRAL_OCR_ENV_KEYS,
-    OPENDATALOADER_DEFAULT_CONFIG,
-    OPENDATALOADER_ENV_KEYS,
-    PADDLEOCR_DEFAULT_CONFIG,
-    PADDLEOCR_ENV_KEYS,
-    SOMARK_DEFAULT_CONFIG,
-    SOMARK_ENV_KEYS,
-)
+from common.constants import ActiveStatusEnum, LLMType
 from api.db.services.tenant_llm_service import TenantService
 from api.db.services.tenant_model_provider_service import TenantModelProviderService
 from api.db.services.tenant_model_instance_service import TenantModelInstanceService
@@ -96,72 +81,6 @@ def get_first_provider_model_name(tenant_id: str, provider_name: str, model_type
     return None
 
 
-def _collect_env_config(env_keys: list[str], default_config: dict) -> dict | None:
-    config = dict(default_config)
-    found = False
-    for key in env_keys:
-        value = os.environ.get(key)
-        if value:
-            found = True
-            config[key] = value
-    return config if found else None
-
-
-def _ensure_ocr_provider_from_env(tenant_id: str, provider_name: str, model_name: str, config: dict | None) -> str | None:
-    if not config:
-        return None
-
-    provider_obj = TenantModelProviderService.get_by_tenant_id_and_provider_name(tenant_id, provider_name)
-    if not provider_obj:
-        TenantModelProviderService.insert(tenant_id=tenant_id, provider_name=provider_name)
-        provider_obj = TenantModelProviderService.get_by_tenant_id_and_provider_name(tenant_id, provider_name)
-
-    api_key = json.dumps(config)
-    instance_obj = TenantModelInstanceService.get_by_provider_id_and_api_key(provider_obj.id, api_key)
-    if not instance_obj:
-        instance_obj = TenantModelInstanceService.create_instance(
-            provider_id=provider_obj.id,
-            instance_name=model_name,
-            api_key=api_key,
-            extra="{}",
-        )
-
-    model_obj = TenantModelService.get_by_provider_id_and_instance_id_and_model_type_and_model_name(
-        provider_obj.id,
-        instance_obj.id,
-        LLMType.OCR.value,
-        model_name,
-    )
-    if not model_obj:
-        TenantModelService.insert(
-            model_name=model_name,
-            provider_id=provider_obj.id,
-            instance_id=instance_obj.id,
-            model_type=ModelTypeBinary.OCR.value,
-            extra=json.dumps({"max_tokens": 0}),
-        )
-
-    return f"{model_name}@{instance_obj.instance_name}@{provider_name}"
-
-
-def ensure_mineru_from_env(tenant_id: str) -> str | None:
-    return _ensure_ocr_provider_from_env(
-        tenant_id,
-        "MinerU",
-        "mineru-from-env",
-        _collect_env_config(MINERU_ENV_KEYS, MINERU_DEFAULT_CONFIG),
-    )
-
-
-def ensure_paddleocr_from_env(tenant_id: str) -> str | None:
-    return _ensure_ocr_provider_from_env(
-        tenant_id,
-        "PaddleOCR",
-        "paddleocr-from-env",
-        _collect_env_config(PADDLEOCR_ENV_KEYS, PADDLEOCR_DEFAULT_CONFIG),
-    )
-
-
 def get_tenant_default_model_by_type(tenant_id: str, model_type: str | enum.Enum):
     exist, tenant = TenantService.get_by_id(tenant_id)
     if not exist:
@@ -173,9 +92,6 @@ def get_tenant_default_model_by_type(tenant_id: str, model_type: str | enum.Enum
         case LLMType.EMBEDDING.value:
             model_id = tenant.tenant_embd_id
             model_name = tenant.embd_id
-        case LLMType.ASR.value:
-            model_id = tenant.tenant_asr_id
-            model_name = tenant.asr_id
         case LLMType.VISION.value:
             model_id = tenant.tenant_img2txt_id
             model_name = tenant.img2txt_id
@@ -185,11 +101,6 @@ def get_tenant_default_model_by_type(tenant_id: str, model_type: str | enum.Enum
         case LLMType.RERANK.value:
             model_id = tenant.tenant_rerank_id
             model_name = tenant.rerank_id
-        case LLMType.TTS.value:
-            model_id = tenant.tenant_tts_id
-            model_name = tenant.tts_id
-        case LLMType.OCR.value:
-            raise Exception("OCR model name is required")
         case _:
             raise Exception(f"Unknown model type {model_type}")
     if not model_name:
@@ -262,22 +173,6 @@ def resolve_model_config(tenant_id, model_type: str | enum.Enum, model_ref: str)
 def get_model_config_from_provider_instance(tenant_id, model_type: str | enum.Enum, model_name: str):
     pure_model_name, instance_name, provider_name = split_model_name(model_name)
     model_type_val = model_type if isinstance(model_type, str) else model_type.value
-    # Builtin embedding model
-    compose_profiles = os.getenv("COMPOSE_PROFILES", "")
-    is_tei_builtin_embedding = (
-        model_type_val == LLMType.EMBEDDING.value and "tei-" in compose_profiles and pure_model_name == os.getenv("TEI_MODEL", "") and (provider_name == "Builtin" or not provider_name)
-    )
-    if is_tei_builtin_embedding:
-        # configured local embedding model
-        embedding_cfg = settings.EMBEDDING_CFG
-        return {
-            "llm_factory": "Builtin",
-            "api_key": embedding_cfg["api_key"],
-            "llm_name": pure_model_name,
-            "api_base": embedding_cfg["base_url"],
-            "model_type": LLMType.EMBEDDING.value,
-        }
-
     provider_obj = TenantModelProviderService.get_by_tenant_id_and_provider_name(tenant_id, provider_name)
     if not provider_obj:
         raise LookupError(f"Provider {provider_name} not found for model {model_name}.")
@@ -378,14 +273,6 @@ def resolve_model_id(tenant_id: str, model_type: str | enum.Enum, model_name: st
     pure_model_name, instance_name, provider_name = split_model_name(model_name)
     model_type_val = model_type if isinstance(model_type, str) else model_type.value
 
-    # Builtin TEI embedding — no tenant_model row exists
-    compose_profiles = os.getenv("COMPOSE_PROFILES", "")
-    is_tei_builtin_embedding = (
-        model_type_val == LLMType.EMBEDDING.value and "tei-" in compose_profiles and pure_model_name == os.getenv("TEI_MODEL", "") and (provider_name == "Builtin" or not provider_name)
-    )
-    if is_tei_builtin_embedding:
-        return None
-
     if not provider_name:
         raise LookupError(f"Provider name is required to resolve model id for {model_name}.")
 
@@ -405,9 +292,7 @@ _MODEL_NAME_TO_ID_FIELD_MAP: dict[str, tuple[str, str]] = {
     "llm_id": (LLMType.CHAT, "tenant_llm_id"),
     "embd_id": (LLMType.EMBEDDING, "tenant_embd_id"),
     "rerank_id": (LLMType.RERANK, "tenant_rerank_id"),
-    "asr_id": (LLMType.ASR, "tenant_asr_id"),
     "img2txt_id": (LLMType.VISION, "tenant_img2txt_id"),
-    "tts_id": (LLMType.TTS, "tenant_tts_id"),
 }
 
 
@@ -513,24 +398,6 @@ def delete_instances_by_provider_ids(provider_ids: list[str]):
     return TenantModelInstanceService.delete_by_provider_ids(provider_ids)
 
 
-def ensure_opendataloader_from_env(tenant_id: str) -> str | None:
-    return _ensure_ocr_provider_from_env(
-        tenant_id,
-        "OpenDataLoader",
-        "opendataloader-from-env",
-        _collect_env_config(OPENDATALOADER_ENV_KEYS, OPENDATALOADER_DEFAULT_CONFIG),
-    )
-
-
-def ensure_somark_from_env(tenant_id: str) -> str | None:
-    return _ensure_ocr_provider_from_env(
-        tenant_id,
-        "SoMark",
-        "somark-from-env",
-        _collect_env_config(SOMARK_ENV_KEYS, SOMARK_DEFAULT_CONFIG),
-    )
-
-
 def get_composite_model_name_by_id(model_id: str) -> str:
     """Convert a tenant_model.id to the composite model name string
     ``model_name@instance_name@provider_name``.
@@ -581,12 +448,3 @@ def get_composite_model_name_by_ids(model_ids: list[str]) -> dict[str, str]:
         result[m.id] = f"{m.model_name}@{inst.instance_name}@{prov.provider_name}"
 
     return result
-
-
-def ensure_mistral_ocr_from_env(tenant_id: str) -> str | None:
-    return _ensure_ocr_provider_from_env(
-        tenant_id,
-        "Mistral OCR",
-        "mistral-ocr-latest",
-        _collect_env_config(MISTRAL_OCR_ENV_KEYS, MISTRAL_OCR_DEFAULT_CONFIG),
-    )

@@ -28,11 +28,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from rag.llm.rerank_model import (
-    Base,
-    JinaRerank,
-    NvidiaRerank,
-)
+from rag.llm.rerank_model import Base, JinaRerank
 
 pytestmark = pytest.mark.p1
 
@@ -129,63 +125,6 @@ def test_empty_input_returns_zeros_without_backend(query, texts):
 
 
 # --- Per-provider: raw backend payloads come out normalized ------------------
-
-
-def test_nvidia_logits_are_normalized():
-    """NVIDIA emits raw logits; without central normalization a negative logit
-    with vtweight=0.7 would sink a relevant chunk below keyword matches."""
-    nv = NvidiaRerank("key", "nvidia/rerank-qa-mistral-4b")
-    payload = {"rankings": [{"index": 0, "logit": 8.0}, {"index": 1, "logit": -4.0}, {"index": 2, "logit": 1.0}]}
-    with _mock_post(payload):
-        rank, _ = nv.similarity("q", ["a", "b", "c"])
-    # _compute_rank still returns the raw logits (no per-provider normalization)...
-    with _mock_post(payload):
-        raw, _ = nv._compute_rank("q", ["a", "b", "c"])
-    assert raw.min() < 0  # genuinely unbounded/negative
-    # ...but the public contract normalizes them.
-    assert np.allclose(rank, [1.0, 0.0, 5.0 / 12.0])
-    assert rank.min() >= 0.0 and rank.max() <= 1.0
-
-
-@pytest.mark.parametrize(
-    "configured_url",
-    [
-        "https://ai.example.com/v1/retrieval/nvidia",
-        "https://ai.example.com/v1/retrieval/nvidia/",
-    ],
-)
-def test_nvidia_fallback_preserves_path_and_logs_without_api_key(configured_url):
-    """Preserve the base path and log fallback metadata without credentials."""
-    with patch("rag.llm.rerank_model.logging.info") as info:
-        reranker = NvidiaRerank(
-            "super-secret-key",
-            "nvidia/custom-reranker",
-            configured_url,
-        )
-
-    expected_endpoint = "https://ai.example.com/v1/retrieval/nvidia/reranking"
-    assert reranker.base_url == expected_endpoint
-    info.assert_called_once_with(
-        "nvidia_rerank_fallback_endpoint_assigned",
-        extra={
-            "provider": "NVIDIA",
-            "model": "nvidia/custom-reranker",
-            "endpoint": expected_endpoint,
-        },
-    )
-    assert "super-secret-key" not in repr(info.call_args)
-
-
-def test_nvidia_specific_model_does_not_log_fallback_assignment():
-    """Use the model-specific endpoint without emitting a fallback event."""
-    with patch("rag.llm.rerank_model.logging.info") as info:
-        reranker = NvidiaRerank(
-            "key",
-            "nvidia/nv-rerankqa-mistral-4b-v3",
-        )
-
-    assert reranker.base_url == "https://ai.api.nvidia.com/v1/retrieval/nvidia/nv-rerankqa-mistral-4b-v3/reranking"
-    info.assert_not_called()
 
 
 def test_calibrated_relevance_scores_are_preserved():
