@@ -1,0 +1,132 @@
+{
+  "date_kst": "2026-10-15",
+  "deployment": {
+    "status": "verified",
+    "image": "docmind-ragflow:diet-dd967245-27ae58d8",
+    "image_id": "sha256:81c67e11c42146e8082296df9c61081c03286f792613670e16c1b7af0320c11b",
+    "source_commit": "dd9672459a994f975213012a682324dd31be4780",
+    "health": {
+      "db": "ok",
+      "doc_engine": "ok",
+      "redis": "ok",
+      "status": "ok",
+      "storage": "ok"
+    },
+    "auth_settings_preserved": true,
+    "configured_environment_and_resource_limits_preserved": true,
+    "runtime_source_hashes_verified": true,
+    "shared_session_folders_profile_models": true,
+    "admin_absent": true
+  },
+  "measurement": {
+    "status": "verified",
+    "documents_attempted": 244,
+    "completed": 223,
+    "errors": {
+      "PARSER_PDF_NO_SEARCHABLE_TEXT": 18,
+      "PARSER_SOURCE_TYPE_MISMATCH": 2,
+      "PARSER_HWP_INVALID": 1
+    },
+    "chunks": 12460,
+    "wall_seconds_observed": 284.0795869999565,
+    "actual_document_processing_seconds": 275.8717279434204,
+    "worker_start_to_first_document_seconds": 7.564756631851196,
+    "worker_start_to_final_host_cleanup_ack_seconds": 283.4364845752716,
+    "start_to_last_job_update_seconds": 282.9201486110687,
+    "start_to_last_successful_document_seconds": 282.9201486110687,
+    "gpu_average_percent": 56.04900181488203,
+    "gpu_active_work_average_percent": 57.72523364485981,
+    "gpu_peak_percent": 100.0,
+    "gpu_peak_memory_mib": 8005.0,
+    "gpu_peak_temperature_c": 70.0,
+    "cpu_average_percent": 29.233184612366475,
+    "cpu_peak_percent": 86.45833333333334,
+    "ram_peak_load_percent": 99,
+    "ram_min_available_mib": 18.40234375,
+    "ocr_documents_completed": 0,
+    "ocr_completed_pages": 0,
+    "all_244_source_hashes_unchanged": true,
+    "all_attempts_exactly_once": true,
+    "all_required_cleanup_verified": true,
+    "retry_wait_records_reset_by_scheduler": 1,
+    "temporary_worker_files_remaining": 0,
+    "es_counts_and_active_chunk_sets_match_sql": true,
+    "all_chunks_have_gte_vectors": true,
+    "measurement_scope": "Zero derived chunks/vectors; existing document/source identities retained; OCR not requested; includes deployed worker startup, decryption, parsing, chunking, embedding, indexing and cleanup. Excludes source discovery, reset preparation, explicit service startup and final audit; services already running.",
+    "conditions": {
+      "source_manifest_matches_previous": true,
+      "admin_running": false,
+      "api_restarted_for_this_measurement": true,
+      "cache_reclaimed_for_this_measurement": false,
+      "ocr_enabled": false,
+      "runs_requested": 1,
+      "configuration": {
+        "document_slots": 4,
+        "parser_processes": 2,
+        "parser_client_concurrency": 2,
+        "parser_cpu_quota": 4,
+        "gpu_inference": 1,
+        "gpu_short_batch": 16,
+        "gpu_short_min_fill_percent": 85,
+        "queue_order": "unchanged"
+      }
+    },
+    "source_commit": "dd9672459a994f975213012a682324dd31be4780",
+    "configuration_commit": "dd967245",
+    "ocr_policy": "Optional only; OCR-required PDFs remain available for explicit user consent"
+  },
+  "configuration": {
+    "document_slots": 4,
+    "parser_processes": 2,
+    "parser_client_concurrency": 2,
+    "parser_cpu_quota": 4,
+    "gpu_inference": 1,
+    "gpu_short_batch": 16,
+    "gpu_short_min_fill_percent": 85,
+    "queue_order": "unchanged"
+  },
+  "comparison": {
+    "previous_seconds": 267.39828610420227,
+    "current_seconds": 283.4364845752716,
+    "seconds_saved": -16.038198471069336,
+    "percent_saved": -5.997868836309377
+  },
+  "memory": {
+    "before_processing_cgroup_gib": 0.6796417236328125,
+    "sampled_api_cgroup_peak_gib": 1.4088821411132812,
+    "cgroup_lifetime_peak_gib": 1.4132041931152344,
+    "after_processing_cgroup_gib": 1.38067626953125,
+    "oom_events": 0,
+    "oom_kill_events": 0,
+    "limit_hit_events": 0,
+    "collection_errors": 1,
+    "api_process_unchanged": true,
+    "docker_after": "1.366GiB / 4GiB"
+  },
+  "final_audit": {
+    "status": "verified",
+    "completed": 223,
+    "chunks": 12460,
+    "vectors": 12460,
+    "ocr_required": 18,
+    "invalid_source_files": 3,
+    "ocr_requested": 0,
+    "source_hashes_verified": 244,
+    "host_and_parser_temporary_files": 0,
+    "cleanup_pending": 0,
+    "total_attempts": 244
+  },
+  "limits": [
+    "One full run; host activity, cache and allocator state were not controlled.",
+    "API was restarted for deployment before the run; no cache reclaim. Differences cannot be attributed solely to feature removal.",
+    "OCR was not requested. Eighteen scanned PDFs require optional OCR; three known invalid sources are counted separately.",
+    "Timing includes worker startup through final host cleanup/ACK, excluding deployment, reset preparation, and final audit."
+  ],
+  "restored_tasks": {
+    "DocMind Source Watcher (dept-2-e2e)": "Running",
+    "DocMind Host Worker (ingest)": "Running",
+    "DocMind Host Worker (preview)": "Running"
+  },
+  "deployed_browser_verified": true,
+  "observation_errors": 0
+}
