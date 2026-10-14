@@ -117,7 +117,30 @@
   },
   "service_restoration": {
     "all_three_tasks_running": true,
-    "failed_document_left_pending_without_extra_retry": true
+    "automatic_recovery_after_measurement": {
+      "status": "recovered_after_normal_services_resumed",
+      "prior_failed_fence": 19,
+      "recovered_fence": 22,
+      "started_utc": "2026-10-14T08:23:18.7985845+00:00",
+      "finished_utc": "2026-10-14T08:23:23.0175791+00:00",
+      "host_total_seconds": 4.2163568,
+      "final_documents": 223,
+      "final_chunks": 12460,
+      "included_in_benchmark": false,
+      "manual_retry_command_executed": false
+    },
+    "final_integrity_audit": {
+      "status": "verified",
+      "completed": 223,
+      "chunks": 12460,
+      "vectors": 12460,
+      "ocr_required": 18,
+      "invalid_source_files": 3,
+      "ocr_requested": 0,
+      "source_hashes_verified": 244,
+      "host_and_parser_temporary_files": 0,
+      "cleanup_pending": 0
+    }
   },
   "limits": [
     "One additional run on the same 244 encrypted sources, each attempted once; OCR not requested.",
@@ -126,6 +149,6 @@
     "Preview and source watcher were paused during measurement, then restored. GPU/CPU/RAM metrics are system-wide.",
     "One new timeout means this is not an error-free full reindex and is not a valid equal-success throughput comparison.",
     "RAM pressure and API/observer delays were observed together; their causal relationship was not isolated in this measurement.",
-    "API cgroup lifetime peak differs from sampled run peak; sampling errors are reported. No extra full run or retry was performed."
+    "API cgroup lifetime peak differs from sampled run peak; sampling errors are reported. Exactly one full measured run was performed. After normal services resumed, the failed document recovered automatically; that work is excluded from the benchmark."
   ]
 }
