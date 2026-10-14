@@ -111,14 +111,6 @@ paths:
     guard_boundary: aggregate all dataset document IDs before deletion loop
     operation: DELETE_DATASET_BATCH
     test_id: test_dataset_delete_denies_all_datasets_before_first_document_or_index_mutation
-  - id: DM-MUT-014
-    entrypoint: file_api_service.delete_files
-    service_chain: recursive file tree -> blob/document/relation/file/bucket cleanup
-    mutated_resources: [object_storage, file_db, file_relation_db, document_db, task_db, chunk_index, metadata_index]
-    first_side_effect: skill index, blob, or file/document delete
-    guard_boundary: recursive document-ID collection before _rm_sync
-    operation: DELETE_FILE_TREE
-    test_id: test_file_tree_delete_denies_whole_tree_before_first_side_effect
   - id: DM-MUT-017
     entrypoint: dataset_api_service.delete_index
     service_chain: task cancel/delete -> graph/raptor/skill index wipe -> dataset task fields update
@@ -217,7 +209,7 @@ paths:
     test_id: test_reupload_denies_before_blob_read_storage_or_document_update
   - id: DM-MUT-031
     entrypoint: DocumentService.run
-    service_chain: document parse dispatch -> queue_tasks or queue_dataflow
+    service_chain: document parse dispatch -> queue_tasks
     mutated_resources: [task_db, document_db, knowledgebase_db, chunk_index, redis]
     first_side_effect: task cancellation/deletion/insertion or parse status update
     guard_boundary: method entry before parser dispatch
@@ -231,14 +223,6 @@ paths:
     guard_boundary: function entry before storage read and task construction
     operation: QUEUE_DOCUMENT_PARSE
     test_id: test_queue_tasks_denies_before_storage_task_index_or_redis_mutation
-  - id: DM-MUT-033
-    entrypoint: task_service.queue_dataflow
-    service_chain: cancel old task -> delete chunks -> decrement counters -> insert dataflow task
-    mutated_resources: [redis, task_db, document_db, knowledgebase_db, chunk_index]
-    first_side_effect: old task cancellation
-    guard_boundary: function entry for real document IDs before task construction
-    operation: QUEUE_DATAFLOW_PARSE or QUEUE_DATAFLOW_RERUN
-    test_id: test_queue_dataflow_denies_before_cancel_index_counter_or_task_mutation
   - id: DM-MUT-034
     entrypoint: DocumentService.begin2parse
     service_chain: update document progress/run status
@@ -303,14 +287,6 @@ paths:
     guard_boundary: dataset-owned batch preflight before result loop
     operation: UPDATE_DOCUMENT_AVAILABILITY_BATCH
     test_id: test_status_batch_denies_before_first_document_or_index_update
-  - id: DM-MUT-042
-    entrypoint: file_api_service.move_files
-    service_chain: recursive file move/rename -> object storage/file/document name updates
-    mutated_resources: [object_storage, file_db, document_db, chunk_index]
-    first_side_effect: object-storage move or file row update
-    guard_boundary: recursive linked-document preflight before move closure
-    operation: MOVE_OR_RENAME_FILE_TREE
-    test_id: test_file_move_or_rename_denies_whole_tree_before_storage_or_db_update
   - id: DM-MUT-043
     entrypoint: user_account_service.delete_user_data
     service_chain: account cleanup -> buckets/documents/tasks/files/index/datasets/tenant/user deletion

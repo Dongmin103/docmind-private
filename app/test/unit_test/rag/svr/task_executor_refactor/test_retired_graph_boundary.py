@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 APP = Path(__file__).resolve().parents[5]
-RETIRED = "graphrag graph raptor mindmap wiki artifact skill structure_graph structure_mindmap timeline session_graph session_essence structure structuregraph structuremindmap sessiongraph sessionessence".split()
+RETIRED = "dataflow dataflow_rerun dataflow_debug evaluation reembedding clone graphrag graph raptor mindmap wiki artifact skill structure_graph structure_mindmap timeline session_graph session_essence structure structuregraph structuremindmap sessiongraph sessionessence".split()
 
 def load_guard():
     tree = ast.parse((APP / "rag/svr/task_executor_refactor/task_handler.py").read_text(encoding="utf8"))

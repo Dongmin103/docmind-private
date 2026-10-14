@@ -79,7 +79,7 @@ def test_gaussdb_empty_string_compatible_fields_are_nullable_only_for_gaussdb():
 
     gaussdb_result = run_isolated_flow(
         """
-from api.db.db_models import API4Conversation, Dialog, Document, File, Knowledgebase, SyncLogs, SystemSettings, Task, Tenant, User, UserCanvas
+from api.db.db_models import API4Conversation, Dialog, Document, File, Knowledgebase, SystemSettings, Task, Tenant, User
 
 fields = [
     User.nickname,
@@ -99,10 +99,7 @@ fields = [
     Task.task_type,
     Task.progress_msg,
     Task.chunk_ids,
-    SyncLogs.error_msg,
-    SyncLogs.full_exception_trace,
     API4Conversation.user_id,
-    UserCanvas.tags,
 ]
 for field in fields:
     assert field.null is True
@@ -138,7 +135,7 @@ print("gaussdb-empty-string-compatible-ok")
 
     mysql_result = run_isolated_flow(
         """
-from api.db.db_models import API4Conversation, Dialog, Document, File, Knowledgebase, SyncLogs, SystemSettings, Task, Tenant, User, UserCanvas
+from api.db.db_models import API4Conversation, Dialog, Document, File, Knowledgebase, SystemSettings, Task, Tenant, User
 
 fields = [
     (User.nickname, False),
@@ -158,10 +155,7 @@ fields = [
     (Task.task_type, False),
     (Task.progress_msg, True),
     (Task.chunk_ids, True),
-    (SyncLogs.error_msg, False),
-    (SyncLogs.full_exception_trace, True),
     (API4Conversation.user_id, False),
-    (UserCanvas.tags, False),
 ]
 for field, expected_null in fields:
     assert field.null is expected_null

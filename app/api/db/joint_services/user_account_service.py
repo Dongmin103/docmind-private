@@ -19,7 +19,6 @@ import uuid
 from api.utils.api_utils import group_by
 from api.db import FileType, UserTenantRole
 from api.db.services.api_service import APITokenService, API4ConversationService
-from api.db.services.canvas_service import UserCanvasService
 from api.db.services.conversation_service import ConversationService
 from api.db.services.dialog_service import DialogService
 from api.db.services.document_service import DocumentService, DocmindProtectedEvidenceError
@@ -28,10 +27,7 @@ from api.db.services.file2document_service import File2DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.langfuse_service import TenantLangfuseService
 from api.db.services.file_service import FileService
-from api.db.services.mcp_server_service import MCPServerService
-from api.db.services.search_service import SearchService
 from api.db.services.task_service import TaskService
-from api.db.services.user_canvas_version import UserCanvasVersionService
 from api.db.services.user_service import TenantService, UserService, UserTenantService
 from rag.nlp import search
 from common.constants import ActiveEnum
@@ -205,18 +201,9 @@ def delete_user_data(user_id: str) -> dict:
                 done_msg += f"- Deleted {r} chunk records.\n"
                 kb_delete_res = KnowledgebaseService.delete_by_ids(kb_ids)
                 done_msg += f"- Deleted {kb_delete_res} dataset records.\n"
-                # step1.1.4 delete agents
-                agent_delete_res = delete_user_agents(usr.id)
-                done_msg += f"- Deleted {agent_delete_res['agents_deleted_count']} agent, {agent_delete_res['version_deleted_count']} versions records.\n"
                 # step1.1.5 delete dialogs
                 dialog_delete_res = delete_user_dialogs(usr.id)
                 done_msg += f"- Deleted {dialog_delete_res['dialogs_deleted_count']} dialogs, {dialog_delete_res['conversations_deleted_count']} conversations, {dialog_delete_res['api_token_deleted_count']} api tokens, {dialog_delete_res['api4conversation_deleted_count']} api4conversations.\n"
-                # step1.1.6 delete mcp server
-                mcp_delete_res = MCPServerService.delete_by_tenant_id(usr.id)
-                done_msg += f"- Deleted {mcp_delete_res} MCP server.\n"
-                # step1.1.7 delete search
-                search_delete_res = SearchService.delete_by_tenant_id(usr.id)
-                done_msg += f"- Deleted {search_delete_res} search records.\n"
             # step1.2 delete tenant_langfuse
             # llm_delete_res = TenantLLMService.delete_by_tenant_id(tenant_id)
             # done_msg += f"- Deleted {llm_delete_res} tenant-LLM records.\n"
@@ -298,23 +285,6 @@ def delete_user_data(user_id: str) -> dict:
     except Exception as e:
         logging.exception(e)
         return {"success": False, "message": "An internal error occurred during user deletion. Some operations may have completed.", "details": done_msg}
-
-
-def delete_user_agents(user_id: str) -> dict:
-    """
-    use user_id to delete
-    :return: {
-        "agents_deleted_count": 1,
-        "version_deleted_count": 2
-    }
-    """
-    agents_deleted_count, agents_version_deleted_count = 0, 0
-    user_agents = UserCanvasService.get_all_agents_by_tenant_ids([user_id], user_id)
-    if user_agents:
-        agents_version = UserCanvasVersionService.get_all_canvas_version_by_canvas_ids([a["id"] for a in user_agents])
-        agents_version_deleted_count = UserCanvasVersionService.delete_by_ids([v["id"] for v in agents_version])
-        agents_deleted_count = UserCanvasService.delete_by_ids([a["id"] for a in user_agents])
-    return {"agents_deleted_count": agents_deleted_count, "version_deleted_count": agents_version_deleted_count}
 
 
 def delete_user_dialogs(user_id: str) -> dict:

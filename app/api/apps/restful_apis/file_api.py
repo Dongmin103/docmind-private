@@ -16,247 +16,18 @@
 import logging
 import re
 
-from quart import request, make_response
+from quart import make_response
 from api.apps import login_required
 from api.db import FileType
 from api.db.services.file2document_service import File2DocumentService
 from api.utils.api_utils import (
     add_tenant_id_to_kwargs,
-    get_error_argument_result,
     get_error_data_result,
-    get_json_result,
-    get_result,
-)
-from common.constants import RetCode
-from api.utils.validation_utils import (
-    CreateFolderReq,
-    DeleteFileReq,
-    ListFileReq,
-    MoveFileReq,
-    validate_and_parse_json_request,
-    validate_and_parse_request_args,
 )
 from api.utils.web_utils import CONTENT_TYPE_MAP, apply_safe_file_response_headers
 from common import settings
 from common.misc_utils import thread_pool_exec
-from api.apps.services import file_api_service
-
-
-@manager.route("/files", methods=["POST"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-async def create_or_upload(tenant_id: str = None):
-    """
-    Upload files or create a folder.
-    ---
-    tags:
-      - Files
-    security:
-      - ApiKeyAuth: []
-    parameters:
-      - in: header
-        name: Authorization
-        type: string
-        required: true
-        description: Bearer token for authentication.
-    responses:
-      200:
-        description: Successful operation.
-    """
-    content_type = request.content_type or ""
-    try:
-        if "multipart/form-data" in content_type:
-            form = await request.form
-            pf_id = form.get("parent_id")
-            files = await request.files
-            if "file" not in files:
-                return get_error_argument_result("No file part!")
-            file_objs = files.getlist("file")
-            for file_obj in file_objs:
-                if file_obj.filename == "":
-                    return get_error_argument_result("No file selected!")
-
-            success, result = await file_api_service.upload_file(tenant_id, pf_id, file_objs)
-            if success:
-                return get_result(data=result)
-            else:
-                return get_error_data_result(message=result)
-        else:
-            req, err = await validate_and_parse_json_request(request, CreateFolderReq)
-            if err is not None:
-                return get_error_argument_result(err)
-
-            success, result = await file_api_service.create_folder(tenant_id, req["name"], req.get("parent_id"), req.get("type"))
-            if success:
-                return get_result(data=result)
-            else:
-                return get_error_data_result(message=result)
-    except Exception as e:
-        logging.exception(e)
-        return get_error_data_result(message="Internal server error")
-
-
-@manager.route("/files", methods=["GET"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-async def list_files(tenant_id: str = None):
-    """
-    List files under a folder.
-    ---
-    tags:
-      - Files
-    security:
-      - ApiKeyAuth: []
-    parameters:
-      - in: query
-        name: parent_id
-        type: string
-        description: Folder ID to list files from.
-      - in: query
-        name: keywords
-        type: string
-        description: Search keyword filter.
-      - in: query
-        name: page
-        type: integer
-        default: 1
-      - in: query
-        name: page_size
-        type: integer
-        default: 15
-      - in: query
-        name: orderby
-        type: string
-        default: "create_time"
-      - in: query
-        name: desc
-        type: boolean
-        default: true
-    responses:
-      200:
-        description: Successful operation.
-    """
-    args, err = validate_and_parse_request_args(request, ListFileReq)
-    if err is not None:
-        return get_error_argument_result(err)
-
-    try:
-        success, result = file_api_service.list_files(tenant_id, args)
-        if success:
-            return get_result(data=result)
-        else:
-            return get_error_data_result(message=result)
-    except Exception as e:
-        logging.exception(e)
-        return get_error_data_result(message="Internal server error")
-
-
-@manager.route("/files", methods=["DELETE"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-async def delete(tenant_id: str = None):
-    """
-    Delete files.
-    ---
-    tags:
-      - Files
-    security:
-      - ApiKeyAuth: []
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - ids
-          properties:
-            ids:
-              type: array
-              items:
-                type: string
-              description: List of file IDs to delete.
-    responses:
-      200:
-        description: Successful operation.
-    """
-    req, err = await validate_and_parse_json_request(request, DeleteFileReq)
-    if err is not None:
-        return get_error_argument_result(err)
-
-    try:
-        # Get Authorization header to pass to Go backend
-        auth_header = request.headers.get("Authorization", "")
-        success, result = await file_api_service.delete_files(tenant_id, req["ids"], auth_header)
-        if success:
-            return get_result(data=result)
-        else:
-            if isinstance(result, dict):
-                success_count = result.get("success_count", 0)
-                errors = result.get("errors", [])
-                return get_json_result(
-                    code=RetCode.DATA_ERROR,
-                    message=f"Partially deleted {success_count} files with {len(errors)} errors" if success_count > 0 else f"Deleted files failed with {len(errors)} errors",
-                    data=result,
-                )
-            return get_error_data_result(message=result)
-    except Exception as e:
-        logging.exception(e)
-        return get_error_data_result(message="Internal server error")
-
-
-@manager.route("/files/move", methods=["POST"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-async def move(tenant_id: str = None):
-    """
-    Move and/or rename files. Follows Linux mv semantics:
-    at least one of dest_file_id or new_name must be provided.
-    - dest_file_id only: move files to a new folder (names unchanged).
-    - new_name only: rename a single file in place (no storage operation).
-    - both: move and rename simultaneously.
-    ---
-    tags:
-      - Files
-    security:
-      - ApiKeyAuth: []
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - src_file_ids
-          properties:
-            src_file_ids:
-              type: array
-              items:
-                type: string
-              description: List of source file IDs. Required.
-            dest_file_id:
-              type: string
-              description: Destination folder ID. Optional; omit to rename in place.
-            new_name:
-              type: string
-              description: New file name. Optional; only valid for a single source file.
-    responses:
-      200:
-        description: Successful operation.
-    """
-    req, err = await validate_and_parse_json_request(request, MoveFileReq)
-    if err is not None:
-        return get_error_argument_result(err)
-
-    try:
-        success, result = await file_api_service.move_files(tenant_id, req["src_file_ids"], req.get("dest_file_id"), req.get("new_name"))
-        if success:
-            return get_result(data=result)
-        else:
-            return get_error_data_result(message=result)
-    except Exception as e:
-        logging.exception(e)
-        return get_error_data_result(message="Internal server error")
+from api.apps.services import file_read_service
 
 
 @manager.route("/files/<file_id>", methods=["GET"])  # noqa: F821
@@ -283,7 +54,7 @@ async def download(tenant_id: str = None, file_id: str = None):
         description: File stream.
     """
     try:
-        success, result = file_api_service.get_file_content(tenant_id, file_id)
+        success, result = file_read_service.get_file_content(tenant_id, file_id)
         if not success:
             return get_error_data_result(message=result)
 
@@ -309,68 +80,6 @@ async def download(tenant_id: str = None, file_id: str = None):
             content_type = CONTENT_TYPE_MAP.get(ext, f"{fallback_prefix}/{ext}")
         apply_safe_file_response_headers(response, content_type, ext)
         return response
-    except Exception as e:
-        logging.exception(e)
-        return get_error_data_result(message="Internal server error")
-
-
-@manager.route("/files/<file_id>/parent", methods=["GET"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-async def parent_folder(tenant_id: str = None, file_id: str = None):
-    """
-    Get parent folder of a file.
-    ---
-    tags:
-      - Files
-    security:
-      - ApiKeyAuth: []
-    parameters:
-      - in: path
-        name: file_id
-        type: string
-        required: true
-    responses:
-      200:
-        description: Parent folder information.
-    """
-    try:
-        success, result = file_api_service.get_parent_folder(file_id, user_id=tenant_id)
-        if success:
-            return get_result(data=result)
-        else:
-            return get_error_data_result(message=result)
-    except Exception as e:
-        logging.exception(e)
-        return get_error_data_result(message="Internal server error")
-
-
-@manager.route("/files/<file_id>/ancestors", methods=["GET"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-async def ancestors(tenant_id: str = None, file_id: str = None):
-    """
-    Get all ancestor folders of a file.
-    ---
-    tags:
-      - Files
-    security:
-      - ApiKeyAuth: []
-    parameters:
-      - in: path
-        name: file_id
-        type: string
-        required: true
-    responses:
-      200:
-        description: List of ancestor folders.
-    """
-    try:
-        success, result = file_api_service.get_all_parent_folders(file_id, user_id=tenant_id)
-        if success:
-            return get_result(data=result)
-        else:
-            return get_error_data_result(message=result)
     except Exception as e:
         logging.exception(e)
         return get_error_data_result(message="Internal server error")

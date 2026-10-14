@@ -315,9 +315,6 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
     elif "parser_config" in req and not req["parser_config"]:
         del req["parser_config"]
 
-    if kb.pipeline_id and req.get("parser_id") and not req.get("pipeline_id"):
-        # shift to use parser_id, delete old pipeline_id
-        req["pipeline_id"] = ""
 
     if "name" in req and req["name"].lower() != kb.name.lower():
         exists = KnowledgebaseService.get_or_none(name=req["name"], tenant_id=kb.tenant_id, status=StatusEnum.VALID.value)
@@ -593,103 +590,6 @@ def delete_tags(dataset_id: str, tenant_id: str, tags: list[str]):
     return True, {}
 
 
-def list_ingestion_logs(
-    dataset_id: str,
-    tenant_id: str,
-    page: int,
-    page_size: int,
-    orderby: str,
-    desc: bool,
-    operation_status: list = None,
-    create_date_from: str = None,
-    create_date_to: str = None,
-    log_type: str = "dataset",
-    keywords: str = None,
-):
-    """
-    List ingestion logs for a dataset.
-
-    :param dataset_id: dataset ID
-    :param tenant_id: tenant ID
-    :param page: page number
-    :param page_size: items per page
-    :param orderby: order by field
-    :param desc: descending order
-    :param operation_status: filter by operation status
-    :param create_date_from: filter start date
-    :param create_date_to: filter end date
-    :param log_type: "dataset" or "file"
-    :param keywords: search keywords for file logs
-    :return: (success, result) or (success, error_message)
-    """
-    if not dataset_id:
-        return False, 'Lack of "Dataset ID"'
-
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
-        return False, "no authorization"
-
-    from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
-
-    allowed_log_types = {"dataset", "file"}
-    if log_type not in allowed_log_types:
-        logging.warning(
-            "list_ingestion_logs invalid log_type: dataset_id=%s tenant_id=%s log_type=%s",
-            dataset_id,
-            tenant_id,
-            log_type,
-        )
-        return False, 'Invalid "log_type", expected "dataset" or "file"'
-
-    logging.info(
-        "list_ingestion_logs: dataset_id=%s tenant_id=%s log_type=%s page=%s page_size=%s",
-        dataset_id,
-        tenant_id,
-        log_type,
-        page,
-        page_size,
-    )
-
-    if log_type == "file":
-        logs, total = PipelineOperationLogService.get_file_logs_by_kb_id(dataset_id, page, page_size, orderby, desc, keywords, operation_status or [], None, None, create_date_from, create_date_to)
-    else:
-        logs, total = PipelineOperationLogService.get_dataset_logs_by_kb_id(dataset_id, page, page_size, orderby, desc, operation_status or [], create_date_from, create_date_to, keywords)
-    return True, {"total": total, "logs": logs}
-
-
-def get_ingestion_log(dataset_id: str, tenant_id: str, log_id: str):
-    """
-    Get a single ingestion log.
-
-    :param dataset_id: dataset ID
-    :param tenant_id: tenant ID
-    :param log_id: log ID
-    :return: (success, result) or (success, error_message)
-    """
-    if not dataset_id:
-        return False, 'Lack of "Dataset ID"'
-
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
-        return False, "no authorization"
-
-    from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
-
-    # Return the full record (including `dsl`) so the front-end dataflow-result
-    # page can render the pipeline timeline and chunks. The file-level field set
-    # is a superset of the dataset-level fields, so it is valid for both
-    # dataset and per-file logs.
-    fields = PipelineOperationLogService.get_file_logs_fields()
-    log = PipelineOperationLogService.model.select(*fields).where((PipelineOperationLogService.model.id == log_id) & (PipelineOperationLogService.model.kb_id == dataset_id)).first()
-    if not log:
-        return False, "Log not found"
-
-    result = log.to_dict()
-    # Be explicit here: the dataflow-result page needs the full DSL payload to
-    # rebuild the timeline and right-side parser view. Some serialization paths
-    # can omit JSON fields from Peewee model dicts, so keep it attached here.
-    result["dsl"] = log.dsl or {}
-    return True, result
-
-
 def run_embedding(dataset_id: str, tenant_id: str):
     """
     Run embedding for all documents in a dataset.
@@ -782,7 +682,6 @@ async def search(dataset_id: str, tenant_id: str, req: dict):
     from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type
     from api.db.services.doc_metadata_service import DocMetadataService
     from api.db.services.llm_service import LLMBundle
-    from api.db.services.search_service import SearchService
     from api.db.services.user_service import UserTenantService
     from common.constants import LLMType
     from common.metadata_utils import apply_meta_data_filter
@@ -820,43 +719,12 @@ async def search(dataset_id: str, tenant_id: str, req: dict):
         return False, "`doc_ids` should be a list"
     local_doc_ids = list(doc_ids) if doc_ids else []
 
-    meta_data_filter = {}
-    search_id = req.get("search_id", "")
+    meta_data_filter = req.get("meta_data_filter") or {}
     search_config = {}
     chat_mdl = None
-    if search_id:
-        search_detail = SearchService.get_detail(search_id)
-        if not search_detail:
-            logging.warning("search config not found: search_id=%s", search_id)
-            return False, "Invalid search_id"
-        search_config = search_detail.get("search_config", {})
-        meta_data_filter = search_config.get("meta_data_filter", {})
-        similarity_threshold = float(search_config.get("similarity_threshold", similarity_threshold))
-        vector_similarity_weight = float(search_config.get("vector_similarity_weight", vector_similarity_weight))
-        knn_top_k = max(1, min(int(search_config.get("top_k", knn_top_k)), 2048))
-        rerank_candidates_count = int(search_config.get("rerank_candidates_count", 100))
-        langs = search_config.get("cross_languages", langs)
-        logging.debug(
-            "Dataset search loaded Search config: search_id=%s dataset_id=%s vector_similarity_weight=%s full_text_weight=%s similarity_threshold=%s knn_top_k=%s",
-            search_id,
-            dataset_id,
-            vector_similarity_weight,
-            1 - vector_similarity_weight,
-            similarity_threshold,
-            knn_top_k,
-        )
-        if meta_data_filter.get("method") in ["auto", "semi_auto"]:
-            chat_id = search_config.get("chat_id", "")
-            if chat_id:
-                chat_model_config = resolve_model_config(tenant_id, LLMType.CHAT, search_config["chat_id"])
-            else:
-                chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
-            chat_mdl = LLMBundle(tenant_id, chat_model_config)
-    else:
-        meta_data_filter = req.get("meta_data_filter") or {}
-        if meta_data_filter.get("method") in ["auto", "semi_auto"]:
-            chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
-            chat_mdl = LLMBundle(tenant_id, chat_model_config)
+    if meta_data_filter.get("method") in ["auto", "semi_auto"]:
+        chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
+        chat_mdl = LLMBundle(tenant_id, chat_model_config)
 
     if meta_data_filter:
         local_doc_ids = await apply_meta_data_filter(
@@ -917,7 +785,8 @@ async def search(dataset_id: str, tenant_id: str, req: dict):
         rerank_mdl=rerank_mdl,
         rerank_candidate_limit=rerank_candidate_limit,
         rank_feature=labels,
-        trace_id=search_id,
+        trace_id="",
+        must_not={"exists": "compile_kwd"},
         rerank_candidates_count=rerank_candidates_count,
     )
 
@@ -1167,7 +1036,6 @@ async def search_datasets(tenant_id: str, req: dict, *, candidate_mode: str = "h
     from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type
     from api.db.services.doc_metadata_service import DocMetadataService
     from api.db.services.llm_service import LLMBundle
-    from api.db.services.search_service import SearchService
     from api.db.services.user_service import UserTenantService
     from common.constants import LLMType
     from common.metadata_utils import apply_meta_data_filter
@@ -1223,43 +1091,12 @@ async def search_datasets(tenant_id: str, req: dict, *, candidate_mode: str = "h
         return False, "`doc_ids` should be a list"
     local_doc_ids = list(doc_ids) if doc_ids else []
 
-    meta_data_filter = {}
-    search_id = req.get("search_id", "")
+    meta_data_filter = req.get("meta_data_filter") or {}
     search_config = {}
     chat_mdl = None
-    if search_id:
-        search_detail = SearchService.get_detail(search_id)
-        if not search_detail:
-            logging.warning("search config not found: search_id=%s", search_id)
-            return False, "Invalid search_id"
-        search_config = search_detail.get("search_config", {})
-        meta_data_filter = search_config.get("meta_data_filter", {})
-        similarity_threshold = float(search_config.get("similarity_threshold", similarity_threshold))
-        vector_similarity_weight = float(search_config.get("vector_similarity_weight", vector_similarity_weight))
-        knn_top_k = max(1, min(int(search_config.get("top_k", knn_top_k)), 2048))
-        rerank_candidates_count = int(search_config.get("rerank_candidates_count", 100))
-        langs = search_config.get("cross_languages", langs)
-        logging.debug(
-            "Dataset search loaded Search config: search_id=%s dataset_ids=%s vector_similarity_weight=%s full_text_weight=%s similarity_threshold=%s knn_top_k=%s",
-            search_id,
-            kb_ids,
-            vector_similarity_weight,
-            1 - vector_similarity_weight,
-            similarity_threshold,
-            knn_top_k,
-        )
-        if meta_data_filter.get("method") in ["auto", "semi_auto"]:
-            chat_id = search_config.get("chat_id", "")
-            if chat_id:
-                chat_model_config = resolve_model_config(tenant_id, LLMType.CHAT, search_config["chat_id"])
-            else:
-                chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
-            chat_mdl = LLMBundle(tenant_id, chat_model_config)
-    else:
-        meta_data_filter = req.get("meta_data_filter") or {}
-        if meta_data_filter.get("method") in ["auto", "semi_auto"]:
-            chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
-            chat_mdl = LLMBundle(tenant_id, chat_model_config)
+    if meta_data_filter.get("method") in ["auto", "semi_auto"]:
+        chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
+        chat_mdl = LLMBundle(tenant_id, chat_model_config)
 
     if meta_data_filter:
         logging.debug("Metadata filter applied: %s, question length: %d, chat_mdl=%s", meta_data_filter, len(question), "None" if chat_mdl is None else "configured")
@@ -1324,7 +1161,7 @@ async def search_datasets(tenant_id: str, req: dict, *, candidate_mode: str = "h
         rerank_mdl=rerank_mdl,
         rerank_candidate_limit=rerank_candidate_limit,
         rank_feature=labels,
-        trace_id=search_id,
+        trace_id="",
         must_not={"exists": "compile_kwd"},
         rerank_candidates_count=rerank_candidates_count,
         candidate_mode=candidate_mode,

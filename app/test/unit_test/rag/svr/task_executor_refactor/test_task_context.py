@@ -292,17 +292,7 @@ class TestTaskContextTaskTypeAndRoutingProperties:
         ctx = _make_ctx(task=task)
         assert ctx.task_type == "raptor"
 
-    def test_dataflow_id_default(self):
-        """Test dataflow_id property defaults to empty string."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.dataflow_id == ""
 
-    def test_dataflow_id(self):
-        """Test dataflow_id property."""
-        task = {"id": "task_1", "tenant_id": "tenant_1", "dataflow_id": "flow_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.dataflow_id == "flow_1"
 
 
 class TestTaskContextAdditionalProperties:
@@ -320,18 +310,7 @@ class TestTaskContextAdditionalProperties:
         ctx = _make_ctx(task=task)
         assert ctx.pagerank == 10
 
-    def test_file_default(self):
-        """Test file property defaults to None."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.file is None
 
-    def test_file(self):
-        """Test file property."""
-        file_obj = MagicMock()
-        task = {"id": "task_1", "tenant_id": "tenant_1", "file": file_obj}
-        ctx = _make_ctx(task=task)
-        assert ctx.file is file_obj
 
 
 class TestTaskContextRawTask:

@@ -21,7 +21,7 @@ from time import monotonic
 from peewee import JOIN, Case, fn
 
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
-from api.db import CanvasCategory, FileType, UserTenantRole
+from api.db import FileType, UserTenantRole
 from api.db.db_models import (
     DB,
     Document,
@@ -35,7 +35,6 @@ from api.db.db_models import (
     Task,
     Tenant,
     User,
-    UserCanvas,
     UserTenant,
 )
 from api.db.services.common_service import CommonService, retry_deadlock_operation
@@ -85,7 +84,6 @@ class DocumentService(CommonService):
             cls.model.thumbnail,
             cls.model.kb_id,
             cls.model.parser_id,
-            cls.model.pipeline_id,
             cls.model.parser_config,
             cls.model.source_type,
             cls.model.type,
@@ -179,10 +177,9 @@ class DocumentService(CommonService):
     def get_list(cls, kb_id, page_number, items_per_page, orderby, desc, keywords, id, name, suffix=None, run=None, doc_ids=None):
         fields = cls.get_cls_model_fields()
         docs = (
-            cls.model.select(*[*fields, UserCanvas.title])
+            cls.model.select(*fields)
             .join(File2Document, on=(File2Document.document_id == cls.model.id))
             .join(File, on=(File.id == File2Document.file_id))
-            .join(UserCanvas, on=((cls.model.pipeline_id == UserCanvas.id) & (UserCanvas.canvas_category == CanvasCategory.DataFlow.value)), join_type=JOIN.LEFT_OUTER)
             .where(cls.model.kb_id == kb_id)
         )
         if id:
@@ -230,18 +227,16 @@ class DocumentService(CommonService):
         fields = cls.get_cls_model_fields()
         if keywords:
             docs = (
-                cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])
+                cls.model.select(*[*fields, User.nickname])
                 .join(File2Document, on=(File2Document.document_id == cls.model.id))
                 .join(File, on=(File.id == File2Document.file_id))
-                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)
                 .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)
                 .where((cls.model.kb_id == kb_id), (fn.LOWER(cls.model.name).contains(keywords.lower())))
             )
         else:
             docs = (
-                cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])
+                cls.model.select(*[*fields, User.nickname])
                 .join(File2Document, on=(File2Document.document_id == cls.model.id))
-                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)
                 .join(File, on=(File.id == File2Document.file_id))
                 .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)
                 .where(cls.model.kb_id == kb_id)
@@ -1175,13 +1170,15 @@ class DocumentService(CommonService):
     @classmethod
     def run(cls, tenant_id: str, doc: dict, kb_table_num_map: dict):
         from api.db.services.file2document_service import File2DocumentService
-        from api.db.services.task_service import queue_dataflow, queue_tasks
+        from api.db.services.task_service import queue_tasks
         from rag.parser_platform.gates import enforce_prequeue_gate
 
         # The parser platform is feature-gated and standard-ingestion only. Run
         # this before any mutable guard, task deletion/reuse, queue write, parser
         # service call, or Dataflow conversion so a mode/capability mismatch is
         # fail-closed and leaves the current active evidence untouched.
+        if doc.get("pipeline_id"):
+            raise ValueError("Unsupported document pipeline")
         enforce_prequeue_gate(doc)
 
         cls.assert_docmind_evidence_mutable(
@@ -1200,11 +1197,8 @@ class DocumentService(CommonService):
                 kb_table_num_map[kb_id] = count
                 if kb_table_num_map[kb_id] <= 0:
                     KnowledgebaseService.delete_field_map(kb_id)
-        if doc.get("pipeline_id", ""):
-            queue_dataflow(tenant_id, flow_id=doc["pipeline_id"], task_id=get_uuid(), doc_id=doc["id"])
-        else:
-            bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
-            queue_tasks(doc, bucket, name, 0)
+        bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
+        queue_tasks(doc, bucket, name, 0)
 
 
 # Short-lived per-priority cache for the genuine queued-task backlog so the

@@ -44,12 +44,8 @@ def migration_events(database_type):
 REQUIRED_COLUMNS = {
     "document": {"content_hash", "requested_parse_run_id"},
     "tenant_llm": {"status"},
-    "connector2kb": {"auto_parse"},
     "llm_factories": {"rank"},
-    "api_4_conversation": {"name", "exp_user_id", "version_title"},
-    "sync_logs": {"task_type"},
-    "user_canvas_version": {"release"},
-    "user_canvas": {"tags"},
+    "api_4_conversation": {"name", "exp_user_id"},
     "tenant": {"ocr_id", "tenant_ocr_id"},
     "docmind_catalog_version": {"readiness_mode", "source_ready_version_id", "manual_saved_by", "manual_saved_at", "snapshot_schema_version", "source_tree_hash", "root_identity_sha256"},
     "docmind_project": {"source_root_file_id"},
@@ -71,9 +67,8 @@ def test_retained_columns_types_and_cleanup_backfill_are_registered(database_typ
     registered = {(event[1], event[2]) for event in events if event[0] == "alter_db_add_column"}
     required = {(table, column) for table, columns in REQUIRED_COLUMNS.items() for column in columns}
     assert required <= registered, sorted(required - registered)
-    for table, column in [("tenant_llm", "api_key"), ("system_settings", "value"), ("document", "size"), ("file", "size"), ("chat_channel", "status")]:
+    for table, column in [("tenant_llm", "api_key"), ("system_settings", "value"), ("document", "size"), ("file", "size")]:
         assert ("alter_db_column_type", table, column) in events
-    assert ("alter_db_rename_column", "chat_channel", "dialog_id") in events
     assert events.index(("alter_db_add_column", "docmind_source_version", "search_cleanup_complete")) < events.index(("backfill_docmind_search_cleanup_complete",)) < events.index(("alter_db_add_column", "docmind_source_document", "source_object_id"))
     assert not [(table, column) for table, column in registered if table in {"compilation_template", "compilation_template_group", "file_commit", "file_commit_item"} or column.startswith(("graphrag_task_", "raptor_task_", "mindmap_task_", "wiki_task_", "skill_task_", "structure_task_", "structure_graph_task_", "structure_mindmap_task_", "timeline_task_", "session_graph_task_", "session_essence_task_"))]
 

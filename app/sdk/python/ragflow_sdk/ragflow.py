@@ -17,7 +17,6 @@ from typing import Optional, Any
 
 import requests
 
-from .modules.agent import Agent
 from .modules.chat import Chat
 from .modules.chunk import Chunk
 from .modules.dataset import DataSet
@@ -229,86 +228,3 @@ class RAGFlow:
                 chunks.append(chunk)
             return chunks
         raise Exception(res.get("message"))
-
-    def list_agents(self, page: int = 1, page_size: int = 30, orderby: str = "update_time", desc: bool = True) -> list[Agent]:
-        res = self.get(
-            "/agents",
-            {
-                "page": page,
-                "page_size": page_size,
-                "orderby": orderby,
-                "desc": desc,
-            },
-        )
-        res = res.json()
-        result_list = []
-        if res.get("code") == 0:
-            data = res.get("data") or {}
-            data_list = data.get("canvas", [])
-            for data in data_list:
-                result_list.append(Agent(self, data))
-            return result_list
-        raise Exception(res["message"])
-
-    def get_agent(self, agent_id: str) -> Agent:
-        res = self.get(f"/agents/{agent_id}")
-        res = res.json()
-        if res.get("code") == 0:
-            return Agent(self, res["data"])
-        raise Exception(res["message"])
-
-    def create_agent(
-        self,
-        title: str,
-        dsl: dict,
-        description: str | None = None,
-        canvas_type: str | None = None,
-    ) -> None:
-        req = {"title": title, "dsl": dsl}
-
-        if description is not None:
-            req["description"] = description
-
-        if canvas_type is not None:
-            req["canvas_type"] = canvas_type
-
-        res = self.post("/agents", req)
-        res = res.json()
-
-        if res.get("code") != 0:
-            raise Exception(res["message"])
-
-    def update_agent(
-        self,
-        agent_id: str,
-        title: str | None = None,
-        description: str | None = None,
-        dsl: dict | None = None,
-        canvas_type: str | None = None,
-    ) -> None:
-        req = {}
-
-        if title is not None:
-            req["title"] = title
-
-        if description is not None:
-            req["description"] = description
-
-        if dsl is not None:
-            req["dsl"] = dsl
-
-        if canvas_type is not None:
-            req["canvas_type"] = canvas_type
-
-        res = self.put(f"/agents/{agent_id}", req)
-        res = res.json()
-
-        if res.get("code") != 0:
-            raise Exception(res["message"])
-
-    def delete_agent(self, agent_id: str) -> None:
-        res = self.delete(f"/agents/{agent_id}", {})
-        res = res.json()
-
-        if res.get("code") != 0:
-            raise Exception(res["message"])

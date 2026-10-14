@@ -1,229 +1,142 @@
-#
-#  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
-#
-"""Regression test for `/api/v1/agents/attachments/<attachment_id>/download` (#15502).
-
-Without the empty-blob guard, `make_response(None)` raises `TypeError`
-and the handler's blanket `except Exception` converts it to HTTP 500.
-Same bug class as #15365 on document preview. This test pins the
-missing-storage path to a structured 4xx response.
-"""
-
+"""Offline route registration with real login/tenant decorators and file headers."""
+import ast
 import asyncio
 import importlib.util
+import inspect
+import logging
 import sys
+from functools import wraps
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import Awaitable, Callable, ParamSpec, TypeVar
 
 import pytest
 
-
-class _PassthroughManager:
-    def route(self, *_args, **_kwargs):
-        return lambda func: func
+APP = Path(__file__).resolve().parents[5]
 
 
-class _LenientModule(ModuleType):
-    """A stub module that yields a harmless placeholder for any attribute that
-    wasn't explicitly provided. agent_api.py's top-level `from <mod> import a, b`
-    only needs every imported name to exist; symbols not on the
-    download_attachment path are never called, so a no-op placeholder is safe.
-    This keeps the test from rotting each time agent_api.py grows an import.
-    """
-
-    def __getattr__(self, _name):
-        return lambda *_a, **_k: None
+def definition(path, names, namespace):
+    tree = ast.parse((APP / path).read_text(encoding="utf8"))
+    nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
+    assert {n.name for n in nodes} == set(names)
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), path, "exec"), namespace)
 
 
-class _Headers(dict):
+class Headers(dict):
     def set(self, key, value):
         self[key] = value
 
 
-def _stub(monkeypatch, name, **attrs):
-    mod = _LenientModule(name)
-    for key, value in attrs.items():
-        setattr(mod, key, value)
-    monkeypatch.setitem(sys.modules, name, mod)
-    return mod
+class Unauthorized(Exception):
+    pass
 
 
-def _load_agent_api(monkeypatch, *, storage_get):
-    """Load agent_api.py with the minimum stubs to exercise download_attachment."""
+def load_routes(monkeypatch, blob, *, authorized=True, auth_type="JWT", args=None):
+    request = SimpleNamespace(args=args or {"ext": "pdf", "filename": "report.pdf"}, view_args={"attachment_id": "blob"})
+    user = SimpleNamespace(id="tenant-A")
+    auth_calls = []
+    storage_calls = []
+    routes = {}
 
-    async def _make_response(payload):
-        if payload is None:
-            raise TypeError("response value cannot be None")
-        return SimpleNamespace(payload=payload, headers=_Headers())
+    def load_user(auth_types):
+        auth_calls.append(auth_types)
+        allowed = {"JWT", "API"} if auth_types is None else set(auth_types)
+        return user if authorized and auth_type in allowed else None
 
-    _stub(
-        monkeypatch,
-        "api.apps",
-        AUTH_JWT="jwt",
-        AUTH_API="api",
-        AUTH_BETA="beta",
-        current_user=SimpleNamespace(id="tenant-1"),
-        login_required=lambda func=None, **_kwargs: (lambda f: f) if func is None else func,
-    )
-    _stub(monkeypatch, "api.apps.services.canvas_replica_service", CanvasReplicaService=SimpleNamespace())
-    _stub(monkeypatch, "api.db", CanvasCategory=SimpleNamespace())
-    _stub(monkeypatch, "api.db.db_models", Task=SimpleNamespace())
-    _stub(
-        monkeypatch,
-        "api.db.services.api_service",
-        API4ConversationService=SimpleNamespace(
-            get_by_id=lambda _id: (False, None),
-            save=lambda **_k: True,
-            delete_by_id=lambda *_a, **_k: True,
-            query=lambda **_k: [],
-        ),
-    )
-    _stub(
-        monkeypatch,
-        "api.db.services.canvas_service",
-        CanvasTemplateService=SimpleNamespace(),
-        UserCanvasService=SimpleNamespace(accessible=lambda *_a, **_k: True, query=lambda **_k: []),
-        completion=lambda *_a, **_k: None,
-        completion_openai=lambda *_a, **_k: None,
-    )
-    _stub(monkeypatch, "api.db.services.document_service", DocumentService=SimpleNamespace())
-    _stub(monkeypatch, "api.db.services.file_service", FileService=SimpleNamespace())
-    _stub(monkeypatch, "api.db.services.knowledgebase_service", KnowledgebaseService=SimpleNamespace())
-    _stub(monkeypatch, "api.db.services.pipeline_operation_log_service", PipelineOperationLogService=SimpleNamespace())
-    _stub(
-        monkeypatch,
-        "api.db.services.task_service",
-        CANVAS_DEBUG_DOC_ID="",
-        TaskService=SimpleNamespace(),
-        queue_dataflow=lambda *_a, **_k: None,
-    )
-    _stub(
-        monkeypatch,
-        "api.db.services.user_service",
-        TenantService=SimpleNamespace(),
-        UserService=SimpleNamespace(get_by_id=lambda *_a, **_k: (False, None)),
-    )
-    _stub(monkeypatch, "api.db.services.user_canvas_version", UserCanvasVersionService=SimpleNamespace())
+    namespace = dict(Callable=Callable, Awaitable=Awaitable, P=ParamSpec("P"), T=TypeVar("T"), wraps=wraps,
+                     os=__import__("os"), time=__import__("time"), logging=logging, request=request,
+                     _load_user=load_user, _normalize_auth_types=lambda value: set(value or ["JWT", "API"]),
+                     AUTH_BETA="BETA", QuartAuthUnauthorized=Unauthorized, g=SimpleNamespace(),
+                     current_app=SimpleNamespace(ensure_async=lambda fn: fn))
+    definition("api/apps/__init__.py", ["login_required"], namespace)
+    api_apps = ModuleType("api.apps")
+    api_apps.current_user = user
+    api_apps.AUTH_JWT, api_apps.AUTH_API, api_apps.AUTH_BETA = "JWT", "API", "BETA"
+    api_apps.login_required = namespace["login_required"]
+    monkeypatch.setitem(sys.modules, "api.apps", api_apps)
+    tenant_ns = dict(wraps=wraps, inspect=inspect)
+    definition("api/utils/api_utils.py", ["add_tenant_id_to_kwargs"], tenant_ns)
+    api_utils = ModuleType("api.utils.api_utils")
+    api_utils.add_tenant_id_to_kwargs = tenant_ns["add_tenant_id_to_kwargs"]
+    api_utils.get_data_error_result = lambda **kw: {"error": "data", **kw}
+    api_utils.server_error_response = lambda error: {"error": "server", "message": str(error)}
+    monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils)
 
-    _stub(
-        monkeypatch,
-        "api.utils.api_utils",
-        construct_json_result=lambda **kw: {"kind": "json", **kw},
-        get_data_error_result=lambda message="", code=0, data=False: {"kind": "data_error", "message": message},
-        get_error_data_result=lambda *_a, **_k: {"kind": "error"},
-        get_result=lambda *_a, **_k: {"kind": "result"},
-        get_json_result=lambda *_a, **_k: {"kind": "json_result"},
-        server_error_response=lambda e: {"kind": "server_error", "error": str(e)},
-        add_tenant_id_to_kwargs=lambda func: func,
-        get_request_json=lambda: {},
-        # Used as `@validate_request(...)` decorator factory at module level, so it
-        # must return an identity decorator (the lenient fallback would return None
-        # and `@None` raises TypeError during import).
-        validate_request=lambda *_a, **_k: lambda func: func,
-    )
-    _stub(
-        monkeypatch,
-        "common.settings",
-        retriever=SimpleNamespace(),
-        kg_retriever=SimpleNamespace(),
-        # download_attachment reads settings.STORAGE_IMPL.get after
-        # `from common import settings` rebinds the module's `settings` name.
-        STORAGE_IMPL=SimpleNamespace(get=storage_get),
-    )
-    _stub(monkeypatch, "common.ssrf_guard", assert_host_is_safe=lambda *_a, **_k: None)
-    _stub(monkeypatch, "common.constants", RetCode=SimpleNamespace())
-    _stub(monkeypatch, "api.utils.pagination_utils", validate_rest_api_page_size=lambda *_a, **_k: None)
-    _stub(monkeypatch, "peewee")
+    def storage_get(tenant, ident):
+        storage_calls.append((tenant, ident))
+        return blob
 
-    async def _thread_pool_exec(fn, *args, **kwargs):
-        # download_attachment does `await thread_pool_exec(STORAGE_IMPL.get, ...)`;
-        # run the callable inline so the storage stub's return value flows through.
-        return fn(*args, **kwargs)
+    async def thread_exec(fn, *a, **kw):
+        return fn(*a, **kw)
 
-    _stub(monkeypatch, "common.misc_utils", get_uuid=lambda: "uuid", thread_pool_exec=_thread_pool_exec)
-    _stub(
-        monkeypatch,
-        "api.utils.web_utils",
-        CONTENT_TYPE_MAP={"markdown": "text/markdown"},
-        apply_safe_file_response_headers=lambda *_a, **_k: None,
-    )
+    async def make_response(payload):
+        return SimpleNamespace(payload=payload, headers=Headers())
 
-    # Lenient: agent_api.py imports Response, jsonify, request, make_response from
-    # quart; only request and make_response are on the download path, the rest
-    # resolve to placeholders so the import line can't break the test.
-    quart_stub = _LenientModule("quart")
-    quart_stub.request = SimpleNamespace(method="GET", args={"ext": "markdown"})
-    quart_stub.make_response = _make_response
-    monkeypatch.setitem(sys.modules, "quart", quart_stub)
-
-    # parents[5] = repo root from test/unit_test/api/apps/restful_apis/<file>
-    repo_root = Path(__file__).resolve().parents[5]
-    module_path = repo_root / "api" / "apps" / "restful_apis" / "agent_api.py"
-    spec = importlib.util.spec_from_file_location("test_agent_api_module", module_path)
+    common = ModuleType("common")
+    common.settings = SimpleNamespace(STORAGE_IMPL=SimpleNamespace(get=storage_get))
+    monkeypatch.setitem(sys.modules, "common", common)
+    misc = ModuleType("common.misc_utils")
+    misc.thread_pool_exec = thread_exec
+    monkeypatch.setitem(sys.modules, "common.misc_utils", misc)
+    quart = ModuleType("quart")
+    quart.request, quart.make_response = request, make_response
+    monkeypatch.setitem(sys.modules, "quart", quart)
+    spec = importlib.util.spec_from_file_location("attachment_test_owner", APP / "api/apps/restful_apis/attachment_api.py")
     module = importlib.util.module_from_spec(spec)
-    # `manager` must exist before exec so the @manager.route decorators run.
-    module.manager = _PassthroughManager()
-    monkeypatch.setitem(sys.modules, "test_agent_api_module", module)
+
+    def route(url, **kwargs):
+        assert kwargs["methods"] == ["GET"]
+        def register(fn):
+            routes[url] = fn
+            return fn
+        return register
+
+    module.manager = SimpleNamespace(route=route)
     spec.loader.exec_module(module)
-
-    # Pin every module global that download_attachment resolves at call time.
-    # The sys.modules stubs above only guarantee the import *succeeds*. In the
-    # full test environment `from common import settings` (and the api_utils /
-    # misc_utils imports) can bind the REAL modules instead of our stubs — e.g.
-    # if another test already imported common.settings, it is an attribute on the
-    # already-loaded `common` package and the sys.modules stub is bypassed — so
-    # settings.STORAGE_IMPL would be the uninitialised real None and the handler
-    # would 500 with "'NoneType' object has no attribute 'get'". Overriding the
-    # globals on the loaded module makes behaviour identical in both the
-    # bare-stub (local) and full-dependency (CI) environments.
-    module.settings = SimpleNamespace(STORAGE_IMPL=SimpleNamespace(get=storage_get))
-    module.request = SimpleNamespace(method="GET", args={"ext": "markdown"})
-    module.make_response = _make_response
-    module.thread_pool_exec = _thread_pool_exec
-    module.get_data_error_result = lambda message="", **_k: {"kind": "data_error", "message": message}
-    module.server_error_response = lambda e: {"kind": "server_error", "error": str(e)}
-    module.CONTENT_TYPE_MAP = {"markdown": "text/markdown"}
-    module.apply_safe_file_response_headers = lambda *_a, **_k: None
-    return module
+    return routes, auth_calls, storage_calls
 
 
-@pytest.mark.p1
-class TestAttachmentDownloadMissingBlob:
-    """Regression for #15502: missing-blob → structured 4xx, not HTTP 500."""
+@pytest.mark.parametrize("endpoint", ["preview", "download"])
+@pytest.mark.parametrize("blob", [None, b"", b"PDFDATA"])
+def test_routed_attachment_tenant_and_missing_blob(monkeypatch, endpoint, blob):
+    routes, auth_calls, calls = load_routes(monkeypatch, blob)
+    handler = routes[f"/agents/attachments/<attachment_id>/{endpoint}"]
+    result = asyncio.run(handler(attachment_id="blob", tenant_id="attacker"))
+    assert calls == [("tenant-A", "blob")]
+    assert len(auth_calls) == 1
+    if not blob:
+        assert result == {"error": "data", "message": "document not found"}
+    else:
+        assert result.payload == blob
+        assert result.headers["Content-Type"] == "application/pdf"
+        disposition = "inline" if endpoint == "preview" else "attachment"
+        assert result.headers["Content-Disposition"] == f'{disposition}; filename="report.pdf"'
 
-    def test_empty_blob_returns_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Storage returns None (orphaned metadata) → 'document not found' 4xx,
-        not a TypeError 500 from make_response(None)."""
-        module = _load_agent_api(monkeypatch, storage_get=lambda *_a, **_k: None)
-        result = asyncio.run(module.download_attachment(tenant_id="t1", attachment_id="orphan"))
-        # 'data_error' is the get_data_error_result shape from our stub above.
-        # If the empty-blob guard is missing, make_response(None) raises and
-        # the result instead has `kind == "server_error"`.
-        assert isinstance(result, dict) and result.get("kind") == "data_error", result
-        assert "not found" in result["message"].lower()
 
-    def test_empty_bytes_returns_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Same path when storage returns b'' instead of None."""
-        module = _load_agent_api(monkeypatch, storage_get=lambda *_a, **_k: b"")
-        result = asyncio.run(module.download_attachment(tenant_id="t1", attachment_id="empty"))
-        assert isinstance(result, dict) and result.get("kind") == "data_error"
-        assert "not found" in result["message"].lower()
+@pytest.mark.parametrize("endpoint", ["preview", "download"])
+def test_unauthenticated_routes_do_not_read_storage(monkeypatch, endpoint):
+    routes, _, calls = load_routes(monkeypatch, b"data", authorized=False)
+    with pytest.raises(Unauthorized):
+        asyncio.run(routes[f"/agents/attachments/<attachment_id>/{endpoint}"](attachment_id="blob"))
+    assert calls == []
 
-    def test_nonempty_blob_proceeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Happy path: real bytes flow through make_response untouched."""
-        module = _load_agent_api(monkeypatch, storage_get=lambda *_a, **_k: b"PDFDATA")
-        result = asyncio.run(module.download_attachment(tenant_id="t1", attachment_id="good"))
-        # SimpleNamespace from our _make_response stub
-        assert hasattr(result, "payload") and result.payload == b"PDFDATA"
+
+@pytest.mark.parametrize("endpoint, allowed", [("preview", False), ("download", True)])
+def test_beta_auth_policy_is_preserved(monkeypatch, endpoint, allowed):
+    routes, _, calls = load_routes(monkeypatch, b"data", auth_type="BETA")
+    handler = routes[f"/agents/attachments/<attachment_id>/{endpoint}"]
+    if allowed:
+        asyncio.run(handler(attachment_id="blob"))
+        assert calls == [("tenant-A", "blob")]
+    else:
+        with pytest.raises(Unauthorized):
+            asyncio.run(handler(attachment_id="blob"))
+        assert calls == []
+
+
+@pytest.mark.parametrize("endpoint", ["preview", "download"])
+def test_active_content_is_forced_to_attachment(monkeypatch, endpoint):
+    routes, _, _ = load_routes(monkeypatch, b"svg", args={"ext": "svg", "disposition": "inline"})
+    result = asyncio.run(routes[f"/agents/attachments/<attachment_id>/{endpoint}"](attachment_id="blob"))
+    assert result.headers["Content-Disposition"] == "attachment"
+    assert result.headers["X-Content-Type-Options"] == "nosniff"

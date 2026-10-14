@@ -4,12 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+from common import settings
 from peewee import SqliteDatabase
 
 from api.apps.restful_apis import chunk_api, task_api
 from api.apps.services import dataset_api_service, document_api_service
-from api.apps.services import file_api_service
-from api.db import FileType
 from api.db.db_models import DocmindAuditEvent, DocmindCatalogVersion, DocmindFolderVersionDocument, Task
 from api.db.joint_services import user_account_service
 from api.db.services.document_service import (
@@ -286,7 +285,7 @@ def test_reupload_denies_before_blob_read_storage_or_document_update(monkeypatch
         lambda *_args, **_kwargs: (_ for _ in ()).throw(DocmindProtectedEvidenceError("REUPLOAD", 1)),
     )
     monkeypatch.setattr(FileService, "update_by_id", lambda *_args: pytest.fail("document updated"))
-    monkeypatch.setattr(file_api_service.settings.STORAGE_IMPL, "put", lambda *_args: pytest.fail("storage replaced"))
+    monkeypatch.setattr(settings.STORAGE_IMPL, "put", lambda *_args: pytest.fail("storage replaced"))
 
     errors, files = FileService.upload_document.__wrapped__(FileService, kb, [file_obj], "tenant-1")
 
@@ -303,41 +302,9 @@ def test_document_run_denies_before_queue_dispatch(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(DocmindProtectedEvidenceError("RUN", 1)),
     )
     monkeypatch.setattr(task_service, "queue_tasks", lambda *_args: pytest.fail("queue_tasks called"))
-    monkeypatch.setattr(task_service, "queue_dataflow", lambda *_args, **_kwargs: pytest.fail("queue_dataflow called"))
 
     with pytest.raises(DocmindProtectedEvidenceError):
         DocumentService.run("tenant-1", {"id": "doc-1"}, {})
-
-
-@pytest.mark.asyncio
-async def test_file_move_denies_before_storage_or_database_mutation(monkeypatch):
-    file = SimpleNamespace(
-        id="file-1",
-        tenant_id="tenant-1",
-        type=FileType.PDF.value,
-        name="old.pdf",
-        parent_id="root",
-    )
-    monkeypatch.setattr(file_api_service.FileService, "get_by_ids", lambda *_args: [file])
-    monkeypatch.setattr(file_api_service, "check_file_team_permission", lambda *_args: True)
-    monkeypatch.setattr(file_api_service.FileService, "query", lambda **_kwargs: [])
-    monkeypatch.setattr(
-        file_api_service.File2DocumentService,
-        "get_by_file_id",
-        lambda *_args: [SimpleNamespace(document_id="doc-1")],
-    )
-    monkeypatch.setattr(
-        file_api_service.DocumentService,
-        "assert_documents_docmind_evidence_mutable",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(DocmindProtectedEvidenceError("MOVE", 1)),
-    )
-    monkeypatch.setattr(file_api_service.settings.STORAGE_IMPL, "move", lambda *_args: pytest.fail("storage moved"))
-    monkeypatch.setattr(file_api_service.FileService, "update_by_id", lambda *_args: pytest.fail("file updated"))
-
-    success, result = await file_api_service.move_files("tenant-1", ["file-1"], new_name="new.pdf")
-
-    assert success is False
-    assert result == DOCMIND_PROTECTED_EVIDENCE_ERROR_CODE
 
 
 def test_account_cleanup_denies_before_bucket_user_tenant_or_document_mutation(monkeypatch):
@@ -423,7 +390,6 @@ def _function_source(relative_path: str, function_name: str) -> str:
         ("api/apps/restful_apis/document_api.py", "metadata_batch_update", '"UPDATE_DOCUMENT_METADATA_BATCH"', "batch_update_metadata"),
         ("api/apps/restful_apis/document_api.py", "update_metadata", '"UPDATE_DOCUMENT_METADATA_BATCH"', "batch_update_metadata"),
         ("api/apps/restful_apis/document_api.py", "batch_update_document_status", '"UPDATE_DOCUMENT_AVAILABILITY_BATCH"', "update_by_id"),
-        ("api/apps/services/file_api_service.py", "move_files", '"MOVE_OR_RENAME_FILE_TREE"', "STORAGE_IMPL.move"),
         ("api/db/joint_services/user_account_service.py", "delete_user_data", '"DELETE_USER_ACCOUNT_DATA"', "remove_bucket"),
         ("api/apps/restful_apis/agent_api.py", "rerun_agent", '"RERUN_DATAFLOW_DOCUMENT"', "docStoreConn.delete"),
         ("api/apps/restful_apis/task_api.py", "_cancel_task", '"CANCEL_DOCUMENT_TASK"', "REDIS_CONN.set"),
@@ -434,7 +400,6 @@ def _function_source(relative_path: str, function_name: str) -> str:
         ("api/apps/restful_apis/chunk_api.py", "switch_chunks", '"SWITCH_MANUAL_CHUNKS"', "docStoreConn.update"),
         ("api/apps/restful_apis/chunk_api.py", "delete_document_structure_graph", '"DELETE_DOCUMENT_STRUCTURE_GRAPH"', "deleted += _delete"),
         ("api/db/services/file_service.py", "delete_docs", '"DELETE_DOCUMENT_BATCH"', "get_root_folder"),
-        ("api/apps/services/file_api_service.py", "delete_files", '"DELETE_FILE_TREE"', "thread_pool_exec(_rm_sync"),
         ("api/apps/services/dataset_api_service.py", "_delete_datasets_sync", '"DELETE_DATASET_BATCH"', "remove_document"),
         ("api/apps/services/dataset_api_service.py", "delete_knowledge_graph", '"DELETE_KNOWLEDGE_GRAPH"', "docStoreConn.delete"),
         ("api/apps/services/dataset_api_service.py", "run_index", 'assert_documents_docmind_evidence_mutable', "queue_raptor_o_graphrag_tasks"),

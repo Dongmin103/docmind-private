@@ -18,7 +18,7 @@ Embedding Utils Module.
 
 Provides utility functions for vector embedding operations to avoid code duplication
 across different services (e.g., [`EmbeddingService`](rag/svr/task_executor_refactor/embedding_service.py),
-[`DataflowService`](rag/svr/task_executor_refactor/dataflow_service.py)).
+the ordinary document embedding service).
 
 This module centralizes:
 - Batch encoding of texts with truncation
@@ -82,27 +82,6 @@ class EmbeddingUtils:
             contents.append(content)
         return titles, contents
 
-    @classmethod
-    def prepare_texts_for_dataflow_embedding(
-        cls,
-        chunks: List[Dict[str, Any]],
-    ) -> List[str]:
-        """Prepare texts for dataflow embedding.
-
-        Extracts content from 'questions', 'summary', or 'text' fields
-        (in priority order).
-
-        Args:
-            chunks: List of chunk dictionaries from dataflow output.
-
-        Returns:
-            List of text strings for embedding.
-        """
-        texts = []
-        for chunk in chunks:
-            text = chunk.get("questions", chunk.get("summary", chunk.get("text", "")))
-            texts.append(text)
-        return texts
 
     @classmethod
     def truncate_texts(cls, texts: List[str], max_length: int) -> List[str]:

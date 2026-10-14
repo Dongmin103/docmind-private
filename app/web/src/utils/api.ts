@@ -132,8 +132,6 @@ export default {
   chunkDetail: (datasetId: string, documentId: string, chunkId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks/${chunkId}`,
   // document
-  getDatasetDocumentFileDownload: (datasetId: string, documentId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}`,
   documentThumbnails: `${restAPIv1}/thumbnails`,
   getDocumentFile: `${restAPIv1}/documents`,
   documentInfoUpload: `${restAPIv1}/documents/upload`,
@@ -161,14 +159,7 @@ export default {
   chatsRelatedQuestions: `${restAPIv1}/chat/recommendation`,
 
   // file manager
-  listFile: `${restAPIv1}/files`,
-  uploadFile: `${restAPIv1}/files`,
-  removeFile: `${restAPIv1}/files`,
-  getAllParentFolder: `${restAPIv1}/files`,
-  createFolder: `${restAPIv1}/files`,
-  connectFileToKnowledge: `${restAPIv1}/files/link-to-datasets`,
   getFile: `${restAPIv1}/files`,
-  moveFile: `${restAPIv1}/files/move`,
 
   // system
   getSystemVersion: `${restAPIv1}/system/version`,

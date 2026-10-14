@@ -12,23 +12,10 @@ function usage() {
     echo "Usage: $0 [OPTIONS]"
     echo
     echo "  --disable-webserver                     Disables the web server (nginx + ragflow_server)."
-    echo "  --enable-mcpserver                      Enables the MCP server."
     echo "  --init-model-provider-tables            Run model provider table migrations and exit."
     echo "  --init-superuser                        Initializes the superuser."
-    echo "  --mcp-host=<string>                     Address the MCP server binds to (default: 127.0.0.1)."
-    echo "  --mcp-port=<num>                        Port the MCP server listens on (default: 9382)."
-    echo "  --mcp-base-url=<string>                 RAGFlow base URL the MCP server calls (default: http://127.0.0.1:9380)."
-    echo "  --mcp-script-path=<path>                MCP server entry script (default: /ragflow/mcp/server/server.py)."
-    echo "  --mcp-mode=<self-host|host>             MCP server mode (default: self-host)."
-    echo "  --mcp-host-api-key=<string>             API key required when --mcp-mode=self-host."
-    echo "  --no-transport-sse-enabled              Disables the MCP SSE transport."
-    echo "  --no-transport-streamable-http-enabled  Disables the MCP streamable HTTP transport. Disabling"
-    echo "                                          both transports re-enables this one, since the server"
-    echo "                                          requires at least one."
-    echo "  --no-json-response                      Disables JSON responses from the MCP server."
     echo
     echo "Examples:"
-    echo "  $0 --enable-mcpserver"
     echo "  $0 --init-superuser"
     exit 1
 }
@@ -36,19 +23,9 @@ function usage() {
 # DocMind cloud ingestion runs TaskHandler inside the API. There are no
 # standalone queue consumers or external connector sync daemons to launch.
 ENABLE_WEBSERVER=1 # Default to enable web server
-ENABLE_MCP_SERVER=0
 INIT_SUPERUSER_ARGS="" # Default to not initialize superuser
 INIT_MODEL_PROVIDER_TABLES=0
 
-MCP_HOST="127.0.0.1"
-MCP_PORT=9382
-MCP_BASE_URL="http://127.0.0.1:9380"
-MCP_SCRIPT_PATH="/ragflow/mcp/server/server.py"
-MCP_MODE="self-host"
-MCP_HOST_API_KEY=""
-MCP_TRANSPORT_SSE_FLAG="--transport-sse-enabled"
-MCP_TRANSPORT_STREAMABLE_HTTP_FLAG="--transport-streamable-http-enabled"
-MCP_JSON_RESPONSE_FLAG="--json-response"
 
 # Parse arguments
 for arg in "$@"; do
@@ -57,52 +34,12 @@ for arg in "$@"; do
       ENABLE_WEBSERVER=0
       shift
       ;;
-    --enable-mcpserver)
-      ENABLE_MCP_SERVER=1
-      shift
-      ;;
     --init-model-provider-tables)
       INIT_MODEL_PROVIDER_TABLES=1
       shift
       ;;
     --init-superuser)
       INIT_SUPERUSER_ARGS="--init-superuser"
-      shift
-      ;;
-    --mcp-host=*)
-      MCP_HOST="${arg#*=}"
-      shift
-      ;;
-    --mcp-port=*)
-      MCP_PORT="${arg#*=}"
-      shift
-      ;;
-    --mcp-base-url=*)
-      MCP_BASE_URL="${arg#*=}"
-      shift
-      ;;
-    --mcp-mode=*)
-      MCP_MODE="${arg#*=}"
-      shift
-      ;;
-    --mcp-host-api-key=*)
-      MCP_HOST_API_KEY="${arg#*=}"
-      shift
-      ;;
-    --mcp-script-path=*)
-      MCP_SCRIPT_PATH="${arg#*=}"
-      shift
-      ;;
-    --no-transport-sse-enabled)
-      MCP_TRANSPORT_SSE_FLAG="--no-transport-sse-enabled"
-      shift
-      ;;
-    --no-transport-streamable-http-enabled)
-      MCP_TRANSPORT_STREAMABLE_HTTP_FLAG="--no-transport-streamable-http-enabled"
-      shift
-      ;;
-    --no-json-response)
-      MCP_JSON_RESPONSE_FLAG="--no-json-response"
       shift
       ;;
     *)
@@ -163,18 +100,6 @@ fi
 # Function(s)
 # -----------------------------------------------------------------------------
 
-function start_mcp_server() {
-    echo "Starting MCP Server on ${MCP_HOST}:${MCP_PORT} with base URL ${MCP_BASE_URL}..."
-    "$PY" "${MCP_SCRIPT_PATH}" \
-        --host="${MCP_HOST}" \
-        --port="${MCP_PORT}" \
-        --base-url="${MCP_BASE_URL}" \
-        --mode="${MCP_MODE}" \
-        --api-key="${MCP_HOST_API_KEY}" \
-        "${MCP_TRANSPORT_SSE_FLAG}" \
-        "${MCP_TRANSPORT_STREAMABLE_HTTP_FLAG}" \
-        "${MCP_JSON_RESPONSE_FLAG}" &
-}
 
 function ensure_docling() {
     [[ "${USE_DOCLING}" == "true" ]] || { echo "[docling] disabled by USE_DOCLING"; return 0; }
@@ -238,8 +163,5 @@ if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     fi
 fi
 
-if [[ "${ENABLE_MCP_SERVER}" -eq 1 ]]; then
-    start_mcp_server
-fi
 
 wait

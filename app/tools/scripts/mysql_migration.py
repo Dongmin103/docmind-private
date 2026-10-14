@@ -1045,13 +1045,7 @@ class ModelIdConfigStage(MigrationStage):
         "document",
         "dialog",
         "memory",
-        "search",
-        "user_canvas",
-        "canvas_template",
-        "user_canvas_version",
         "api_4_conversation",
-        "pipeline_operation_log",
-        "connector",
         "evaluation_runs",
     ]
     target_tables = source_tables
@@ -1077,13 +1071,7 @@ class ModelIdConfigStage(MigrationStage):
     json_columns = {
         "knowledgebase": ("parser_config",),
         "document": ("parser_config",),
-        "search": ("search_config",),
-        "user_canvas": ("dsl",),
-        "canvas_template": ("dsl",),
-        "user_canvas_version": ("dsl",),
         "api_4_conversation": ("dsl",),
-        "pipeline_operation_log": ("dsl",),
-        "connector": ("config",),
         "evaluation_runs": ("config_snapshot",),
     }
 

@@ -24,7 +24,7 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
-from api.db.services import conversation_service, dialog_service, file_service, user_canvas_version
+from api.db.services import conversation_service, dialog_service, file_service
 
 
 class _FakeOrderField:
@@ -127,14 +127,5 @@ def test_dialog_helper_orders_by_create_time(monkeypatch):
     _patch(monkeypatch, dialog_service, dialog_service.DialogService)
 
     rows = dialog_service.DialogService.get_all_dialogs_by_tenant_id("tenant-1")
-
-    assert [r["id"] for r in rows] == ["a", "b", "c"]
-
-
-@pytest.mark.p2
-def test_canvas_version_helper_orders_by_create_time(monkeypatch):
-    _patch(monkeypatch, user_canvas_version, user_canvas_version.UserCanvasVersionService)
-
-    rows = user_canvas_version.UserCanvasVersionService.get_all_canvas_version_by_canvas_ids(["canvas-1"])
 
     assert [r["id"] for r in rows] == ["a", "b", "c"]

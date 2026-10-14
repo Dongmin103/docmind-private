@@ -27,7 +27,7 @@ from langfuse import propagate_attributes
 from api.db.db_models import LLM
 from api.db.services.common_service import CommonService
 from api.db.services.tenant_llm_service import LLM4Tenant
-from common.token_utils import langfuse_run_attrs, num_tokens_from_string, record_run_token_usage, truncate
+from common.token_utils import num_tokens_from_string, truncate
 
 # Default values for the four LLM generation parameters stored in
 # search_config.llm_setting.  When the corresponding ``_enabled`` flag is
@@ -88,11 +88,6 @@ class LLMBundle(LLM4Tenant):
         attrs = {}
         if self.langfuse_session_id:
             attrs["session_id"] = self.langfuse_session_id
-        run_attrs = langfuse_run_attrs.get()
-        if run_attrs:
-            for k in ("session_id", "user_id"):
-                if run_attrs.get(k) and k not in attrs:
-                    attrs[k] = run_attrs[k]
         if attrs:
             with propagate_attributes(**attrs):
                 return self.langfuse.start_observation(**kwargs)
@@ -105,7 +100,7 @@ class LLMBundle(LLM4Tenant):
             self.mdl.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     def _report_usage(self, total_tokens: int) -> dict:
-        """Record a chat call's usage to the active agent run and return the
+        """Return a chat call's usage as the
         prompt/completion/total split for Langfuse.
 
         ``total_tokens`` is the authoritative total from the call. The prompt/completion
@@ -121,7 +116,6 @@ class LLMBundle(LLM4Tenant):
         if (prompt + completion) != total_tokens:
             # Stale or inconsistent split — keep the total, drop the unreliable split.
             prompt, completion = 0, 0
-        record_run_token_usage(prompt, completion, total_tokens)
         return {"input": prompt, "output": completion, "total": total_tokens}
 
     def close(self):

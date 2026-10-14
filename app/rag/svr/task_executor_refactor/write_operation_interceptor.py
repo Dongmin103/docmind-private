@@ -30,8 +30,6 @@ ALLOWED_METHOD_NAMES = {
     "TaskService.update_chunk_ids",
     "DocumentService.increment_chunk_num",
     "DocMetadataService.update_document_metadata",
-    "PipelineOperationLogService.record_pipeline_operation",
-    "PipelineOperationLogService.create",
     "docStoreConn.insert",
     "docStoreConn.delete",
 }

@@ -42,7 +42,6 @@ from api.db.services.conversation_service import ConversationService, structure_
 from api.db.services.dialog_service import DialogService, async_chat
 from api.db.services.knowledgebase_service import KnowledgebaseService, validate_dataset_embedding_models
 from api.db.services.llm_service import LLMBundle
-from api.db.services.search_service import SearchService
 from api.db.services.user_service import TenantService, UserTenantService
 from api.utils.api_utils import (
     check_duplicate_ids,
@@ -1180,11 +1179,7 @@ async def transcription():
 async def recommendation():
     req = await get_request_json()
 
-    search_id = req.get("search_id", "")
     search_config = {}
-    if search_id:
-        if search_app := SearchService.get_detail(search_id):
-            search_config = search_app.get("search_config", {})
 
     question = req["question"]
 

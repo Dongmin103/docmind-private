@@ -277,9 +277,7 @@ COPY deepdoc deepdoc
 COPY rag rag
 COPY --from=builder /ragflow/rag/res/paddleocr/ /ragflow/rag/res/paddleocr/
 COPY scripts scripts
-COPY agent agent
 COPY pyproject.toml uv.lock ./
-COPY mcp mcp
 COPY common common
 COPY memory memory
 COPY bin bin

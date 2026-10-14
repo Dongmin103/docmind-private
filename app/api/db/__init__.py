@@ -17,8 +17,6 @@
 from enum import IntEnum
 from enum import StrEnum
 
-from common.constants import PipelineTaskType
-
 
 class UserTenantRole(StrEnum):
     OWNER = "owner"
@@ -55,19 +53,6 @@ class InputType(StrEnum):
     POLL = "poll"  # e.g. calling an API to get all documents in the last hour
     EVENT = "event"  # e.g. registered an endpoint as a listener, and processing connector events
     SLIM_RETRIEVAL = "slim_retrieval"
-
-
-class CanvasCategory(StrEnum):
-    Agent = "agent_canvas"
-    DataFlow = "dataflow_canvas"
-
-
-VALID_PIPELINE_TASK_TYPES = {
-    PipelineTaskType.PARSE,
-    PipelineTaskType.DOWNLOAD,
-}
-
-
 
 
 KNOWLEDGEBASE_FOLDER_NAME = ".knowledgebase"

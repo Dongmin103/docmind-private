@@ -15,11 +15,11 @@
 #
 from datetime import datetime
 
-from peewee import JOIN, fn
+from peewee import fn
 
 from api.constants import DATASET_NAME_LIMIT
 from api.db import TenantPermission
-from api.db.db_models import DB, Document, Knowledgebase, User, UserCanvas
+from api.db.db_models import DB, Document, Knowledgebase, User
 from api.db.joint_services.tenant_model_service import get_composite_model_name_by_ids
 from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
@@ -337,9 +337,6 @@ class KnowledgebaseService(CommonService):
             cls.model.token_num,
             cls.model.chunk_num,
             cls.model.parser_id,
-            cls.model.pipeline_id,
-            UserCanvas.title.alias("pipeline_name"),
-            UserCanvas.avatar.alias("pipeline_avatar"),
             cls.model.parser_config,
             cls.model.pagerank,
             cls.model.create_time,
@@ -347,7 +344,6 @@ class KnowledgebaseService(CommonService):
         ]
         kbs = (
             cls.model.select(*fields)
-            .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)
             .where((cls.model.id == kb_id), (cls.model.status == StatusEnum.VALID.value))
             .dicts()
         )

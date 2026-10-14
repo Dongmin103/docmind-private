@@ -42,7 +42,6 @@ from api.db.db_models import init_database_tables as init_web_db
 from api.db.init_data import init_web_data, init_superuser
 from common.versions import get_ragflow_version
 from common.config_utils import show_configs
-from common.mcp_tool_call_conn import shutdown_all_mcp_sessions
 from common.log_utils import init_root_logger
 from rag.utils.redis_conn import RedisDistributedLock
 
@@ -78,7 +77,6 @@ def stop_background_services():
 
 def signal_handler(sig, frame):
     logging.info("Received interrupt signal, shutting down...")
-    shutdown_all_mcp_sessions()
     stop_background_services()
     sys.exit(0)
 

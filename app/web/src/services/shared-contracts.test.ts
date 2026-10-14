@@ -4,7 +4,7 @@ jest.mock('@/utils/register-server', () => ({
 }));
 jest.mock('@/utils/request', () => ({ __esModule: true, default: { get: jest.fn() } }));
 import chatService from './next-chat-service';
-import fileService, { downloadDatasetDocument } from './file-manager-service';
+import fileService, { downloadAttachment } from './file-read-service';
 import request from '@/utils/request';
 
 it('retains message delete and feedback on the session message endpoints', () => {
@@ -14,10 +14,10 @@ it('retains message delete and feedback on the session message endpoints', () =>
   expect(methods.thumbup.method).toBe('put');
   expect(methods.thumbup.url('chat', 'session', 'message')).toBe('/api/v1/chats/chat/sessions/session/messages/message/feedback');
 });
-it('retains document preview and dataset document download contracts', () => {
+it('retains document preview and ordinary attachment download contracts', () => {
   expect((fileService as any).getDocumentFile.url).toBe('/api/v1/documents');
-  downloadDatasetDocument({ datasetId: 'dataset', docId: 'document', ext: 'pdf' });
-  expect(request.get).toHaveBeenCalledWith('/api/v1/datasets/dataset/documents/document', { params: { ext: 'pdf' }, responseType: 'blob' });
+  downloadAttachment({ docId: 'document', ext: 'pdf' });
+  expect(request.get).toHaveBeenCalledWith('/api/v1/agents/attachments/document/download', { params: { ext: 'pdf' }, responseType: 'blob' });
 });
 
 it('does not retain the retired mindmap generation adapter in ordinary chat', () => {

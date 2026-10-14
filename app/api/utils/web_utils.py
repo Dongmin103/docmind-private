@@ -66,7 +66,7 @@ from api.utils.file_response import (  # noqa: F401
     CONTENT_TYPE_MAP,
     FORCE_ATTACHMENT_CONTENT_TYPES,
     FORCE_ATTACHMENT_EXTENSIONS,
-    agent_attachment_preview_path,
+    attachment_preview_path,
     apply_download_file_response_headers,
     apply_preview_file_response_headers,
     resolve_attachment_content_type,

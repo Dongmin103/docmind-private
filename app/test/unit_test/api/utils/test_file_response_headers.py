@@ -50,15 +50,15 @@ def test_resolve_attachment_content_type_prefers_mime_type():
 
 
 @pytest.mark.p2
-def test_agent_attachment_preview_path_includes_query():
-    path = module.agent_attachment_preview_path("doc-1", ext="pdf", mime_type="application/pdf")
+def test_attachment_preview_path_includes_query():
+    path = module.attachment_preview_path("doc-1", ext="pdf", mime_type="application/pdf")
     query = urlencode({"ext": "pdf", "mime_type": "application/pdf"})
     assert path == f"/api/v1/agents/attachments/doc-1/preview?{query}"
 
 
 @pytest.mark.p2
-def test_agent_attachment_preview_path_encodes_svg_mime_type():
-    path = module.agent_attachment_preview_path("doc-1", ext="svg", mime_type="image/svg+xml")
+def test_attachment_preview_path_encodes_svg_mime_type():
+    path = module.attachment_preview_path("doc-1", ext="svg", mime_type="image/svg+xml")
     query = urlencode({"ext": "svg", "mime_type": "image/svg+xml"})
     assert path == f"/api/v1/agents/attachments/doc-1/preview?{query}"
     assert "%2B" in path or "svg%2Bxml" in path

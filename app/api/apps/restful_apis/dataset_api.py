@@ -21,7 +21,7 @@ from quart import request
 from api.apps import current_user, login_required
 from api.apps.services import dataset_api_service
 from api.utils.api_utils import add_tenant_id_to_kwargs, get_error_argument_result, get_error_data_result, get_json_result, get_result
-from api.utils.pagination_utils import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, validate_rest_api_ids, validate_rest_api_page, validate_rest_api_page_size
+from api.utils.pagination_utils import validate_rest_api_ids
 from api.utils.validation_utils import (
     CreateDatasetReq,
     DeleteDatasetReq,
@@ -577,49 +577,6 @@ async def check_embedding(tenant_id, dataset_id):
             return get_json_result(code=result["code"], message=result["message"], data=result["data"])
         else:
             return get_error_data_result(message=result)
-    except Exception as e:
-        logging.exception(e)
-        return get_error_data_result(message="Internal server error")
-
-
-@manager.route("/datasets/<dataset_id>/ingestions", methods=["GET"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-def list_ingestion_logs(tenant_id, dataset_id):
-    try:
-        page = validate_rest_api_page(request.args.get("page", DEFAULT_PAGE))
-        page_size = validate_rest_api_page_size(request.args.get("page_size", DEFAULT_PAGE_SIZE))
-        orderby = request.args.get("orderby", "create_time")
-        desc = request.args.get("desc", "true").lower() != "false"
-        operation_status = request.args.getlist("operation_status")
-        create_date_from = request.args.get("create_date_from", None)
-        create_date_to = request.args.get("create_date_to", None)
-        log_type = request.args.get("log_type", "dataset")
-        keywords = request.args.get("keywords", None)
-        success, result = dataset_api_service.list_ingestion_logs(dataset_id, tenant_id, page, page_size, orderby, desc, operation_status, create_date_from, create_date_to, log_type, keywords)
-        if success:
-            return get_result(data=result)
-        else:
-            return get_error_data_result(message=result)
-    except ValueError as e:
-        return get_error_argument_result(str(e))
-    except Exception as e:
-        logging.exception(e)
-        return get_error_data_result(message="Internal server error")
-
-
-@manager.route("/datasets/<dataset_id>/ingestions/<log_id>", methods=["GET"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-def get_ingestion_log(tenant_id, dataset_id, log_id):
-    try:
-        success, result = dataset_api_service.get_ingestion_log(dataset_id, tenant_id, log_id)
-        if success:
-            return get_result(data=result)
-        else:
-            return get_error_data_result(message=result)
-    except ValueError as e:
-        return get_error_argument_result(str(e))
     except Exception as e:
         logging.exception(e)
         return get_error_data_result(message="Internal server error")

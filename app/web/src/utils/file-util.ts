@@ -16,7 +16,7 @@
 
 import { FileMimeType } from '@/constants/common';
 import { UploadFile } from '@/interfaces/antd-compat';
-import fileManagerService from '@/services/file-manager-service';
+import fileReadService from '@/services/file-read-service';
 
 export const transformFile2Base64 = (
   val: any,
@@ -124,8 +124,8 @@ async function fetchPreviewBlob(
 ) {
   const response =
     resource === 'files'
-      ? await fileManagerService.getFile({}, id)
-      : await fileManagerService.getDocumentFile({}, id);
+      ? await fileReadService.getFile({}, id)
+      : await fileReadService.getDocumentFile({}, id);
   const blob = new Blob([response.data], {
     type: mimeType || response.data.type,
   });

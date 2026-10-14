@@ -17,7 +17,6 @@ from io import BytesIO
 from datetime import datetime
 import logging
 import json
-import os
 import re
 from pathlib import Path
 
@@ -34,10 +33,8 @@ from api.apps.services.document_api_service import (
     update_document_name_only,
     update_chunk_method,
     update_document_status_only,
-    reset_document_for_reparse,
 )
 from api.db import VALID_FILE_TYPES, FileType
-from api.db.db_models import API4Conversation, DB
 from api.db.services import duplicate_name
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.services.document_counter_service import release_reparse_counters
@@ -46,7 +43,6 @@ from api.db.services.document_service import DocumentService, DocmindProtectedEv
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.db.services.canvas_service import UserCanvasService
 from api.common.check_team_permission import check_kb_team_permission
 from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.utils.api_utils import (
@@ -70,12 +66,12 @@ from api.utils.validation_utils import (
 )
 
 from common import settings
-from common.constants import ParserType, RetCode, TaskStatus, SANDBOX_ARTIFACT_BUCKET
+from common.constants import ParserType, RetCode, TaskStatus
 from common.metadata_utils import convert_conditions, meta_filter, turn2jsonschema
 from common.misc_utils import get_uuid, thread_pool_exec, thread_pool_exec_long_time
 from api.utils.file_utils import filename_type, thumbnail
 from api.utils.file_response import apply_preview_file_response_headers
-from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url, apply_safe_file_response_headers
+from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url
 from common.ssrf_guard import assert_url_is_safe
 from rag.nlp import search
 
@@ -250,19 +246,12 @@ async def update_document(tenant_id, dataset_id, document_id):
         return get_data_error_result(message="Not supported yet!")
 
     # parser config provided (already validated in UpdateDocumentReq), update it.
-    # Changing the document-scoped knowledge compilation template group must
-    # not remove the existing chunks.
     if update_doc_req.parser_config:
         req["parser_config"].update(update_doc_req.parser_config.ext)
         DocumentService.update_parser_config(doc.id, req["parser_config"])
 
-    # A non-empty pipeline_id selects pipeline parsing; an explicitly empty
-    # value clears it and switches back to the direct parser path.
-    if "pipeline_id" in req:
-        if error := reset_document_for_reparse(doc, tenant_id, pipeline_id=update_doc_req.pipeline_id or ""):
-            return error
     # chunk method provided - the update method will check if it's different with existing one
-    elif update_doc_req.chunk_method:
+    if update_doc_req.chunk_method:
         if error := update_chunk_method(req, doc, tenant_id):
             return error
 
@@ -556,7 +545,6 @@ async def _upload_web_document(dataset_id, kb, tenant_id):
             "id": get_uuid(),
             "kb_id": kb.id,
             "parser_id": kb.parser_id,
-            "pipeline_id": kb.pipeline_id,
             "parser_config": kb.parser_config,
             "created_by": tenant_id,
             "type": filetype,
@@ -609,7 +597,6 @@ async def _upload_empty_document(dataset_id, kb, tenant_id):
                 "id": get_uuid(),
                 "kb_id": kb.id,
                 "parser_id": kb.parser_id,
-                "pipeline_id": kb.pipeline_id,
                 "parser_config": kb.parser_config,
                 "created_by": tenant_id,
                 "type": FileType.VIRTUAL,
@@ -1896,108 +1883,6 @@ async def get_document_image(image_id):
         content_type = _content_type_for_document_image(nm, data)
         response = await make_response(data)
         response.headers.set("Content-Type", content_type)
-        return response
-    except Exception as e:
-        return server_error_response(e)
-
-
-ARTIFACT_CONTENT_TYPES = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".svg": "image/svg+xml",
-    ".pdf": "application/pdf",
-    ".csv": "text/csv",
-    ".json": "application/json",
-    ".html": "text/html",
-}
-
-
-@DB.connection_context()
-def _sandbox_artifact_dialog_ids_for_user(filename: str, user_id: str) -> list[str]:
-    """Return agent dialog IDs for sessions owned by *user_id* that reference *filename*."""
-    if not filename:
-        return []
-    artifact_ref = f"documents/artifact/{filename}"
-    rows = (
-        API4Conversation.select(API4Conversation.dialog_id)
-        .where(
-            ((API4Conversation.user_id == user_id) | (API4Conversation.exp_user_id == user_id)),
-            (API4Conversation.message.contains(filename) | API4Conversation.message.contains(artifact_ref)),
-        )
-        .distinct()
-    )
-    return [row.dialog_id for row in rows if row.dialog_id]
-
-
-def _sandbox_artifact_accessible(filename: str, user_id: str) -> bool:
-    """True when a CodeExec sandbox artifact belongs to an agent session the user may access."""
-    for dialog_id in _sandbox_artifact_dialog_ids_for_user(filename, user_id):
-        if UserCanvasService.accessible(dialog_id, user_id):
-            return True
-    return False
-
-
-@DB.connection_context()
-def _sandbox_artifact_session_accessible(session_id: str, user_id: str) -> bool:
-    if not session_id:
-        return False
-    conv = API4Conversation.get_or_none(API4Conversation.id == session_id)
-    if not conv:
-        return False
-    if str(conv.user_id) != str(user_id) and str(conv.exp_user_id or "") != str(user_id):
-        return False
-    return UserCanvasService.accessible(conv.dialog_id, user_id)
-
-
-@manager.route("/documents/artifact/<filename>", methods=["GET"])  # noqa: F821
-@login_required
-async def get_artifact(filename):
-    """
-    Get an artifact file.
-    ---
-    tags:
-      - Documents
-    security:
-      - ApiKeyAuth: []
-    parameters:
-      - in: path
-        name: filename
-        type: string
-        required: true
-        description: Name of the artifact file.
-      - in: header
-        name: Authorization
-        type: string
-        required: true
-        description: Bearer token for authentication.
-    responses:
-      200:
-        description: Artifact file returned successfully.
-    """
-    from common import settings
-
-    try:
-        bucket = SANDBOX_ARTIFACT_BUCKET
-        # Validate filename: must be uuid hex + allowed extension, nothing else
-        basename = os.path.basename(filename)
-        if basename != filename or "/" in filename or "\\" in filename:
-            return get_data_error_result(message="Invalid filename.")
-        ext = os.path.splitext(basename)[1].lower()
-        if ext not in ARTIFACT_CONTENT_TYPES:
-            return get_data_error_result(message="invalid file type")
-        session_id = request.args.get("session_id", "")
-        if not await thread_pool_exec(_sandbox_artifact_accessible, basename, current_user.id) and not await thread_pool_exec(_sandbox_artifact_session_accessible, session_id, current_user.id):
-            return get_data_error_result(message="Artifact not found.")
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, bucket, basename)
-        if not data:
-            return get_data_error_result(message="Artifact not found.")
-        content_type = ARTIFACT_CONTENT_TYPES.get(ext, "application/octet-stream")
-        response = await make_response(data)
-        safe_filename = re.sub(r"[^\w.\-]", "_", basename)
-        apply_safe_file_response_headers(response, content_type, ext)
-        if not response.headers.get("Content-Disposition"):
-            response.headers.set("Content-Disposition", f'inline; filename="{safe_filename}"')
         return response
     except Exception as e:
         return server_error_response(e)

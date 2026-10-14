@@ -44,9 +44,7 @@ from common.misc_utils import thread_pool_exec
 from common.storage_attempt_audit import stage_scope
 from rag.nlp import search
 from rag.utils.chunk_id import make_chunk_id
-from rag.svr.task_executor_refactor.constants import CANVAS_DEBUG_DOC_ID
 from rag.svr.task_executor_refactor.chunk_service import ChunkService
-from rag.svr.task_executor_refactor.dataflow_service import BillingHook, DataflowService
 from rag.svr.task_executor_refactor.embedding_service import EmbeddingService
 from rag.svr.task_executor_refactor.post_processor import PostProcessor
 from rag.svr.task_executor_refactor.task_context import TaskContext
@@ -59,7 +57,7 @@ class TaskHandler:
     """Main task handler for document processing.
 
     This class orchestrates the entire document processing pipeline:
-    1. Task type detection (dataflow, standard)
+    1. Standard document processing
     2. Model binding (embedding, chat)
     3. Chunk building
     4. Embedding
@@ -72,16 +70,13 @@ class TaskHandler:
     def __init__(
         self,
         ctx: TaskContext,
-        billing_hook: Optional[BillingHook] = None,
     ):
         """Initialize TaskHandler.
 
         Args:
             ctx: TaskContext containing task configuration and execution resources.
-            billing_hook: Optional billing hook for pipeline success/error callbacks.
         """
         self._task_context = ctx
-        self._billing_hook = billing_hook
 
     @staticmethod
     def _is_standard_chunking_task(task_type: str) -> bool:
@@ -91,7 +86,7 @@ class TaskHandler:
     @staticmethod
     def _validate_task_type(task_type: str) -> str:
         normalized = (task_type or "").strip().lower()
-        if normalized in {"memory", "graphrag", "graph", "raptor", "mindmap", "wiki", "artifact", "skill", "structure_graph", "structure_mindmap", "timeline", "session_graph", "session_essence", "structure", "structuregraph", "structuremindmap", "sessiongraph", "sessionessence"}:
+        if normalized.startswith("dataflow") or normalized in {"evaluation", "reembedding", "clone", "memory", "graphrag", "graph", "raptor", "mindmap", "wiki", "artifact", "skill", "structure_graph", "structure_mindmap", "timeline", "session_graph", "session_essence", "structure", "structuregraph", "structuremindmap", "sessiongraph", "sessionessence"}:
             raise ValueError(f"Unsupported task type: {normalized}")
         return normalized
 
@@ -146,7 +141,6 @@ class TaskHandler:
         # The normal task path still rejects direct mutation of published evidence.
         if (
             ctx.doc_id
-            and ctx.doc_id not in {CANVAS_DEBUG_DOC_ID}
             and not getattr(ctx, "_docmind_defer_activation", False)
         ):
             await thread_pool_exec(
@@ -165,23 +159,7 @@ class TaskHandler:
         with embedding_model:
             self._init_kb(vector_size)
 
-            # Handle dataflow tasks (after init_kb, matching original behavior)
-            if task_type == "dataflow" and ctx.doc_id == CANVAS_DEBUG_DOC_ID:
-                await self._run_dataflow()
-                return
-
-            if task_type.startswith("dataflow"):
-                await self._run_dataflow()
-                return
-
-            if task_type == "evaluation":
-                await self._run_evaluation()
-            elif task_type == "reembedding":
-                await self._run_reembedding()
-            elif task_type == "clone":
-                await self._run_clone()
-            else:
-                await self._run_standard_chunking(embedding_model, vector_size)
+            await self._run_standard_chunking(embedding_model, vector_size)
 
     def _init_kb(self, vector_size: int) -> None:
         """Initialize knowledge base index."""
@@ -191,28 +169,6 @@ class TaskHandler:
         # Create index if not exists
         settings.docStoreConn.create_idx(idxnm, ctx.kb_id, vector_size, parser_id)
 
-    async def _run_dataflow(self) -> None:
-        """Run dataflow pipeline."""
-        dataflow_service = DataflowService(
-            ctx=self._task_context,
-            billing_hook=self._billing_hook,
-        )
-        await dataflow_service.run_dataflow()
-
-    async def _run_evaluation(self) -> None:
-        """Run evaluation task."""
-        ctx = self._task_context
-        ctx.progress_cb(1, "Evaluation task placeholder")
-
-    async def _run_reembedding(self) -> None:
-        """Run reembedding task."""
-        ctx = self._task_context
-        ctx.progress_cb(1, "Reembedding task placeholder")
-
-    async def _run_clone(self) -> None:
-        """Run clone task."""
-        ctx = self._task_context
-        ctx.progress_cb(1, "Clone task placeholder")
 
     async def _bind_embedding_model(self) -> Optional[tuple]:
         """Bind embedding model to task.
