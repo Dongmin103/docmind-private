@@ -44,9 +44,6 @@ _OPTIONAL_STUB_MODULES = (
     "rag.utils.redis_conn",
     "rag.utils.s3_conn",
     "rag.utils.oss_conn",
-    "memory.utils.es_conn",
-    "memory.utils.infinity_conn",
-    "memory.utils.ob_conn",
 )
 _LOADED_MODULES = (
     "common.settings",
@@ -111,7 +108,6 @@ def _install_optional_import_stubs(monkeypatch):
         monkeypatch.setitem(sys.modules, name, mod)
 
     import rag.utils
-    import memory.utils
 
     rag_modules = {
         "es_conn": {"ESConnection": StubDocEngineConnection},
@@ -131,16 +127,6 @@ def _install_optional_import_stubs(monkeypatch):
         mod = _module(f"rag.utils.{short_name}", **attrs)
         monkeypatch.setitem(sys.modules, f"rag.utils.{short_name}", mod)
         monkeypatch.setattr(rag.utils, short_name, mod, raising=False)
-
-    for short_name in ("es_conn", "infinity_conn", "ob_conn"):
-        mod = _module(
-            f"memory.utils.{short_name}",
-            ESConnection=StubDocEngineConnection,
-            InfinityConnection=StubDocEngineConnection,
-            OBConnection=StubDocEngineConnection,
-        )
-        monkeypatch.setitem(sys.modules, f"memory.utils.{short_name}", mod)
-        monkeypatch.setattr(memory.utils, short_name, mod, raising=False)
 
     monkeypatch.setitem(sys.modules, "json_repair", _module("json_repair", loads=json.loads))
 

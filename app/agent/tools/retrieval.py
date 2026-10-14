@@ -25,13 +25,11 @@ from api.db.services.doc_metadata_service import DocMetadataService
 from common.metadata_utils import apply_meta_data_filter
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
-from api.db.services.memory_service import MemoryService
-from api.db.joint_services import memory_message_service
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, resolve_model_config
 from common import settings
 from common.connection_utils import timeout
 from rag.app.tag import label_question
-from rag.prompts.generator import cross_languages, kb_prompt, memory_prompt
+from rag.prompts.generator import cross_languages, kb_prompt
 
 
 class RetrievalParam(ToolParamBase):
@@ -62,7 +60,6 @@ class RetrievalParam(ToolParamBase):
         self.top_k = 1024
         self.dataset_ids = []
         self.kb_ids = []  # Deprecated: keep for backward compatibility
-        self.memory_ids = []
         self.kb_vars = []
         self.rerank_id = ""
         self.empty_response = ""
@@ -252,39 +249,6 @@ class Retrieval(ToolBase, ABC):
 
         return form_cnt
 
-    async def _retrieve_memory(self, query_text: str):
-        memory_ids: list[str] = [memory_id for memory_id in self._param.memory_ids]
-        user_id: str = self._param.user_id if hasattr(self._param, "user_id") else None
-        memory_list = MemoryService.get_by_ids(memory_ids)
-        if not memory_list:
-            raise Exception("No memory is selected.")
-
-        embd_names = list({memory.embd_id for memory in memory_list})
-        assert len(embd_names) == 1, "Memory use different embedding models."
-
-        vars = self.get_input_elements_from_text(query_text)
-        vars = {k: o["value"] for k, o in vars.items()}
-        query = self.string_format(query_text, vars)
-        # query message
-        filter_dict: dict = {"memory_id": memory_ids}
-        if user_id:
-            import re
-
-            # is variable
-            if re.match(r"^{.*}$", user_id):
-                user_id = self._canvas.get_variable_value(user_id)
-            filter_dict["user_id"] = user_id
-        message_list = memory_message_service.query_message(
-            filter_dict, {"query": query, "similarity_threshold": self._param.similarity_threshold, "keywords_similarity_weight": self._param.keywords_similarity_weight, "top_n": self._param.top_n}
-        )
-        if not message_list:
-            self.set_output("formalized_content", self._param.empty_response)
-            return ""
-        formated_content = "\n".join(memory_prompt(message_list, 200000))
-        # set formalized_content output
-        self.set_output("formalized_content", formated_content)
-
-        return formated_content
 
     @timeout(int(os.environ.get("COMPONENT_EXEC_TIMEOUT", 12)))
     async def _invoke_async(self, **kwargs):
@@ -296,12 +260,8 @@ class Retrieval(ToolBase, ABC):
 
         if hasattr(self._param, "retrieval_from") and self._param.retrieval_from == "dataset":
             return await self._retrieve_kb(kwargs["query"])
-        elif hasattr(self._param, "retrieval_from") and self._param.retrieval_from == "memory":
-            return await self._retrieve_memory(kwargs["query"])
         elif self._dataset_ids:
             return await self._retrieve_kb(kwargs["query"])
-        elif hasattr(self._param, "memory_ids") and self._param.memory_ids:
-            return await self._retrieve_memory(kwargs["query"])
         else:
             self.set_output("formalized_content", self._param.empty_response)
             return

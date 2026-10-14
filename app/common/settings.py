@@ -56,7 +56,7 @@ SECRET_KEY = None
 FACTORY_LLM_INFOS = None
 ALLOWED_LLM_FACTORIES = None
 
-# The metadata database and DocEngine/Memory Store may all use GaussDB while
+# The metadata database and DocEngine may all use GaussDB while
 # targeting different databases, schemas, compatibility modes, or credentials.
 # The metadata database therefore reads only GAUSSDB_METADATA_*. The gaussdb
 # section in service_conf.yaml remains exclusive to DOC_ENGINE=gaussdb.
@@ -157,7 +157,6 @@ DOC_ENGINE_SERENEDB = DOC_ENGINE.lower() == "serenedb"
 
 
 docStoreConn = None
-msgStoreConn = None
 
 retriever = None
 kg_retriever = None
@@ -438,30 +437,6 @@ def init_settings():
         docStoreConn = serenedb_conn.SereneDBConnection()
     else:
         raise Exception(f"Not supported doc engine: {DOC_ENGINE}")
-
-    global msgStoreConn
-    # use the same engine for message store
-    if DOC_ENGINE == "elasticsearch":
-        from memory.utils.es_conn import ESConnection as MemoryESConnection
-
-        ES = get_base_config("es", {})
-        msgStoreConn = MemoryESConnection()
-    elif DOC_ENGINE == "infinity":
-        from memory.utils.infinity_conn import InfinityConnection as MemoryInfinityConnection
-
-        INFINITY = get_base_config("infinity", {"uri": "infinity:23817", "postgres_port": 5432, "db_name": "default_db"})
-        msgStoreConn = MemoryInfinityConnection()
-    elif lower_case_doc_engine in ["oceanbase", "seekdb"]:
-        from memory.utils.ob_conn import OBConnection as MemoryOBConnection
-
-        msgStoreConn = MemoryOBConnection()
-    elif lower_case_doc_engine == "gaussdb":
-        from memory.utils.gaussdb_conn import GaussDBMemoryConnection
-
-        # Memory Store uses a dedicated adapter for message tables. It reads the
-        # same GaussDB configuration and shares the lazy connection pool with
-        # docStoreConn, but keeps its own table layout and query semantics.
-        msgStoreConn = GaussDBMemoryConnection()
 
     global AZURE, S3, MINIO, OSS, GCS
     if STORAGE_IMPL_TYPE in ["AZURE_SPN", "AZURE_SAS"]:

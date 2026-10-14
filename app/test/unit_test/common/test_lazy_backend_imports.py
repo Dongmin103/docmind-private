@@ -16,10 +16,6 @@ DRIVERS = {
     "rag.utils.opensearch_conn": "OSConnection",
     "rag.utils.gaussdb_conn": "GaussDBConnection",
     "rag.utils.serenedb_conn": "SereneDBConnection",
-    "memory.utils.es_conn": "ESConnection",
-    "memory.utils.infinity_conn": "InfinityConnection",
-    "memory.utils.ob_conn": "OBConnection",
-    "memory.utils.gaussdb_conn": "GaussDBMemoryConnection",
     "rag.utils.minio_conn": "RAGFlowMinio",
     "rag.utils.azure_spn_conn": "RAGFlowAzureSpnBlob",
     "rag.utils.azure_sas_conn": "RAGFlowAzureSasBlob",
@@ -82,7 +78,6 @@ def backend_sandbox(monkeypatch):
     import common
 
     importlib.import_module("rag.utils")
-    importlib.import_module("memory.utils")
 
     stub("common.config_utils", get_base_config=lambda _name, default=None: default or {}, decrypt_database_config=lambda **_: {})
     stub("rag.utils.redis_conn", REDIS_CONN=types.SimpleNamespace())
@@ -144,11 +139,7 @@ def test_initialize_only_selected_backend_drivers(backend_sandbox, monkeypatch, 
     monkeypatch.setenv("DOC_ENGINE", engine)
     settings.init_settings()
     expected = {f"rag.utils.{doc_driver}", "rag.utils.minio_conn"}
-    if memory_driver:
-        expected.add(f"memory.utils.{memory_driver}")
-        assert settings.msgStoreConn.driver == f"memory.utils.{memory_driver}"
-    else:
-        assert settings.msgStoreConn is None
+    assert not hasattr(settings, "msgStoreConn")
     assert settings.docStoreConn.driver == f"rag.utils.{doc_driver}"
     assert settings.STORAGE_IMPL.driver == "rag.utils.minio_conn"
     assert set(loader.loaded) == expected

@@ -95,7 +95,6 @@ def _install_settings_import_stubs(monkeypatch):
 
     try:
         import rag.utils
-        import memory.utils
     except Exception:
         return
 
@@ -116,15 +115,6 @@ def _install_settings_import_stubs(monkeypatch):
     for short_name, attrs in rag_modules.items():
         module = install_module(f"rag.utils.{short_name}", **attrs)
         monkeypatch.setattr(rag.utils, short_name, module, raising=False)
-
-    for short_name in ("es_conn", "infinity_conn", "ob_conn"):
-        module = install_module(
-            f"memory.utils.{short_name}",
-            ESConnection=StubDocEngineConnection,
-            InfinityConnection=StubDocEngineConnection,
-            OBConnection=StubDocEngineConnection,
-        )
-        monkeypatch.setattr(memory.utils, short_name, module, raising=False)
 
     if "json_repair" not in sys.modules:
         import json

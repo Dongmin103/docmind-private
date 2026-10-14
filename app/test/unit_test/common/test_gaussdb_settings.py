@@ -36,12 +36,6 @@ class FakeGaussDBConnection:
         return "gaussdb"
 
 
-class FakeGaussDBMemoryConnection:
-    def __init__(self, pool=None):
-        self.pool = pool or FAKE_GAUSSDB_POOL
-
-    def db_type(self):
-        return "gaussdb"
 
 
 class FakeStorage:
@@ -63,7 +57,6 @@ def _install_module(monkeypatch, name, **attrs):
 
 def _install_settings_import_stubs(monkeypatch):
     importlib.import_module("rag.utils")
-    importlib.import_module("memory.utils")
 
     # Backend-selection tests supply their own configuration and must not read
     # a deployment's service_conf.yaml or require its decryption dependencies.
@@ -91,15 +84,6 @@ def _install_settings_import_stubs(monkeypatch):
     }
     for short_name, attrs in rag_modules.items():
         _install_module(monkeypatch, f"rag.utils.{short_name}", **attrs)
-
-    memory_modules = {
-        "es_conn": {"ESConnection": FakeDocEngineConnection},
-        "infinity_conn": {"InfinityConnection": FakeDocEngineConnection},
-        "ob_conn": {"OBConnection": FakeDocEngineConnection},
-        "gaussdb_conn": {"GaussDBMemoryConnection": FakeGaussDBMemoryConnection},
-    }
-    for short_name, attrs in memory_modules.items():
-        _install_module(monkeypatch, f"memory.utils.{short_name}", **attrs)
 
     fake_search = types.SimpleNamespace(Dealer=lambda conn: ("dealer", conn))
     fake_kg_search = types.SimpleNamespace(KGSearch=lambda conn: ("kg", conn))
@@ -153,9 +137,6 @@ def test_doc_engine_gaussdb_initializes_gaussdb_connection(monkeypatch):
     assert settings.DOC_ENGINE_GAUSSDB is True
     assert settings.DOC_ENGINE_OCEANBASE is False
     assert settings.docStoreConn.db_type() == "gaussdb"
-    assert settings.msgStoreConn.db_type() == "gaussdb"
-    assert settings.docStoreConn is not settings.msgStoreConn
-    assert settings.docStoreConn.pool is settings.msgStoreConn.pool
     assert settings.GAUSSDB["schema"] == "ragflow_gaussdb_docengine_it"
 
 
@@ -184,8 +165,6 @@ def test_doc_engine_gaussdb_does_not_change_database_type(monkeypatch):
 
     assert settings.DATABASE_TYPE != "gaussdb"
     assert settings.docStoreConn.db_type() == "gaussdb"
-    assert settings.msgStoreConn.db_type() == "gaussdb"
-    assert settings.docStoreConn.pool is settings.msgStoreConn.pool
 
 
 def test_doc_engine_gaussdb_initializes_message_store_case_insensitive(monkeypatch):
@@ -213,8 +192,6 @@ def test_doc_engine_gaussdb_initializes_message_store_case_insensitive(monkeypat
     assert settings.DOC_ENGINE == "GaussDB"
     assert settings.DOC_ENGINE_GAUSSDB is True
     assert settings.docStoreConn.db_type() == "gaussdb"
-    assert settings.msgStoreConn.db_type() == "gaussdb"
-    assert settings.docStoreConn.pool is settings.msgStoreConn.pool
 
 
 def test_tc_cfg_503_default_doc_engine_is_not_gaussdb(monkeypatch):
@@ -286,4 +263,3 @@ def test_db_type_and_doc_engine_gaussdb_use_separate_configs(monkeypatch):
     assert settings.DATABASE["options"].startswith("-c search_path=metadata_schema ")
     assert settings.GAUSSDB["host"] == "doc.example"
     assert settings.GAUSSDB["database"] == "doc_db"
-    assert settings.docStoreConn.pool is settings.msgStoreConn.pool

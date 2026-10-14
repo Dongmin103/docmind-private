@@ -52,7 +52,6 @@ def dealer_cls():
         "rag.nlp.query",
         "rag.nlp.rag_tokenizer",
         "rag.utils.redis_conn",
-        "memory.utils",
         "json_repair",
     ]
     module_names.extend(
@@ -71,16 +70,12 @@ def dealer_cls():
             "oss_conn",
         )
     )
-    module_names.extend(f"memory.utils.{name}" for name in ("es_conn", "infinity_conn", "ob_conn"))
     saved_modules = {name: sys.modules.get(name) for name in module_names}
     import common
-    import memory
 
     common_module = common
     saved_common_settings = getattr(common_module, "settings", None) if common_module else None
     saved_common_token_utils = getattr(common_module, "token_utils", None) if common_module else None
-    memory_module = memory
-    saved_memory_utils = getattr(memory_module, "utils", None) if memory_module else None
 
     settings_stub = _install_module(
         "common.settings",
@@ -121,20 +116,6 @@ def dealer_cls():
     }.items():
         _install_module(f"rag.utils.{short_name}", **attrs)
 
-    memory_utils = types.ModuleType("memory.utils")
-    memory_utils.__path__ = []
-    sys.modules["memory.utils"] = memory_utils
-    if memory_module is not None:
-        setattr(memory_module, "utils", memory_utils)
-    for short_name in ("es_conn", "infinity_conn", "ob_conn"):
-        module = _install_module(
-            f"memory.utils.{short_name}",
-            ESConnection=StubDocEngineConnection,
-            InfinityConnection=StubDocEngineConnection,
-            OBConnection=StubDocEngineConnection,
-        )
-        setattr(memory_utils, short_name, module)
-
     try:
         import importlib
 
@@ -162,12 +143,6 @@ def dealer_cls():
                     delattr(common_module, "token_utils")
             else:
                 setattr(common_module, "token_utils", saved_common_token_utils)
-        if memory_module is not None:
-            if saved_memory_utils is None:
-                if hasattr(memory_module, "utils"):
-                    delattr(memory_module, "utils")
-            else:
-                setattr(memory_module, "utils", saved_memory_utils)
 
 
 def make_dealer(dealer_cls):

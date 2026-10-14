@@ -79,7 +79,7 @@ def test_gaussdb_empty_string_compatible_fields_are_nullable_only_for_gaussdb():
 
     gaussdb_result = run_isolated_flow(
         """
-from api.db.db_models import API4Conversation, Dialog, Document, File, Knowledgebase, Memory, SyncLogs, SystemSettings, Task, Tenant, User, UserCanvas
+from api.db.db_models import API4Conversation, Dialog, Document, File, Knowledgebase, SyncLogs, SystemSettings, Task, Tenant, User, UserCanvas
 
 fields = [
     User.nickname,
@@ -94,8 +94,6 @@ fields = [
     Dialog.icon,
     Dialog.llm_id,
     Dialog.rerank_id,
-    Memory.embd_id,
-    Memory.llm_id,
     Document.suffix,
     SystemSettings.value,
     Task.task_type,
@@ -140,7 +138,7 @@ print("gaussdb-empty-string-compatible-ok")
 
     mysql_result = run_isolated_flow(
         """
-from api.db.db_models import API4Conversation, Dialog, Document, File, Knowledgebase, Memory, SyncLogs, SystemSettings, Task, Tenant, User, UserCanvas
+from api.db.db_models import API4Conversation, Dialog, Document, File, Knowledgebase, SyncLogs, SystemSettings, Task, Tenant, User, UserCanvas
 
 fields = [
     (User.nickname, False),
@@ -155,8 +153,6 @@ fields = [
     (Dialog.icon, True),
     (Dialog.llm_id, False),
     (Dialog.rerank_id, False),
-    (Memory.embd_id, False),
-    (Memory.llm_id, False),
     (Document.suffix, False),
     (SystemSettings.value, False),
     (Task.task_type, False),

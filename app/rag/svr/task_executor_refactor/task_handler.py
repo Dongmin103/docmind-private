@@ -39,7 +39,6 @@ from typing import AsyncIterator, Callable, Dict, List, Optional
 from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.compilation_template_group_service import CompilationTemplateGroupService
-from api.db.joint_services.memory_message_service import handle_save_to_memory_task
 from api.db.joint_services.tenant_model_service import (
     get_tenant_default_model_by_type,
     resolve_model_config,
@@ -61,7 +60,6 @@ from rag.svr.task_executor_refactor.embedding_service import EmbeddingService
 from rag.svr.task_executor_refactor.post_processor import PostProcessor
 from rag.svr.task_executor_refactor.raptor_service import RaptorService
 from rag.svr.task_executor_refactor.raptor_utils import delete_raptor_chunks
-from rag.svr.task_executor_refactor.recording_context import RecordingContext
 from rag.svr.task_executor_refactor.task_context import TaskContext
 from rag.graphrag.general.index import run_graphrag_for_kb
 from api.db.services.file2document_service import File2DocumentService
@@ -108,7 +106,7 @@ class TaskHandler:
     """Main task handler for document processing.
 
     This class orchestrates the entire document processing pipeline:
-    1. Task type detection (memory, dataflow, raptor, graphrag, standard)
+    1. Task type detection (dataflow, raptor, graphrag, standard)
     2. Model binding (embedding, chat)
     3. Chunk building or RAPTOR/GraphRAG execution
     4. Embedding
@@ -138,7 +136,7 @@ class TaskHandler:
             STRUCTURE_MERGE_TASK_TYPES,
         )
 
-        task_type = (task_type or "").lower()
+        task_type = (task_type or "").strip().lower()
         return task_type not in {
             "memory",
             "raptor",
@@ -151,7 +149,16 @@ class TaskHandler:
             "clone",
         } | STRUCTURE_MERGE_TASK_TYPES and not task_type.startswith("dataflow")
 
+    @staticmethod
+    def _validate_task_type(task_type: str) -> str:
+        normalized = (task_type or "").strip().lower()
+        if normalized == "memory":
+            raise ValueError(f"Unsupported task type: {normalized}")
+        return normalized
+
     async def handle_task(self) -> None:
+        # Reject retired work outside ingestion cleanup and cancellation paths.
+        self._validate_task_type(self._task_context.task_type)
         try:
             await self.handle()
         except Exception:
@@ -187,18 +194,8 @@ class TaskHandler:
     async def handle(self) -> None:
         """Handle a document processing task."""
         ctx = self._task_context
-        task_type = ctx.task_type
+        task_type = self._validate_task_type(ctx.task_type)
         task_id = ctx.id
-
-        # Handle memory tasks
-        if task_type == "memory":
-            # ignore when it's dry run - no change on handle_save_to_memory_task when refactor
-            if isinstance(ctx.write_interceptor, RecordingContext):
-                logging.info(f"dry run, ignore handle_save_to_memory_task {task_id}")
-            else:
-                # actual run - not dry run
-                await handle_save_to_memory_task(ctx.raw_task)
-            return
 
         # Check if task is canceled
         if ctx.has_canceled_func(task_id):

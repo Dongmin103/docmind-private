@@ -173,17 +173,6 @@ def kb_prompt(kbinfos, max_tokens, hash_id=False):
     return knowledges
 
 
-def memory_prompt(message_list, max_tokens):
-    used_token_count = 0
-    content_list = []
-    for message in message_list:
-        current_content_tokens = num_tokens_from_string(message["content"])
-        if used_token_count + current_content_tokens > max_tokens * 0.97:
-            logging.warning(f"Not all the retrieval into prompt: {len(content_list)}/{len(message_list)}")
-            break
-        content_list.append(message["content"])
-        used_token_count += current_content_tokens
-    return content_list
 
 
 CITATION_PROMPT_TEMPLATE = load_prompt("citation_prompt")

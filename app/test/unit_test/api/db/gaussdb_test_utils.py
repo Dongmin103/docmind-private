@@ -17,7 +17,6 @@ def stub_module(name, **attrs):
 
 
 def stub_settings_import_dependencies():
-    memory_utils = importlib.import_module("memory.utils")
     from rag.nlp import is_english
     from rag.nlp import rag_tokenizer
 
@@ -38,9 +37,6 @@ def stub_settings_import_dependencies():
         "rag.utils.infinity_conn",
         "rag.utils.ob_conn",
         "rag.utils.opensearch_conn",
-        "memory.utils.es_conn",
-        "memory.utils.infinity_conn",
-        "memory.utils.ob_conn",
     ]:
         module = stub_module(
             module_name,
@@ -49,8 +45,6 @@ def stub_settings_import_dependencies():
             OBConnection=DummyConnection,
             OSConnection=DummyConnection,
         )
-        if module_name.startswith("memory.utils."):
-            setattr(memory_utils, module_name.rsplit(".", 1)[-1], module)
 
     for module_name, class_name in [
         ("rag.utils.azure_sas_conn", "RAGFlowAzureSasBlob"),

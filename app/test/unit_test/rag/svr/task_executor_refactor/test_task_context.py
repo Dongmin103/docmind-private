@@ -337,44 +337,6 @@ class TestTaskContextAdditionalProperties:
         assert ctx.file is file_obj
 
 
-class TestTaskContextMemoryProperties:
-    """Tests for memory task properties."""
-
-    def test_memory_id_default(self):
-        """Test memory_id property defaults to empty string."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.memory_id == ""
-
-    def test_memory_id(self):
-        """Test memory_id property."""
-        task = {"id": "task_1", "tenant_id": "tenant_1", "memory_id": "mem_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.memory_id == "mem_1"
-
-    def test_source_id_default(self):
-        """Test source_id property defaults to empty string."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.source_id == ""
-
-    def test_source_id(self):
-        """Test source_id property."""
-        task = {"id": "task_1", "tenant_id": "tenant_1", "source_id": "src_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.source_id == "src_1"
-
-    def test_message_dict_default(self):
-        """Test message_dict property defaults to empty dict."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.message_dict == {}
-
-    def test_message_dict(self):
-        """Test message_dict property."""
-        task = {"id": "task_1", "tenant_id": "tenant_1", "message_dict": {"key": "value"}}
-        ctx = _make_ctx(task=task)
-        assert ctx.message_dict == {"key": "value"}
 
 
 class TestTaskContextRawTask:

@@ -186,7 +186,6 @@ class PipelineTaskType(StrEnum):
     RAPTOR = "RAPTOR"
     GRAPH_RAG = "GraphRAG"
     MINDMAP = "Mindmap"
-    MEMORY = "Memory"
     # Member name kept as ARTIFACT for back-compat; value is "Wiki" so the
     # runtime task_type (``.lower()`` == "wiki") matches the wiki index/task type.
     ARTIFACT = "Wiki"
@@ -235,20 +234,10 @@ class Storage(Enum):
     GCS = 7
 
 
-class MemoryType(Enum):
-    RAW = 0b0001  # 1 << 0 = 1 (0b00000001)
-    SEMANTIC = 0b0010  # 1 << 1 = 2 (0b00000010)
-    EPISODIC = 0b0100  # 1 << 2 = 4 (0b00000100)
-    PROCEDURAL = 0b1000  # 1 << 3 = 8 (0b00001000)
 
 
-class MemoryStorageType(StrEnum):
-    TABLE = "table"
-    GRAPH = "graph"
 
 
-class ForgettingPolicy(StrEnum):
-    FIFO = "FIFO"
 
 
 # environment

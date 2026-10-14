@@ -33,7 +33,6 @@ from api.db.services.llm_service import LLMBundle
 from api.db.services.user_service import TenantService, UserTenantService
 from api.db.services.system_settings_service import SystemSettingsService
 from api.db.template_utils import normalize_canvas_template_categories
-from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache, fix_missing_tokenized_memory
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type
 from common.constants import LLMType
 from common.file_utils import get_project_base_directory
@@ -195,9 +194,6 @@ def init_web_data():
 
     add_graph_templates()
     add_compilation_templates()
-    init_message_id_sequence()
-    init_memory_size_cache()
-    fix_missing_tokenized_memory()
     logging.info("init web data success:{}".format(time.time() - start_time))
 
 

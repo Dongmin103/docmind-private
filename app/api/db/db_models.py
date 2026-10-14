@@ -2487,29 +2487,6 @@ class SyncLogs(DataBaseModel):
         db_table = "sync_logs"
 
 
-class Memory(DataBaseModel):
-    id = CharField(max_length=32, primary_key=True)
-    name = CharField(max_length=128, null=False, index=False, help_text="Memory name")
-    avatar = TextField(null=True, help_text="avatar base64 string")
-    tenant_id = CharField(max_length=32, null=False, index=True)
-    memory_type = IntegerField(null=False, default=1, index=True, help_text="Bit flags (LSB->MSB): 1=raw, 2=semantic, 4=episodic, 8=procedural. E.g., 5 enables raw + episodic.")
-    storage_type = CharField(max_length=32, default="table", null=False, index=True, help_text="table|graph")
-    # Keep empty model-ID handling in the field so storage NULL semantics do not
-    # leak into Memory Store callers.
-    embd_id = EmptyStringCharField(max_length=128, null=False, index=False, help_text="embedding model ID")
-    tenant_embd_id = CharField(max_length=32, null=True, help_text="id in tenant_model", index=True)
-    llm_id = EmptyStringCharField(max_length=128, null=False, index=False, help_text="chat model ID")
-    tenant_llm_id = CharField(max_length=32, null=True, help_text="id in tenant_model", index=True)
-    permissions = CharField(max_length=16, null=False, index=True, help_text="me|team", default="me")
-    description = TextField(null=True, help_text="description")
-    memory_size = IntegerField(default=5242880, null=False, index=False)
-    forgetting_policy = CharField(max_length=32, null=False, default="FIFO", index=False, help_text="LRU|FIFO")
-    temperature = FloatField(default=0.5, index=False)
-    system_prompt = TextField(null=True, help_text="system prompt", index=False)
-    user_prompt = TextField(null=True, help_text="user prompt", index=False)
-
-    class Meta:
-        db_table = "memory"
 
 
 class SystemSettings(DataBaseModel):
@@ -2588,7 +2565,6 @@ GAUSSDB_EMPTY_STRING_COMPATIBLE_COLUMNS = (
     ("tenant", ("llm_id", "embd_id", "asr_id", "img2txt_id", "rerank_id")),
     ("knowledgebase", ("embd_id",)),
     ("dialog", ("llm_id", "rerank_id")),
-    ("memory", ("embd_id", "llm_id")),
     ("file", ("source_type",)),
     ("document", ("suffix",)),
     ("system_settings", ("value",)),
