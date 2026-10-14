@@ -2274,7 +2274,6 @@ GAUSSDB_EMPTY_STRING_COMPATIBLE_COLUMNS = (
     ("system_settings", ("value",)),
     ("task", ("task_type",)),
     ("api_4_conversation", ("user_id",)),
-    ("user_canvas", ("tags",)),
 )
 
 
@@ -2982,8 +2981,7 @@ def migrate_db():
     alter_db_drop_index(migrator, "tenant_langfuse", "idx_tenant_langfuse_secret_key")
     alter_db_drop_index(migrator, "tenant_langfuse", "idx_tenant_langfuse_public_key")
     alter_db_drop_index(migrator, "tenant_langfuse", "idx_tenant_langfuse_host")
-    # Run after all alter_db_* calls so newly added compatible columns, such as
-    # user_canvas.tags, exist before their GaussDB NOT NULL constraints relax.
+    # Relax ordinary compatible columns after their schema registrations.
     relax_gaussdb_empty_string_compatible_columns()
     # Drop both the explicit "idx_*" name from later migrations AND the
     # Peewee-auto-derived "<table-as-classname>_<col1>_<col2>" name from the

@@ -86,3 +86,20 @@ def test_migration_finalization_restores_logging_and_model_call_order(database_t
         ("drop_index", "tenant_model_instance", "tenantmodelinstance_api_key_provider_id"),
         ("drop_index", "tenant_model", "idx_provider_model_instance"),
     ]
+
+
+def test_retired_migration_inventory_targets_are_absent():
+    tree = ast.parse((APP / 'api/db/db_models.py').read_text(encoding='utf8'))
+    columns = next(n for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'GAUSSDB_EMPTY_STRING_COMPATIBLE_COLUMNS' for t in n.targets))
+    inventory = dict(ast.literal_eval(columns.value))
+    assert 'user_canvas' not in inventory
+    assert inventory['document'] == ('suffix',)
+    assert inventory['api_4_conversation'] == ('user_id',)
+    assert inventory['task'] == ('task_type',)
+    tree = ast.parse((APP / 'tools/scripts/mysql_migration.py').read_text(encoding='utf8'))
+    owner = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'ModelIdConfigStage')
+    values = {n.targets[0].id: ast.literal_eval(n.value) for n in owner.body if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id in {'source_tables', 'json_columns', 'string_columns'}}
+    assert 'api_4_conversation' not in values['source_tables']
+    assert 'api_4_conversation' not in values['json_columns']
+    assert values['json_columns']['document'] == ('parser_config',)
+    assert 'tenant' in values['string_columns']

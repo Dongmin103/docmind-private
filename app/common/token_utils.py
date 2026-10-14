@@ -42,6 +42,44 @@ os.environ["TIKTOKEN_CACHE_DIR"] = tiktoken_cache_dir
 encoder = tiktoken.get_encoding("cl100k_base")
 
 
+def usage_from_response(resp) -> dict:
+    """Extract a {prompt_tokens, completion_tokens, total_tokens} split from an LLM response.
+
+    Handles OpenAI/OpenRouter-style ``resp.usage`` objects and dict variants. Missing
+    fields default to 0; ``total_tokens`` falls back to prompt+completion when absent.
+    """
+    out = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    if resp is None:
+        return out
+
+    usage = None
+    try:
+        usage = getattr(resp, "usage", None)
+        if usage is None and isinstance(resp, dict):
+            usage = resp.get("usage")
+    except Exception:
+        usage = None
+    if usage is None:
+        return out
+
+    def _get(obj, *names):
+        for n in names:
+            try:
+                v = obj.get(n) if isinstance(obj, dict) else getattr(obj, n, None)
+            except Exception:
+                v = None
+            if v:
+                return int(v)
+        return 0
+
+    out["prompt_tokens"] = _get(usage, "prompt_tokens", "input_tokens")
+    out["completion_tokens"] = _get(usage, "completion_tokens", "output_tokens")
+    out["total_tokens"] = _get(usage, "total_tokens")
+    if not out["total_tokens"]:
+        out["total_tokens"] = out["prompt_tokens"] + out["completion_tokens"]
+    return out
+
+
 def num_tokens_from_string(string: str) -> int:
     """Returns the number of tokens in a text string."""
     try:

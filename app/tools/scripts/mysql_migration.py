@@ -1045,7 +1045,6 @@ class ModelIdConfigStage(MigrationStage):
         "document",
         "dialog",
         "memory",
-        "api_4_conversation",
         "evaluation_runs",
     ]
     target_tables = source_tables
@@ -1071,7 +1070,6 @@ class ModelIdConfigStage(MigrationStage):
     json_columns = {
         "knowledgebase": ("parser_config",),
         "document": ("parser_config",),
-        "api_4_conversation": ("dsl",),
         "evaluation_runs": ("config_snapshot",),
     }
 

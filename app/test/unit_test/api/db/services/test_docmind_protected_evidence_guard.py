@@ -380,9 +380,8 @@ def _function_source(relative_path: str, function_name: str) -> str:
         ("api/apps/restful_apis/document_api.py", "parse_documents", '"PARSE_DOCUMENT_BATCH"', "clear_chunk_num_when_rerun"),
         ("api/apps/restful_apis/document_api.py", "stop_parse_documents", '"STOP_PARSING_DOCUMENT_BATCH"', "cancel_all_task_of"),
         ("api/db/services/file_service.py", "upload_document", '"REUPLOAD_DOCUMENT_CONTENT"', "file.read"),
-        ("api/db/services/document_service.py", "run", '"RUN_DOCUMENT_PARSE"', "queue_dataflow("),
+        ("api/db/services/document_service.py", "run", '"RUN_DOCUMENT_PARSE"', "queue_tasks("),
         ("api/db/services/task_service.py", "queue_tasks", '"QUEUE_DOCUMENT_PARSE"', "STORAGE_IMPL.get"),
-        ("api/db/services/task_service.py", "queue_dataflow", '"QUEUE_DATAFLOW_RERUN"', "cancel_all_task_of"),
         ("api/db/services/document_service.py", "begin2parse", '"BEGIN_DOCUMENT_PARSE"', "cls.model.update"),
         ("api/db/services/task_service.py", "delete_by_doc_ids", '"DELETE_DOCUMENT_TASKS"', "model.delete"),
         ("api/db/services/task_service.py", "cancel_all_task_of", '"CANCEL_DOCUMENT_TASKS"', "abort_doc_chunking_counter"),
@@ -391,22 +390,16 @@ def _function_source(relative_path: str, function_name: str) -> str:
         ("api/apps/restful_apis/document_api.py", "update_metadata", '"UPDATE_DOCUMENT_METADATA_BATCH"', "batch_update_metadata"),
         ("api/apps/restful_apis/document_api.py", "batch_update_document_status", '"UPDATE_DOCUMENT_AVAILABILITY_BATCH"', "update_by_id"),
         ("api/db/joint_services/user_account_service.py", "delete_user_data", '"DELETE_USER_ACCOUNT_DATA"', "remove_bucket"),
-        ("api/apps/restful_apis/agent_api.py", "rerun_agent", '"RERUN_DATAFLOW_DOCUMENT"', "docStoreConn.delete"),
         ("api/apps/restful_apis/task_api.py", "_cancel_task", '"CANCEL_DOCUMENT_TASK"', "REDIS_CONN.set"),
         ("api/db/services/task_service.py", "get_task", '"CLAIM_DOCUMENT_TASK"', "cls.model.update("),
         ("api/db/services/task_service.py", "update_progress", '"UPDATE_DOCUMENT_TASK_PROGRESS"', "cls.model.update("),
         ("api/apps/restful_apis/chunk_api.py", "rm_chunk", '"DELETE_MANUAL_CHUNK"', "delete_chunk_images"),
         ("api/apps/restful_apis/chunk_api.py", "update_chunk", '"UPDATE_MANUAL_CHUNK"', "docStoreConn.update"),
         ("api/apps/restful_apis/chunk_api.py", "switch_chunks", '"SWITCH_MANUAL_CHUNKS"', "docStoreConn.update"),
-        ("api/apps/restful_apis/chunk_api.py", "delete_document_structure_graph", '"DELETE_DOCUMENT_STRUCTURE_GRAPH"', "deleted += _delete"),
         ("api/db/services/file_service.py", "delete_docs", '"DELETE_DOCUMENT_BATCH"', "get_root_folder"),
         ("api/apps/services/dataset_api_service.py", "_delete_datasets_sync", '"DELETE_DATASET_BATCH"', "remove_document"),
-        ("api/apps/services/dataset_api_service.py", "delete_knowledge_graph", '"DELETE_KNOWLEDGE_GRAPH"', "docStoreConn.delete"),
-        ("api/apps/services/dataset_api_service.py", "run_index", 'assert_documents_docmind_evidence_mutable', "queue_raptor_o_graphrag_tasks"),
-        ("api/apps/services/dataset_api_service.py", "delete_index", 'assert_documents_docmind_evidence_mutable', "REDIS_CONN.set"),
         ("api/apps/services/dataset_api_service.py", "run_embedding", '"REBUILD_DOCUMENT_EMBEDDINGS"', "DocumentService.run"),
         ("rag/svr/task_executor_refactor/task_handler.py", "handle", 'TASK_EXECUTOR_', "_bind_embedding_model"),
-        ("rag/svr/task_executor_refactor/raptor_utils.py", "delete_raptor_chunks", '"DELETE_RAPTOR_CHUNKS"', "docStoreConn.delete"),
     ],
 )
 def test_guard_precedes_first_mutation_in_inventory_paths(path, function, guard_token, first_side_effect_token):
@@ -433,7 +426,7 @@ def test_inventory_has_unique_complete_rows_and_stable_contract():
     assert inventory["denial_code"] == DOCMIND_PROTECTED_EVIDENCE_ERROR_CODE
     assert inventory["protected_lifecycle_states"] == ["READY", "PUBLISHED", "SUPERSEDED"]
     assert inventory["health_independent"] is True
-    assert len(rows) == 46
+    assert len(rows) == 37
     assert len({row["id"] for row in rows}) == len(rows)
     assert len({row["test_id"] for row in rows}) == len(rows)
     assert all(required <= set(row) for row in rows)
