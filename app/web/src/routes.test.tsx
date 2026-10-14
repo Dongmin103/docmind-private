@@ -83,10 +83,21 @@ it.each([
 
 it.each([
   ['/document/example', '/document/:id'],
-  ['/chunk', '/chunk'],
-  ['/chunk/chunk/example', '/chunk/chunk/:id'],
-  ['/files/skills', '/files/skills'],
-  ['/dataset/files/example', '/dataset//files/:id'],
-])('preserves shared and deferred route %s', (path, pattern) => {
+  ['/chunk/parsed/chunks', '/chunk/parsed/chunks'],
+])('preserves retained inspection %s', (path, pattern) => {
   expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe(pattern);
+});
+
+it.each([
+  '/agent/share', '/agent-list', '/agents', '/agent-templates', '/agent/example',
+  '/agent/example/explore', '/agent-log-page/example', '/dataflow-result',
+  '/memories', '/memory', '/memory/memory-message/example', '/memory/memory-setting/example',
+  '/memory//memory-message/example', '/memory//memory-setting/example',
+  '/datasets', '/dataset', '/dataset/files/example', '/dataset/retrieval/example',
+  '/dataset/logs/example', '/dataset/configuration/example', '/dataset/knowledge-graph/example',
+  '/dataset/compilation/example', '/compilation-templates/edit-next',
+  '/compilation-templates/edit-next/example', '/user-setting/mcp', '/files/skills',
+  '/chunk', '/chunk/chunk/example', '/chunk/result/example',
+])('rejects retired feature %s', (path) => {
+  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
 });

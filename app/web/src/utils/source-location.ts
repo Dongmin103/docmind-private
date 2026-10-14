@@ -1,4 +1,4 @@
-import type { IChunk } from '@/interfaces/database/dataset';
+import type { IChunk } from '@/interfaces/database/chunk';
 
 type LocationChunk = Pick<IChunk, 'positions' | 'provenance' | 'office_locator' | 'hwp_locator' | 'parser_platform'>;
 type Locator = Record<string, unknown>;

@@ -11,7 +11,6 @@ jest.mock('./hooks', () => ({
 jest.mock('@/routes', () => ({
   Routes: {
     Model: '/model',
-    Mcp: '/mcp',
     Team: '/team',
     Profile: '/profile',
     Api: '/api',
@@ -41,6 +40,7 @@ jest.mock('@/components/theme-switch', () => ({
 
 it('offers model and profile navigation without external integrations', () => {
   render(<SideBar />);
+  expect(screen.queryByRole('button', { name: 'MCP' })).toBeNull();
   expect(
     screen.queryByRole('button', { name: 'setting.dataSources' }),
   ).not.toBeInTheDocument();

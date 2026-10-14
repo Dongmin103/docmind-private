@@ -33,7 +33,6 @@ const {
   deleteMessage,
   thumbup,
   chatsTts,
-  chatsMindmap,
   chatsRelatedQuestions,
   documentInfoUpload,
 } = api;
@@ -97,10 +96,6 @@ const methods = {
   },
   chatsTts: {
     url: chatsTts,
-    method: 'post',
-  },
-  chatsMindmap: {
-    url: chatsMindmap,
     method: 'post',
   },
   chatsRelatedQuestions: {

@@ -20,10 +20,10 @@ import { Modal } from '@/components/ui/modal/modal';
 import {
   useGetChunkHighlights,
   useGetDocumentUrl,
-} from '@/hooks/use-document-request';
+} from '@/hooks/use-document-inspection';
 import { IModalProps } from '@/interfaces/common';
 import { IReferenceChunk } from '@/interfaces/database/chat';
-import { IChunk } from '@/interfaces/database/dataset';
+import { IChunk } from '@/interfaces/database/chunk';
 import { cn } from '@/lib/utils';
 
 interface IProps extends IModalProps<any> {

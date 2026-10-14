@@ -26,7 +26,7 @@ import {
   IMessage,
   Message,
 } from '@/interfaces/database/chat';
-import { IKnowledgeFile } from '@/interfaces/database/dataset';
+import { IKnowledgeFile } from '@/interfaces/database/document';
 import { changeLanguageAsync } from '@/locales/config';
 import api from '@/utils/api';
 import { getAuthorization } from '@/utils/authorization-util';
@@ -859,28 +859,6 @@ export const useSelectItem = (defaultId?: string) => {
   }, [defaultId]);
 
   return { selectedId, handleItemClick };
-};
-
-const ChunkTokenNumMap = {
-  naive: 128,
-  knowledge_graph: 8192,
-};
-
-export const useHandleChunkMethodSelectChange = (form: FormInstance) => {
-  // const form = Form.useFormInstance();
-  const handleChange = useCallback(
-    (value: string) => {
-      if (value in ChunkTokenNumMap) {
-        form.setFieldValue(
-          ['parser_config', 'chunk_token_num'],
-          ChunkTokenNumMap[value as keyof typeof ChunkTokenNumMap],
-        );
-      }
-    },
-    [form],
-  );
-
-  return handleChange;
 };
 
 // reset form fields when modal is form, closed

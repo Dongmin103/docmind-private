@@ -23,12 +23,3 @@ export type EmptyProps = {
   text?: string;
   iconWidth?: number;
 };
-
-export type EmptyCardProps = {
-  icon?: React.ReactNode;
-  className?: string;
-  children?: React.ReactNode;
-  title?: string;
-  description?: string;
-  style?: React.CSSProperties;
-} & Omit<React.HTMLAttributes<HTMLDivElement>, 'title'>;

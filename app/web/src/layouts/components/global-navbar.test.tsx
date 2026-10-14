@@ -28,9 +28,9 @@ it.each([false, true])(
     if (mobile) fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     const links = screen.getAllByRole('link');
     expect(links.map((link) => link.getAttribute('href'))).not.toEqual(
-      expect.arrayContaining(['/chats', '/searches', '/files']),
+      expect.arrayContaining(['/chats', '/searches', '/files', '/datasets', '/agents', '/memories']),
     );
-    for (const retired of ['/chats', '/searches', '/files'])
+    for (const retired of ['/chats', '/searches', '/files', '/datasets', '/agents', '/memories'])
       expect(links.some((link) => link.getAttribute('href') === retired)).toBe(
         false,
       );

@@ -130,10 +130,6 @@ export default defineConfig(({ mode }) => {
             dest: './',
           },
           {
-            src: 'node_modules/monaco-editor/min/vs/',
-            dest: './',
-          },
-          {
             src: 'node_modules/pdfjs-dist/cmaps/',
             dest: 'pdfjs-dist/',
           },

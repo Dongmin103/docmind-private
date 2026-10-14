@@ -103,7 +103,7 @@ jest.mock('@/components/originui/input', () => ({
 jest.mock('@/components/ui/modal/modal', () => ({
   Modal: ({ children }: any) => children,
 }));
-jest.mock('@/hooks/use-document-request', () => ({
+jest.mock('@/hooks/use-document-inspection', () => ({
   useGetChunkHighlights: () => ({
     highlights: [],
     setWidthAndHeight: jest.fn(),

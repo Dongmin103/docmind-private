@@ -14,7 +14,6 @@
  *  limitations under the License.
  */
 
-import { IconFontFill } from '@/components/icon-font';
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import ThemeSwitch from '@/components/theme-switch';
 import { Button } from '@/components/ui/button';
@@ -44,11 +43,6 @@ const menuItems = (t: TFunction) => [
     label: t('setting.model'),
     key: Routes.Model,
     'data-testid': 'settings-nav-model-providers',
-  },
-  {
-    icon: <IconFontFill name="mcp" className="size-[1em]" />,
-    label: 'MCP',
-    key: Routes.Mcp,
   },
   {
     icon: <LucideUsers className="size-[1em]" />,

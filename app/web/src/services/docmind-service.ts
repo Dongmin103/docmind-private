@@ -1,4 +1,4 @@
-import type { ITestingChunk } from '@/interfaces/database/dataset';
+import type { ITestingChunk } from '@/interfaces/database/chunk';
 import request from '@/utils/request';
 
 export interface DocMindFolder {

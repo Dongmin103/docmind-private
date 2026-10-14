@@ -3,8 +3,8 @@ import HighLightMarkdown from '@/components/highlight-markdown';
 import { FileIcon } from '@/components/icon-font';
 import { Input } from '@/components/originui/input';
 import { Modal } from '@/components/ui/modal/modal';
-import { useGetChunkHighlights } from '@/hooks/use-document-request';
-import type { ITestingChunk } from '@/interfaces/database/dataset';
+import { useGetChunkHighlights } from '@/hooks/use-document-inspection';
+import type { ITestingChunk } from '@/interfaces/database/chunk';
 import type {
   DocMindFolderCatalog,
   DocMindHierarchy,
@@ -526,7 +526,6 @@ export default function DocMind() {
                       <ChunkInspection
                         key={`${inspectionDatasetId}:${inspectionDocumentId}`}
                         embedded
-                        readOnly
                         onBack={() =>
                           setParams({ view: returnView }, { replace: true })
                         }

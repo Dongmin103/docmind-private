@@ -13,16 +13,13 @@ import { HomeIcon } from '@/components/svg-icon';
 
 const PathMap = {
   [Routes.DocMind]: [Routes.DocMind],
-  [Routes.Datasets]: [Routes.Datasets, Routes.DatasetBase],
-  [Routes.Agents]: [Routes.Agents, Routes.AgentTemplates],
-  [Routes.Memories]: [Routes.Memories, Routes.Memory, Routes.MemoryMessage],
 } as const;
 
 // Match on path-segment boundaries so similarly named paths stay distinct.
 const matchesPath = (pathname: string, candidate: string) =>
   pathname === candidate || pathname.startsWith(`${candidate}/`);
 
-// Wrapper so dataset icon shares the same ComponentType<{ className? }>
+// Wrapper so the workspace icon shares the same ComponentType<{ className? }>
 // shape as Lucide icons in menuItems (avoids Element-vs-component union).
 const MenuItemsIcon = ({
   className,
@@ -30,7 +27,7 @@ const MenuItemsIcon = ({
 }: {
   className?: string;
   name?: string;
-}) => <HomeIcon imgClass={className} name={name || 'datasets'} width={20} />;
+}) => <HomeIcon imgClass={className} name={name || 'searches'} width={20} />;
 
 const menuItems = [
   { path: Routes.Root, name: 'header.home', icon: LucideHouse },
@@ -40,25 +37,7 @@ const menuItems = [
     icon: MenuItemsIcon,
     icon_name: 'searches',
   },
-  {
-    path: Routes.Datasets,
-    name: 'header.dataset',
-    icon: MenuItemsIcon,
-    icon_name: 'datasets',
-  },
-  {
-    path: Routes.Agents,
-    name: 'header.flow',
-    icon: MenuItemsIcon,
-    icon_name: 'agents',
-    'data-testid': 'nav-agent',
-  },
-  {
-    path: Routes.Memories,
-    name: 'header.memories',
-    icon: MenuItemsIcon,
-    icon_name: 'memory',
-  },
+
 ];
 
 function useActivePath() {

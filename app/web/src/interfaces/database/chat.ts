@@ -1,5 +1,4 @@
 import { MessageType, WebSearchProvider } from '@/constants/chat';
-import { IAttachment } from '@/hooks/use-send-message';
 
 export interface IDocumentDownloadInfo {
   doc_id: string;
@@ -232,4 +231,10 @@ export interface UploadResponseDataType {
   name: string;
   preview_url: null;
   size: number;
+}
+
+export interface IAttachment {
+  doc_id: string;
+  format: string;
+  file_name: string;
 }

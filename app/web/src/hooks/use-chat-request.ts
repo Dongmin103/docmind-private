@@ -24,7 +24,6 @@ import {
   IDialog,
 } from '@/interfaces/database/chat';
 import {
-  IAskRequestBody,
   IFeedbackRequestBody,
 } from '@/interfaces/request/chat';
 import i18n from '@/locales/config';
@@ -33,7 +32,6 @@ import api from '@/utils/api';
 import { buildMessageListWithUuid } from '@/utils/chat';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
-import { has } from 'lodash';
 import { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useSearchParams } from 'react-router';
@@ -57,7 +55,6 @@ export const enum ChatApiAction {
   UpdateSession = 'updateSession',
   RemoveSession = 'removeSession',
   DeleteMessage = 'deleteMessage',
-  FetchMindMap = 'fetchMindMap',
   FetchRelatedQuestions = 'fetchRelatedQuestions',
   UploadAndParse = 'upload_and_parse',
   Feedback = 'feedback',
@@ -560,31 +557,6 @@ export function useUploadAndParseFile() {
 //#endregion Session
 
 //#region search page
-
-export const useFetchMindMap = () => {
-  const {
-    data,
-    isPending: loading,
-    mutateAsync,
-  } = useMutation({
-    mutationKey: [ChatApiAction.FetchMindMap],
-    gcTime: 0,
-    mutationFn: async (params: IAskRequestBody) => {
-      try {
-        const ret = await chatService.chatsMindmap(params);
-        return ret?.data?.data ?? {};
-      } catch (error: any) {
-        if (has(error, 'message')) {
-          message.error(error.message);
-        }
-
-        return [];
-      }
-    },
-  });
-
-  return { data, loading, fetchMindMap: mutateAsync };
-};
 
 export const useFetchRelatedQuestions = () => {
   const {

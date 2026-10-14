@@ -1,10 +1,10 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import PdfDrawer from './index';
-import { ReferenceDocumentList } from '../next-message-item/reference-document-list';
+import { ReferenceDocumentList } from '../message-reference/reference-document-list';
 import DocumentPreview from '../document-preview';
 const mockHighlights = [{ position: [1, 2, 3, 4] }];
 const mockSetWidthAndHeight = jest.fn();
-jest.mock('@/hooks/use-document-request', () => ({
+jest.mock('@/hooks/use-document-inspection', () => ({
   useGetDocumentUrl: (id: string) => () =>
     '/api/v1/documents/' + id + '/preview',
   useGetChunkHighlights: () => ({ highlights: mockHighlights, setWidthAndHeight: mockSetWidthAndHeight }),

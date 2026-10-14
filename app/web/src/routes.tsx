@@ -29,53 +29,20 @@ import { initializeDocMindSharedWorkspace } from './utils/docmind-shared-workspa
 export enum Routes {
   Root = '/',
   Logout = '/logout',
-  Datasets = '/datasets',
-  DatasetBase = '/dataset',
-  DatasetDocuments = '/files',
-  Dataset = `${Routes.DatasetBase}/${Routes.DatasetDocuments}`,
-  Agent = '/agent',
-  AgentTemplates = '/agent-templates',
-  Agents = '/agents',
-  Explore = '/explore',
-  AgentExplore = `${Routes.Agent}/:id/explore`,
-  Memories = '/memories',
-  Memory = '/memory',
-  MemoryMessage = '/memory-message',
-  MemorySetting = '/memory-setting',
-  AgentList = '/agent-list',
   DocMind = '/docmind',
-
-  Skills = '/files/skills',
   ProfileSetting = '/profile-setting',
   Profile = '/profile',
   Api = '/api',
-  Mcp = '/mcp',
   Team = '/team',
   Plan = '/plan',
   Model = '/model',
   Prompt = '/prompt',
-  CompilationTemplatesEditNext = '/compilation-templates/edit-next',
-  ProfileMcp = `${ProfileSetting}${Mcp}`,
   ProfileTeam = `${ProfileSetting}${Team}`,
   ProfilePlan = `${ProfileSetting}${Plan}`,
   ProfileModel = `${ProfileSetting}${Model}`,
   ProfilePrompt = `${ProfileSetting}${Prompt}`,
   ProfileProfile = `${ProfileSetting}${Profile}`,
-  DatasetTesting = '/retrieval',
-  Chunk = '/chunk',
-  ChunkResult = `${Chunk}${Chunk}`,
-  Parsed = '/parsed',
-  ParsedResult = `${Chunk}${Parsed}`,
-  Result = '/result',
-  ResultView = `${Chunk}${Result}`,
-  KnowledgeGraph = '/knowledge-graph',
-  Compilation = '/compilation',
-  AgentLogPage = '/agent-log-page',
-  AgentShare = '/agent/share',
   UserSetting = '/user-setting',
-  DataSetOverview = '/logs',
-  DataSetSetting = '/configuration',
-  DataflowResult = '/dataflow-result',
 }
 
 const defaultRouteFallback = (
@@ -117,29 +84,13 @@ const redirectLegacyEntry = ({ request }: { request: Request }) => {
   return redirect(`${Routes.DocMind}${url.search}`);
 };
 
-const routeConfigOptions = [
-  {
-    path: Routes.Root,
-    loader: redirectLegacyEntry,
-  },
+const routeConfigOptions: LazyRouteConfig[] = [
+  { path: Routes.Root, loader: redirectLegacyEntry },
   ...['/home', '/login', '/login-next'].map((path) => ({
     path,
     loader: redirectLegacyEntry,
   })),
-  {
-    path: Routes.AgentShare,
-    Component: () => import('@/pages/agent/share'),
-    layout: false,
-  },
-  {
-    path: Routes.AgentList,
-    Component: () => import('@/pages/agents'),
-  },
-  {
-    path: '/document/:id',
-    Component: () => import('@/pages/document-viewer'),
-    layout: false,
-  },
+  { path: '/document/:id', Component: () => import('@/pages/document-viewer') },
   {
     path: Routes.DocMind,
     Component: () => import('@/pages/docmind'),
@@ -154,177 +105,44 @@ const routeConfigOptions = [
       return initializeDocMindSharedWorkspace();
     },
     errorElement: <DocMindWorkspaceError />,
-    layout: false,
   },
   {
-    path: '/*',
-    Component: () => import('@/pages/404'),
-    layout: false,
+    path: '/chunk/parsed/chunks',
+    Component: () => import('@/components/chunk-inspector'),
   },
   {
     path: Routes.Root,
     Component: () => import('@/layouts/root-layout'),
     children: [
       {
-        path: Routes.Datasets,
-        Component: () => import('@/pages/datasets'),
-      },
-      {
-        path: Routes.DatasetBase,
-        Component: () => import('@/pages/dataset'),
-        children: [
-          {
-            path: `${Routes.Dataset}/:id`,
-            Component: () => import('@/pages/dataset/dataset'),
-          },
-          {
-            path: `${Routes.DatasetBase}${Routes.DatasetTesting}/:id`,
-            Component: () => import('@/pages/dataset/testing'),
-          },
-          {
-            path: `${Routes.DatasetBase}${Routes.KnowledgeGraph}/:id`,
-            Component: () => import('@/pages/dataset/knowledge-graph'),
-          },
-          {
-            path: `${Routes.DatasetBase}${Routes.DataSetOverview}/:id`,
-            Component: () => import('@/pages/dataset/dataset-overview'),
-          },
-          {
-            path: `${Routes.DatasetBase}${Routes.DataSetSetting}/:id`,
-            Component: () => import('@/pages/dataset/setting'),
-          },
-        ],
-      },
-      {
-        path: Routes.Agents,
-        Component: () => import('@/pages/agents'),
-      },
-      {
-        path: Routes.AgentTemplates,
-        layout: false,
-        Component: () => import('@/pages/agents/agent-templates'),
-      },
-      {
-        path: Routes.Memories,
-        Component: () => import('@/pages/memories'),
-      },
-      {
-        path: `${Routes.Memory}`,
-        Component: () => import('@/pages/memory'),
-        children: [
-          {
-            path: `${Routes.Memory}/${Routes.MemoryMessage}/:id`,
-            Component: () => import('@/pages/memory/memory-message'),
-          },
-          {
-            path: `${Routes.Memory}/${Routes.MemorySetting}/:id`,
-            Component: () => import('@/pages/memory/memory-setting'),
-          },
-        ],
-      },
-      {
-        path: Routes.Skills,
-        Component: () => import('@/pages/skills'),
-      },
-      {
         path: Routes.UserSetting,
         Component: () => import('@/pages/user-setting'),
-        layout: false,
         children: [
           {
             path: Routes.UserSetting,
-            element: <Navigate to={`/user-setting/model`} replace />,
+            element: <Navigate to="/user-setting/model" replace />,
           },
           {
-            path: `${Routes.UserSetting}/profile`,
+            path: '/user-setting/profile',
             Component: () => import('@/pages/user-setting/profile'),
           },
-          /*
           {
-            path: `${Routes.UserSetting}/locale`,
-            Component: () => import('@/pages/user-setting/setting-locale'),
-          },
-          */
-          {
-            path: `${Routes.UserSetting}/model`,
+            path: '/user-setting/model',
             Component: () => import('@/pages/user-setting/setting-model'),
           },
           {
-            path: `${Routes.UserSetting}/team`,
+            path: '/user-setting/team',
             Component: () => import('@/pages/user-setting/setting-team'),
           },
           {
-            path: `${Routes.UserSetting}${Routes.Api}`,
+            path: '/user-setting/api',
             Component: () => import('@/pages/user-setting/setting-api'),
-          },
-          {
-            path: `${Routes.UserSetting}${Routes.Mcp}`,
-            Component: () => import('@/pages/user-setting/mcp'),
           },
         ],
       },
     ],
   },
-  {
-    path: Routes.CompilationTemplatesEditNext,
-    layout: false,
-    Component: () =>
-      import('@/pages/user-setting/compilation-templates/edit-next'),
-  },
-  {
-    path: `${Routes.CompilationTemplatesEditNext}/:id`,
-    layout: false,
-    Component: () =>
-      import('@/pages/user-setting/compilation-templates/edit-next'),
-  },
-  {
-    path: `${Routes.DatasetBase}${Routes.Compilation}/:id`,
-    Component: () => import('@/pages/dataset/compilation'),
-  },
-  {
-    path: Routes.Agent,
-    children: [
-      {
-        path: `${Routes.Agent}/:id`,
-        Component: () => import('@/pages/agent'),
-      },
-      {
-        path: Routes.AgentExplore,
-        Component: () => import('@/pages/agent/explore'),
-        errorElement: <FallbackComponent />,
-      },
-    ],
-  },
-  {
-    path: `${Routes.AgentLogPage}/:id`,
-    Component: () => import('@/pages/agents/agent-log-page'),
-  },
-  {
-    path: `${Routes.DataflowResult}`,
-    Component: () => import('@/pages/dataflow-result'),
-  },
-  {
-    path: Routes.Chunk,
-    children: [
-      {
-        path: `${Routes.Chunk}`,
-        Component: () => import('@/pages/chunk'),
-      },
-      {
-        path: `${Routes.ParsedResult}/chunks`,
-        Component: () =>
-          import('@/pages/chunk/parsed-result/add-knowledge/components/knowledge-chunk'),
-      },
-      {
-        path: `${Routes.ChunkResult}/:id`,
-        Component: () => import('@/pages/chunk/chunk-result'),
-      },
-      {
-        path: `${Routes.ResultView}/:id`,
-        Component: () => import('@/pages/chunk/result-view'),
-      },
-    ],
-  },
+  { path: '/*', Component: () => import('@/pages/404') },
 ];
 
 const wrapRoutes = (routes: LazyRouteConfig[]): RouteObject[] =>

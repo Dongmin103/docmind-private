@@ -19,3 +19,7 @@ it('retains document preview and dataset document download contracts', () => {
   downloadDatasetDocument({ datasetId: 'dataset', docId: 'document', ext: 'pdf' });
   expect(request.get).toHaveBeenCalledWith('/api/v1/datasets/dataset/documents/document', { params: { ext: 'pdf' }, responseType: 'blob' });
 });
+
+it('does not retain the retired mindmap generation adapter in ordinary chat', () => {
+  expect(chatService).not.toHaveProperty('chatsMindmap');
+});

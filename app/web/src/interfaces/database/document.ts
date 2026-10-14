@@ -1,5 +1,3 @@
-import { RunningStatus } from '@/constants/knowledge';
-
 export interface IDocumentInfo {
   // chunk_num: number;
   create_date: string;
@@ -42,8 +40,6 @@ export interface IParserConfig {
   auto_keywords?: number;
   auto_questions?: number;
   task_page_size?: number;
-  raptor?: Raptor;
-  graphrag?: GraphRag;
   image_context_window?: number;
   image_table_context_window?: number;
   image_context_size?: number;
@@ -59,20 +55,6 @@ export interface IParserConfig {
     enum?: string[];
   }>;
   enable_metadata?: boolean;
-  compilation_template_group_id?: string[];
-}
-
-interface Raptor {
-  use_raptor: boolean;
-}
-
-interface GraphRag {
-  batch_chunk_token_size?: number;
-  community?: boolean;
-  entity_types?: string[];
-  method?: string;
-  resolution?: boolean;
-  use_graphrag?: boolean;
 }
 
 export type IDocumentInfoFilter = {
@@ -80,3 +62,47 @@ export type IDocumentInfoFilter = {
   suffix: Record<string, number>;
   metadata: Record<string, Record<string, number>>;
 };
+
+export interface IKnowledgeFileParserConfig {
+  chunk_token_num: number;
+  layout_recognize: boolean;
+  pages: number[][];
+  task_page_size: number;
+}
+
+export interface IKnowledgeFile {
+  source_version_id?: string;
+  chunk_set_id?: string;
+  chunk_num: number;
+  create_date: string;
+  create_time: number;
+  created_by: string;
+  id: string;
+  kb_id: string;
+  location: string;
+  name: string;
+  parser_id: string;
+  process_begin_at?: any;
+  process_duration: number;
+  progress: number; // parsing process
+  progress_msg: string; // parsing log
+  run: RunningStatus; // parsing status
+  size: number;
+  source_type: string;
+  status: string; // enabled
+  thumbnail?: any; // base64
+  token_num: number;
+  type: string;
+  update_date: string;
+  update_time: number;
+  parser_config: IKnowledgeFileParserConfig;
+}
+
+export enum RunningStatus {
+  UNSTART = 'UNSTART', // need to run
+  RUNNING = 'RUNNING', // need to cancel
+  CANCEL = 'CANCEL', // need to refresh
+  DONE = 'DONE', // need to refresh
+  FAIL = 'FAIL', // need to refresh
+  SCHEDULE = 'SCHEDULE',
+}

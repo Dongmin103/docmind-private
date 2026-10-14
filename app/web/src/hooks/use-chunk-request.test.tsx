@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react';
-import { useFetchNextChunkList } from './use-chunk-request';
+import { ChunkKeys, useFetchNextChunkList } from './use-chunk-request';
 
 let mockQueryOptions: any;
 let mockQueryResult: any;
@@ -10,7 +10,7 @@ jest.mock('@/components/ui/message', () => ({
   __esModule: true,
   default: { success: jest.fn() },
 }));
-jest.mock('@/services/knowledge-service', () => ({
+jest.mock('@/services/chunk-service', () => ({
   __esModule: true,
   default: { chunkList: (...args: any[]) => mockChunkList(...args) },
 }));
@@ -74,4 +74,15 @@ describe('chunk inspection error information', () => {
       documentInfo: {},
     });
   });
+});
+
+
+it('requests the retained dataset/document IDs without representation filters', async () => {
+  mockQueryResult = { data: undefined, refetch: mockRefetch };
+  mockChunkList.mockResolvedValue({ data: { code: 0, data: { chunks: [], total: 0, doc: { source_version_id: 'v1', chunk_set_id: 's1' } } } });
+  renderHook(() => useFetchNextChunkList());
+  expect(mockQueryOptions.queryKey).toEqual(ChunkKeys.list('dataset', 'document', 1, 10, '', undefined));
+  const response = await mockQueryOptions.queryFn();
+  expect(mockChunkList).toHaveBeenLastCalledWith({ kb_id: 'dataset', doc_id: 'document', page: 1, size: 10, available_int: undefined, keywords: '' });
+  expect(response.documentInfo).toMatchObject({ source_version_id: 'v1', chunk_set_id: 's1' });
 });
