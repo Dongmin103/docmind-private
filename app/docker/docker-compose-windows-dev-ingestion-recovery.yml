@@ -1,9 +1,9 @@
 # Recovery timing and workspace mount for the Windows cloud-source deployment.
-# The image entrypoint starts only API/admin; discovery uses the host watcher.
+# The image entrypoint starts only the API; admin is on demand.
+# Discovery uses the host watcher.
 services:
   ragflow-cpu:
     command:
-      - --enable-adminserver
       - --init-model-provider-tables
     environment:
       DOCMIND_EPHEMERAL_REAPER_INTERVAL_SECONDS: "60"
