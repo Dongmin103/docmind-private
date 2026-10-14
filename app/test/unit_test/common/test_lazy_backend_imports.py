@@ -11,18 +11,7 @@ import pytest
 APP_ROOT = Path(__file__).resolve().parents[3]
 DRIVERS = {
     "rag.utils.es_conn": "ESConnection",
-    "rag.utils.infinity_conn": "InfinityConnection",
-    "rag.utils.ob_conn": "OBConnection",
-    "rag.utils.opensearch_conn": "OSConnection",
-    "rag.utils.gaussdb_conn": "GaussDBConnection",
-    "rag.utils.serenedb_conn": "SereneDBConnection",
     "rag.utils.minio_conn": "RAGFlowMinio",
-    "rag.utils.azure_spn_conn": "RAGFlowAzureSpnBlob",
-    "rag.utils.azure_sas_conn": "RAGFlowAzureSasBlob",
-    "rag.utils.s3_conn": "RAGFlowS3",
-    "rag.utils.oss_conn": "RAGFlowOSS",
-    "rag.utils.opendal_conn": "OpenDALStorage",
-    "rag.utils.gcs_conn": "RAGFlowGCS",
 }
 
 
@@ -84,7 +73,6 @@ def backend_sandbox(monkeypatch):
     stub("rag.nlp", search=types.SimpleNamespace(Dealer=lambda conn: conn))
     stub("requests")
     stub("api.db.db_models", DB=types.SimpleNamespace())
-    stub("common.doc_store.gaussdb_conn_base", mask_gaussdb_text=str)
     for name in DRIVERS:
         monkeypatch.delitem(sys.modules, name, raising=False)
         parent, _, child = name.rpartition(".")
@@ -96,7 +84,7 @@ def backend_sandbox(monkeypatch):
             monkeypatch.delattr(package, child)
     loader = DriverLoader()
     monkeypatch.setattr(sys, "meta_path", [loader, *sys.meta_path])
-    for name in ("DOC_ENGINE", "STORAGE_IMPL", "DOCMIND_STORAGE_AUDIT_ROOT", "RAGFLOW_CRYPTO_ENABLED", "RAGFLOW_SECRET_KEY"):
+    for name in ("DB_TYPE", "DOC_ENGINE", "STORAGE_IMPL", "DOCMIND_STORAGE_AUDIT_ROOT", "RAGFLOW_CRYPTO_ENABLED", "RAGFLOW_SECRET_KEY"):
         monkeypatch.delenv(name, raising=False)
 
     def load(relative_path):
@@ -120,40 +108,22 @@ def test_import_settings_does_not_import_backend_drivers(backend_sandbox):
     assert loader.constructed == []
 
 
-@pytest.mark.parametrize(
-    "engine,doc_driver,memory_driver",
-    [
-        ("elasticsearch", "es_conn", "es_conn"),
-        ("infinity", "infinity_conn", "infinity_conn"),
-        ("opensearch", "opensearch_conn", None),
-        ("oceanbase", "ob_conn", "ob_conn"),
-        ("seekdb", "ob_conn", "ob_conn"),
-        ("gaussdb", "gaussdb_conn", "gaussdb_conn"),
-        ("GaussDB", "gaussdb_conn", "gaussdb_conn"),
-        ("serenedb", "serenedb_conn", None),
-    ],
-)
-def test_initialize_only_selected_backend_drivers(backend_sandbox, monkeypatch, engine, doc_driver, memory_driver):
+def test_initialize_only_selected_backend_drivers(backend_sandbox):
     settings, loader, _ = backend_sandbox
-    monkeypatch.setenv("DOC_ENGINE", engine)
     settings.init_settings()
-    expected = {f"rag.utils.{doc_driver}", "rag.utils.minio_conn"}
+    expected = {"rag.utils.es_conn", "rag.utils.minio_conn"}
     assert not hasattr(settings, "msgStoreConn")
-    assert settings.docStoreConn.driver == f"rag.utils.{doc_driver}"
+    assert settings.docStoreConn.driver == "rag.utils.es_conn"
     assert settings.STORAGE_IMPL.driver == "rag.utils.minio_conn"
     assert set(loader.loaded) == expected
     assert set(loader.constructed) == expected
 
 
-@pytest.mark.parametrize(
-    "storage,driver",
-    [("MINIO", "minio_conn"), ("AZURE_SPN", "azure_spn_conn"), ("AZURE_SAS", "azure_sas_conn"), ("AWS_S3", "s3_conn"), ("OSS", "oss_conn"), ("OPENDAL", "opendal_conn"), ("GCS", "gcs_conn")],
-)
-def test_storage_factory_imports_only_selected_driver(backend_sandbox, storage, driver):
+def test_storage_factory_imports_only_selected_driver(backend_sandbox):
     settings, loader, _ = backend_sandbox
-    result = settings.StorageFactory.create(settings.Storage[storage])
-    assert result.driver == f"rag.utils.{driver}"
-    assert loader.loaded == [f"rag.utils.{driver}"]
+    result = settings.StorageFactory.create(settings.Storage.MINIO)
+    assert result.driver == "rag.utils.minio_conn"
+    assert loader.loaded == ["rag.utils.minio_conn"]
 
 
 def test_selected_driver_failure_is_not_silently_replaced(backend_sandbox):
@@ -164,44 +134,39 @@ def test_selected_driver_failure_is_not_silently_replaced(backend_sandbox):
     assert "rag.utils.s3_conn" not in loader.loaded
 
 
-def test_health_import_and_unconfigured_probes_do_not_load_drivers(backend_sandbox, monkeypatch):
-    _, loader, load = backend_sandbox
-    health = load("api/utils/health_utils.py")
-    monkeypatch.setenv("DOC_ENGINE", "elasticsearch")
-    assert health.get_gaussdb_status()["status"] == "not_configured"
-    assert health.check_gaussdb_health()["status"] == "not_configured"
-    assert health.check_oceanbase_health()["status"] == "not_configured"
-    with pytest.raises(Exception, match="not in use"):
-        health.get_infinity_status()
-    with pytest.raises(Exception, match="not in use"):
-        health.get_oceanbase_status()
-    assert loader.loaded == []
-
-
-@pytest.mark.parametrize(
-    "engine,probe,driver",
-    [
-        ("elasticsearch", "get_es_cluster_stats", "es_conn"),
-        ("infinity", "get_infinity_status", "infinity_conn"),
-        ("oceanbase", "get_oceanbase_status", "ob_conn"),
-        ("gaussdb", "get_gaussdb_status", "gaussdb_conn"),
-    ],
-)
 @pytest.mark.parametrize("fails", [False, True])
-def test_health_probe_imports_selected_driver_and_preserves_failure_response(backend_sandbox, monkeypatch, engine, probe, driver, fails):
+def test_es_health_probe_preserves_failure_response(backend_sandbox, fails):
     _, loader, load = backend_sandbox
     health = load("api/utils/health_utils.py")
-    monkeypatch.setenv("DOC_ENGINE", engine)
     if fails:
-        loader.fail.add(f"rag.utils.{driver}")
-    result = getattr(health, probe)()
+        loader.fail.add("rag.utils.es_conn")
+    result = health.get_es_cluster_stats()
     assert result["status"] == ("timeout" if fails else "alive")
-    assert loader.loaded == [f"rag.utils.{driver}"]
+    assert loader.loaded == ["rag.utils.es_conn"]
 
 
-def test_gaussdb_health_reuses_existing_connection_without_import(backend_sandbox, monkeypatch):
-    settings, loader, load = backend_sandbox
-    settings.docStoreConn = types.SimpleNamespace(db_type=lambda: "gaussdb")
+@pytest.mark.parametrize("secure,verify,expected", [(False, True, ("http", True)), ("true", "false", ("https", False)), (True, "yes", ("https", True))])
+def test_minio_health_tls_options(backend_sandbox, secure, verify, expected):
+    settings, _, load = backend_sandbox
+    settings.MINIO = {"secure": secure, "verify": verify}
     health = load("api/utils/health_utils.py")
-    assert health._get_gaussdb_connection() is settings.docStoreConn
+    assert health._minio_scheme_and_verify() == expected
+
+
+@pytest.mark.parametrize("key,value", [("DB_TYPE", "postgres"), ("DB_TYPE", "gaussdb"), ("DB_TYPE", "oceanbase"), ("DOC_ENGINE", "infinity"), ("DOC_ENGINE", "opensearch"), ("DOC_ENGINE", "seekdb"), ("STORAGE_IMPL", "AWS_S3"), ("STORAGE_IMPL", "GCS")])
+def test_retired_selection_fails_before_driver_construction(backend_sandbox, monkeypatch, key, value):
+    settings, loader, _ = backend_sandbox
+    monkeypatch.setenv(key, value)
+    with pytest.raises(ValueError, match=key):
+        settings.init_settings()
+    assert loader.loaded == []
+    assert loader.constructed == []
+
+
+@pytest.mark.parametrize("key,value", [("DB_TYPE", "postgres"), ("DOC_ENGINE", "infinity"), ("STORAGE_IMPL", "AWS_S3")])
+def test_invalid_import_fails_before_loading_runtime_drivers(backend_sandbox, monkeypatch, key, value):
+    _, loader, load = backend_sandbox
+    monkeypatch.setenv(key, value)
+    with pytest.raises(ValueError, match=key):
+        load("common/settings.py")
     assert loader.loaded == []

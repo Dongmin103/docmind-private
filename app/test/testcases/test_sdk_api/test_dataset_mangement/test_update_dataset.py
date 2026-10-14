@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from operator import attrgetter
 
 import pytest
-from configs import DATASET_NAME_LIMIT, IS_GO_PROXY
+from configs import DATASET_NAME_LIMIT
 from hypothesis import HealthCheck, example, given, settings
 from ragflow_sdk import DataSet
 from utils import encode_avatar
@@ -79,12 +79,7 @@ class TestDatasetUpdate:
         with pytest.raises(Exception) as exception_info:
             dataset.update({"name": name})
         error_message = str(exception_info.value)
-        if IS_GO_PROXY:
-            if name is None:
-                pytest.skip("Go dataset update ignores an explicit null name")
-            if not isinstance(name, str):
-                assert "cannot unmarshal" in error_message and ".name" in error_message, error_message
-                return
+        pass
         assert expected_message in error_message, error_message
 
     @pytest.mark.p3
@@ -227,9 +222,7 @@ class TestDatasetUpdate:
         with pytest.raises(Exception) as exception_info:
             dataset.update({"name": name, "embedding_model": embedding_model})
         error_msg = str(exception_info.value)
-        if IS_GO_PROXY and name in ["empty", "space"]:
-            assert "lookup failed: record not found" in error_msg, error_msg
-        elif name in ["empty", "space", "missing_at"]:
+        if name in ["empty", "space", "missing_at"]:
             assert "embedding model identifier must follow <model_name>@<provider> format" in error_msg, error_msg
         else:
             assert "both model_name and provider must be non-empty strings" in error_msg, error_msg
@@ -237,8 +230,7 @@ class TestDatasetUpdate:
     @pytest.mark.p2
     def test_embedding_model_none(self, client, add_dataset_func):
         dataset = add_dataset_func
-        if IS_GO_PROXY:
-            pytest.skip("Go dataset update ignores an explicit null embedding_model")
+        pass
         dataset.update({"embedding_model": None})
         assert dataset.embedding_model.split("@", 1)[0] == "BAAI/bge-small-en-v1.5", str(dataset)
 
@@ -280,10 +272,7 @@ class TestDatasetUpdate:
         with pytest.raises(Exception) as exception_info:
             dataset.update({"permission": permission})
         error_message = str(exception_info.value)
-        if IS_GO_PROXY and not isinstance(permission, str):
-            assert "cannot unmarshal" in error_message and ".permission" in error_message, error_message
-        else:
-            assert "Input should be 'me' or 'team'" in error_message, error_message
+        assert "Input should be 'me' or 'team'" in error_message, error_message
 
     @pytest.mark.p3
     def test_permission_none(self, add_dataset_func):
@@ -334,12 +323,7 @@ class TestDatasetUpdate:
         with pytest.raises(Exception) as exception_info:
             dataset.update({"chunk_method": chunk_method})
         error_message = str(exception_info.value)
-        if IS_GO_PROXY and not isinstance(chunk_method, str):
-            assert "cannot unmarshal" in error_message and ".chunk_method" in error_message, error_message
-        elif IS_GO_PROXY:
-            assert error_message.startswith("Input should be 'naive', 'book'") and error_message.endswith("or 'tag'"), error_message
-        else:
-            assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table', 'tag' or 'resume'" in error_message, error_message
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table', 'tag' or 'resume'" in error_message, error_message
 
     @pytest.mark.p3
     def test_chunk_method_none(self, add_dataset_func):
@@ -405,8 +389,7 @@ class TestDatasetUpdate:
         with pytest.raises(Exception) as exception_info:
             dataset.update({"pagerank": pagerank})
         error_message = str(exception_info.value)
-        if IS_GO_PROXY and pagerank == -1 and "less than or equal to 100" in error_message:
-            pytest.skip("Go dataset update applies the wrong pagerank bound error for negative values")
+        pass
         assert expected_message in error_message, error_message
 
     @pytest.mark.p3

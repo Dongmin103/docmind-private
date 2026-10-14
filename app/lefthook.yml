@@ -56,20 +56,6 @@ pre-commit:
         else
           ruff format {staged_files}
         fi
-    - name: gofmt
-      glob: "*.go"
-      stage_fixed: true
-      run: |
-        if [ "${LEFTHOOK_CHECK_ONLY:-}" = "1" ]; then
-          unformatted=$(gofmt -l {staged_files})
-          if [ -n "$unformatted" ]; then
-            echo "The following Go files are not gofmt'd:"
-            echo "$unformatted"
-            exit 1
-          fi
-        else
-          gofmt -w {staged_files}
-        fi
     - name: web-checks
       group:
         piped: true

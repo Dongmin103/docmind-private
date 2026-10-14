@@ -2,6 +2,23 @@
 
 set -e
 
+case "${API_PROXY_SCHEME-python}" in
+    python) ;;
+    *) echo "Unsupported API_PROXY_SCHEME: ${API_PROXY_SCHEME}; only python is supported" >&2; exit 1 ;;
+esac
+case "${DB_TYPE-mysql}" in
+    mysql|MYSQL) ;;
+    *) echo "Unsupported DB_TYPE: ${DB_TYPE}; only mysql is supported" >&2; exit 1 ;;
+esac
+case "${DOC_ENGINE-elasticsearch}" in
+    elasticsearch) ;;
+    *) echo "Unsupported DOC_ENGINE: ${DOC_ENGINE}; only elasticsearch is supported" >&2; exit 1 ;;
+esac
+case "${STORAGE_IMPL-MINIO}" in
+    MINIO|minio) ;;
+    *) echo "Unsupported STORAGE_IMPL: ${STORAGE_IMPL}; only MINIO is supported" >&2; exit 1 ;;
+esac
+
 echo "Start RAGFlow cluster, version: "
 cat /ragflow/VERSION
 
@@ -76,25 +93,10 @@ export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/"
 PY=python3
 
 # -----------------------------------------------------------------------------
-# Select Nginx Configuration based on API_PROXY_SCHEME
+# Select the Python Nginx configuration
 # -----------------------------------------------------------------------------
 NGINX_CONF_DIR="/etc/nginx/conf.d"
-if [ -n "$API_PROXY_SCHEME" ]; then
-    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
-        cp -f "$NGINX_CONF_DIR/ragflow.conf.hybrid" "$NGINX_CONF_DIR/ragflow.conf"
-        echo "Applied nginx config: ragflow.conf.hybrid"
-    elif [[ "${API_PROXY_SCHEME}" == "go" ]]; then
-        cp -f "$NGINX_CONF_DIR/ragflow.conf.golang" "$NGINX_CONF_DIR/ragflow.conf"
-        echo "Applied nginx config: ragflow.conf.golang (default)"
-    else
-        cp -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
-        echo "Applied nginx config: ragflow.conf.python"
-    fi
-else
-    # Default to python backend
-    cp -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
-    echo "Default: applied nginx config: ragflow.conf.python"
-fi
+cp -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
 
 # -----------------------------------------------------------------------------
 # Function(s)
@@ -134,15 +136,7 @@ run_with_restart() {
 }
 
 if [[ "${INIT_MODEL_PROVIDER_TABLES}" -eq 1 ]]; then
-    DB_TYPE_NORMALIZED="${DB_TYPE:-mysql}"
-    DB_TYPE_NORMALIZED="${DB_TYPE_NORMALIZED,,}"
-    if [[ "${DB_TYPE_NORMALIZED}" == "gaussdb" || "${DB_TYPE_NORMALIZED}" == "gauss" ]]; then
-        # This migration script contains MySQL-only SQL and cannot run against
-        # a GaussDB metadata database.
-        echo "Skipping MySQL-specific model provider table migrations for DB_TYPE=${DB_TYPE:-mysql}."
-    else
-        tools/scripts/run_migrations.sh
-    fi
+    tools/scripts/run_migrations.sh
 fi
 
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
@@ -152,15 +146,9 @@ if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     echo "Starting nginx..."
     /usr/sbin/nginx -c /etc/nginx/nginx.conf
 
-    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "python" ]]; then
-        echo "Attempt to start RAGFlow python server..."
-        run_with_restart "RAGFlow python server" "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &
-    fi
+    echo "Attempt to start RAGFlow python server..."
+    run_with_restart "RAGFlow python server" "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &
 
-    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "go" ]]; then
-        echo "Starting RAGFlow go server..."
-        run_with_restart "RAGFlow go server" bin/ragflow_server --api &
-    fi
 fi
 
 

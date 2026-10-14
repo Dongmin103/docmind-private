@@ -24,7 +24,7 @@ from openpyxl import Workbook
 import pytest
 import requests
 from requests_toolbelt import MultipartEncoder
-from test.testcases.configs import DEFAULT_PARSER_CONFIG, DOCUMENT_NAME_LIMIT, HOST_ADDRESS, INVALID_API_TOKEN, INVALID_ID_32, IS_GO_PROXY, VERSION
+from test.testcases.configs import DEFAULT_PARSER_CONFIG, DOCUMENT_NAME_LIMIT, HOST_ADDRESS, INVALID_API_TOKEN, INVALID_ID_32, VERSION
 from test.testcases.restful_api.helpers.assertions import assert_auth_error
 from test.testcases.restful_api.helpers.client import RestClient
 from test.testcases.utils import compare_by_hash
@@ -491,7 +491,7 @@ def test_documents_upload_error_contract(rest_client, create_dataset, tmp_path):
     assert filename_empty_res.status_code == 200
     filename_empty_payload = filename_empty_res.json()
     assert filename_empty_payload["code"] == 101, filename_empty_payload
-    expected_message = "No file part!" if IS_GO_PROXY else "No file selected!"
+    expected_message = "No file selected!"
     assert filename_empty_payload["message"] == expected_message, filename_empty_payload
 
 

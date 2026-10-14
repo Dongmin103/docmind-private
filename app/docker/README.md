@@ -15,7 +15,7 @@
 - **docker-compose.yml**
   Sets up environment for RAGFlow and its dependencies.
 - **docker-compose-base.yml**
-  Sets up environment for RAGFlow's dependencies: Elasticsearch/[Infinity](https://github.com/infiniflow/infinity), MySQL, MinIO, and Redis.
+  Sets up environment for RAGFlow's dependencies: Elasticsearch, MySQL, MinIO, and Redis.
 
 > [!CAUTION]
 > We do not actively maintain **docker-compose-CN-oc9.yml**, **docker-compose-macos.yml**, so use them at your own risk. However, you are welcome to file a pull request to improve any of them.
@@ -24,16 +24,12 @@
 
 The [.env](./.env) file contains important environment variables for Docker.
 
-### Metadata database
+### Supported backends
 
-- `DB_TYPE`
-  The business metadata database type. Defaults to `mysql`. Supported values include `mysql`, `postgres`, `gaussdb`, and `oceanbase`.
-- `COMPOSE_PROFILES`
-  The Docker Compose profiles to enable. By default it contains `${DOC_ENGINE},${DEVICE},metadata-${METADATA_DB_PROFILE}`.
-- `METADATA_DB_PROFILE`
-  Defaults to `mysql`, preserving the in-cluster MySQL service. Set it to `gaussdb` together with `DB_TYPE=gaussdb` to use an external GaussDB metadata database without starting MySQL.
-- `GAUSSDB_METADATA_HOST`, `GAUSSDB_METADATA_PORT`, `GAUSSDB_METADATA_USER`, `GAUSSDB_METADATA_PASSWORD`, `GAUSSDB_METADATA_DBNAME`, `GAUSSDB_METADATA_SCHEMA`
-  External GaussDB metadata database connection settings, used when `DB_TYPE=gaussdb`. Set `METADATA_DB_PROFILE=gaussdb` to keep the in-cluster MySQL service disabled.
+`DB_TYPE` defaults to `mysql`, `DOC_ENGINE` to `elasticsearch`, and `STORAGE_IMPL` to `MINIO`.
+These are the supported choices; explicit alternatives fail before driver initialization.
+Compose retains MySQL, Elasticsearch, MinIO, and Redis. Python starts by default.
+`API_PROXY_SCHEME=python` is accepted; retired runtime selections fail before startup.
 
 ### Elasticsearch
 
@@ -141,46 +137,6 @@ The [.env](./.env) file contains important environment variables for Docker.
 - `EMBEDDING_BATCH_SIZE`
   The number of text chunks processed in a single batch during embedding vectorization. Defaults to `16`.
 
-### OceanBase prerequisites
-
-Before setting `DOC_ENGINE=oceanbase`, make sure the host OS allows the file descriptor and core dump limits OceanBase expects.
-
-1. Set host limits:
-
-   ```bash
-   sudo tee /etc/security/limits.d/99-oceanbase.conf >/dev/null <<'EOF'
-   root soft nofile 655350
-   root hard nofile 655350
-   * soft nofile 655350
-   * hard nofile 655350
-   * soft core unlimited
-   * hard core unlimited
-   EOF
-   ```
-
-2. Make sure PAM limits are enabled:
-
-   ```bash
-   grep -E 'pam_limits\.so' /etc/pam.d/common-session /etc/pam.d/common-session-noninteractive
-   ```
-
-   If missing, add them:
-
-   ```bash
-   echo 'session required pam_limits.so' | sudo tee -a /etc/pam.d/common-session
-   echo 'session required pam_limits.so' | sudo tee -a /etc/pam.d/common-session-noninteractive
-   ```
-
-3. Log out and log back in, or reboot.
-
-4. Verify the effective limit:
-
-   ```bash
-   ulimit -n
-   ```
-
-   Expected: `655350`, or at least `20000`.
-
 ## 🐋 Service configuration
 
 [service_conf.yaml.template](./service_conf.yaml.template) specifies the system-level configuration for RAGFlow and is used by its API server and task executor. In a dockerized setup, the generated `service_conf.yaml` file is automatically created from this template (replacing all environment variables by their values).
@@ -208,42 +164,6 @@ Before setting `DOC_ENGINE=oceanbase`, make sure the host OS allows the file des
   - `user`: The username for MinIO.
   - `password`: The password for MinIO.
   - `host`: The MinIO serving IP *and* port inside the Docker container. Defaults to `minio:9000`.
-
-- `oceanbase`
-  - `scheme`: The connection scheme. Set to `mysql` to use mysql config, or other values to use config below.
-  - `config`:
-    - `db_name`: The OceanBase database name.
-    - `user`: The username for OceanBase.
-    - `password`: The password for OceanBase.
-    - `host`: The hostname of the OceanBase service.
-    - `port`: The port of OceanBase.
-
-- `gaussdb`
-  - `host`: The hostname or IP address of the GaussDB instance.
-  - `port`: The GaussDB port.
-  - `database`: The GaussDB database name. Defaults to `postgres`.
-  - `user`: The username for GaussDB.
-  - `password`: The password for GaussDB.
-  - `schema`: Optional schema used by the DocEngine. Defaults to `public`.
-  - RAGFlow does not start or manage GaussDB; set `DOC_ENGINE=gaussdb` only after preparing a GaussDB instance.
-
-- `oss`
-  - `access_key`: The access key ID used to authenticate requests to the OSS service.
-  - `secret_key`: The secret access key used to authenticate requests to the OSS service.
-  - `endpoint_url`: The URL of the OSS service endpoint.
-  - `region`: The OSS region where the bucket is located.
-  - `bucket`: The name of the OSS bucket where files will be stored. When you want to store all files in a specified bucket, you need this configuration item.
-  - `prefix_path`: Optional. A prefix path to prepend to file names in the OSS bucket, which can help organize files within the bucket.
-
-- `s3`:
-  - `access_key`: The access key ID used to authenticate requests to the S3 service.
-  - `secret_key`: The secret access key used to authenticate requests to the S3 service.
-  - `endpoint_url`: The URL of the S3-compatible service endpoint. This is necessary when using an S3-compatible protocol instead of the default AWS S3 endpoint.
-  - `bucket`: The name of the S3 bucket where files will be stored. When you want to store all files in a specified bucket, you need this configuration item.
-  - `region`: The AWS region where the S3 bucket is located. This is important for directing requests to the correct data center.
-  - `signature_version`: Optional. The version of the signature to use for authenticating requests. Common versions include `v4`.
-  - `addressing_style`: Optional. The style of addressing to use for the S3 endpoint. This can be `path` or `virtual`.
-  - `prefix_path`: Optional. A prefix path to prepend to file names in the S3 bucket, which can help organize files within the bucket.
 
 - `oauth`
   The OAuth configuration for signing up or signing in to RAGFlow using a third-party account.

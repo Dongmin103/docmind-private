@@ -18,7 +18,7 @@
 # `ragflow_deps/` as its build context, so the files written here MUST
 # sit at the top of `ragflow_deps/`. The Dockerfile's COPY lines assume
 # top-level paths (`huggingface.co`, `nltk_data`, `cl100k_base.tiktoken`,
-# `*.deb`, `*.jar`, `*.tar.gz`, `stagehand-server-v3-linux-<arch>`).
+# `*.deb`, `*.jar`, `*.tar.gz`).
 #
 # Typical workflow:
 #
@@ -51,28 +51,6 @@ def get_urls(use_china_mirrors=False) -> list[Union[str, list[str]]]:
             ["https://registry.npmmirror.com/-/binary/chrome-for-testing/121.0.6167.85/linux64/chromedriver-linux64.zip", "chromedriver-linux64-121-0-6167-85"],
             "https://github.com/astral-sh/uv/releases/download/0.9.16/uv-x86_64-unknown-linux-gnu.tar.gz",
             "https://github.com/astral-sh/uv/releases/download/0.9.16/uv-aarch64-unknown-linux-gnu.tar.gz",
-            # stagehand-server-v3 Node.js SEA binaries (used by Browser
-            # component in local mode).
-            #
-            # The stagehand-go Go module (pinned in go.mod) and the
-            # stagehand-server binary (this release) are LOOSELY
-            # MATCHED — both stay on the v3.x line and remain
-            # protocol-compatible. The two version numbers do NOT
-            # track each other: the Go SDK is at v3.21.0 while the
-            # current latest server release is v3.7.2.
-            #
-            # On every go.mod bump, refresh this URL to the current
-            # latest server release. There is no version
-            # correspondence to maintain; "both on v3.x" is the
-            # compatibility contract.
-            "https://github.com/browserbase/stagehand/releases/download/stagehand-server-v3/v3.7.2/stagehand-server-v3-linux-x64",
-            "https://github.com/browserbase/stagehand/releases/download/stagehand-server-v3/v3.7.2/stagehand-server-v3-linux-arm64",
-            # Native static libraries for Go build (pdfium, pdf_oxide, office_oxide)
-            # Used by build.sh's check_*_deps functions — pre-downloaded to avoid
-            # network access during CI.
-            ["https://github.com/kognitos/pdfium-static/releases/download/chromium%2F7809/pdfium-linux-x64-static.tgz", "pdfium-linux-x64-static.tgz"],
-            ["https://github.com/yfedoseev/pdf_oxide/releases/download/v0.3.67/pdf_oxide-go-ffi-linux-amd64.tar.gz", "pdf_oxide-go-ffi-linux-amd64.tar.gz"],
-            ["https://github.com/yfedoseev/office_oxide/releases/download/v0.1.8/native-linux-x86_64.tar.gz", "office_oxide-linux-x86_64.tar.gz"],
         ]
     else:
         return [
@@ -85,28 +63,6 @@ def get_urls(use_china_mirrors=False) -> list[Union[str, list[str]]]:
             ["https://storage.googleapis.com/chrome-for-testing-public/121.0.6167.85/linux64/chromedriver-linux64.zip", "chromedriver-linux64-121-0-6167-85"],
             "https://github.com/astral-sh/uv/releases/download/0.9.16/uv-x86_64-unknown-linux-gnu.tar.gz",
             "https://github.com/astral-sh/uv/releases/download/0.9.16/uv-aarch64-unknown-linux-gnu.tar.gz",
-            # stagehand-server-v3 Node.js SEA binaries (used by Browser
-            # component in local mode).
-            #
-            # The stagehand-go Go module (pinned in go.mod) and the
-            # stagehand-server binary (this release) are LOOSELY
-            # MATCHED — both stay on the v3.x line and remain
-            # protocol-compatible. The two version numbers do NOT
-            # track each other: the Go SDK is at v3.21.0 while the
-            # current latest server release is v3.7.2.
-            #
-            # On every go.mod bump, refresh this URL to the current
-            # latest server release. There is no version
-            # correspondence to maintain; "both on v3.x" is the
-            # compatibility contract.
-            "https://github.com/browserbase/stagehand/releases/download/stagehand-server-v3/v3.7.2/stagehand-server-v3-linux-x64",
-            "https://github.com/browserbase/stagehand/releases/download/stagehand-server-v3/v3.7.2/stagehand-server-v3-linux-arm64",
-            # Native static libraries for Go build (pdfium, pdf_oxide, office_oxide)
-            # Used by build.sh's check_*_deps functions — pre-downloaded to avoid
-            # network access during CI.
-            ["https://github.com/kognitos/pdfium-static/releases/download/chromium%2F7809/pdfium-linux-x64-static.tgz", "pdfium-linux-x64-static.tgz"],
-            ["https://github.com/yfedoseev/pdf_oxide/releases/download/v0.3.67/pdf_oxide-go-ffi-linux-amd64.tar.gz", "pdf_oxide-go-ffi-linux-amd64.tar.gz"],
-            ["https://github.com/yfedoseev/office_oxide/releases/download/v0.1.8/native-linux-x86_64.tar.gz", "office_oxide-linux-x86_64.tar.gz"],
         ]
 
 
@@ -147,30 +103,6 @@ if __name__ == "__main__":
         print(f"Downloading {filename} from {download_url}...")
         if not os.path.exists(filename):
             urllib.request.urlretrieve(download_url, filename)
-
-    # Extract native static libraries to ~/ragflow-native-libs for Go build.
-    # Ensures build.sh can find them without network access.
-    native_deps_dir = os.path.expanduser("~/ragflow-native-libs")
-    extractions = [
-        ("pdfium-linux-x64-static.tgz", "pdfium-static"),
-        ("pdf_oxide-go-ffi-linux-amd64.tar.gz", "pdf_oxide"),
-        ("office_oxide-linux-x86_64.tar.gz", "office_oxide"),
-    ]
-    import tarfile
-
-    for archive, subdir in extractions:
-        archive_path = os.path.join(os.getcwd(), archive)
-        if not os.path.isfile(archive_path):
-            print(f"  Skipping extraction: {archive} not found")
-            continue
-        target = os.path.join(native_deps_dir, subdir)
-        if os.path.isdir(target):
-            print(f"  ✓ {subdir} already extracted to {target}")
-            continue
-        os.makedirs(target, exist_ok=True)
-        print(f"  Extracting {archive} → {target}")
-        with tarfile.open(archive_path) as tf:
-            tf.extractall(target)
 
     local_dir = os.path.abspath("nltk_data")
     for data in ["wordnet", "punkt", "punkt_tab"]:

@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from operator import attrgetter
 
 import pytest
-from configs import DATASET_NAME_LIMIT, DEFAULT_PARSER_CONFIG, HOST_ADDRESS, INVALID_API_TOKEN, IS_GO_PROXY, SDK_UNAUTHORIZED_ERROR_MESSAGE
+from configs import DATASET_NAME_LIMIT, DEFAULT_PARSER_CONFIG, HOST_ADDRESS, INVALID_API_TOKEN, SDK_UNAUTHORIZED_ERROR_MESSAGE
 from hypothesis import example, given, settings
 from ragflow_sdk import DataSet, RAGFlow
 from utils import encode_avatar
@@ -90,13 +90,7 @@ class TestDatasetCreate:
     def test_name_invalid(self, client, name, expected_message):
         with pytest.raises(Exception) as exception_info:
             client.create_dataset(**{"name": name})
-        if IS_GO_PROXY:
-            if name == "":
-                expected_message = "failed on the 'required' tag"
-            elif isinstance(name, str) and not name.strip():
-                expected_message = "dataset name can't be empty"
-            elif isinstance(name, str):
-                expected_message = f"Dataset name length is {len(name)} which is large than {DATASET_NAME_LIMIT}"
+        pass
         assert expected_message in str(exception_info.value), str(exception_info.value)
 
     @pytest.mark.p3
@@ -244,13 +238,13 @@ class TestDatasetCreate:
     def test_embedding_model_unset(self, client):
         payload = {"name": "embedding_model_unset"}
         dataset = client.create_dataset(**payload)
-        assert dataset.embedding_model.startswith("BAAI/bge-small-en-v1.5@Local@Builtin") if IS_GO_PROXY else dataset.embedding_model == "BAAI/bge-small-en-v1.5@Local@Builtin", str(dataset)
+        assert dataset.embedding_model == "BAAI/bge-small-en-v1.5@Local@Builtin", str(dataset)
 
     @pytest.mark.p2
     def test_embedding_model_none(self, client):
         payload = {"name": "embedding_model_none", "embedding_model": None}
         dataset = client.create_dataset(**payload)
-        assert dataset.embedding_model.startswith("BAAI/bge-small-en-v1.5@Local@Builtin") if IS_GO_PROXY else dataset.embedding_model == "BAAI/bge-small-en-v1.5@Local@Builtin", str(dataset)
+        assert dataset.embedding_model == "BAAI/bge-small-en-v1.5@Local@Builtin", str(dataset)
 
     @pytest.mark.p2
     @pytest.mark.parametrize(
@@ -336,10 +330,7 @@ class TestDatasetCreate:
         with pytest.raises(Exception) as exception_info:
             client.create_dataset(**payload)
         error_message = str(exception_info.value)
-        if IS_GO_PROXY:
-            assert error_message.startswith("Input should be 'naive', 'book'") and error_message.endswith("or 'tag'"), error_message
-        else:
-            assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table', 'tag' or 'resume'" in error_message, error_message
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table', 'tag' or 'resume'" in error_message, error_message
 
     @pytest.mark.p2
     def test_chunk_method_unset(self, client):

@@ -17,22 +17,8 @@
 import infinity.rag_tokenizer
 
 
-class RagTokenizer(infinity.rag_tokenizer.RagTokenizer):
-    def tokenize(self, line: str) -> str:
-        from common import settings  # moved from the top of the file to avoid circular import
-
-        if settings.DOC_ENGINE_INFINITY:
-            return line
-        else:
-            return super().tokenize(line)
-
-    def fine_grained_tokenize(self, tks: str) -> str:
-        from common import settings  # moved from the top of the file to avoid circular import
-
-        if settings.DOC_ENGINE_INFINITY:
-            return tks
-        else:
-            return super().fine_grained_tokenize(tks)
+# The existing tokenizer also serves Elasticsearch queries and document chunks.
+RagTokenizer = infinity.rag_tokenizer.RagTokenizer
 
 
 def is_chinese(s):

@@ -17,7 +17,7 @@ if (typeof globalThis.TextEncoder === 'undefined') {
 (globalThis as Record<string, unknown>).jestImportMetaGlob = () => ({});
 
 // jsdom does not expose fetch; some modules call it at import time and
-// handle the rejection themselves (e.g. utils/backend-runtime.ts)
+// handle the rejection themselves
 if (typeof globalThis.fetch === 'undefined') {
   (globalThis as Record<string, unknown>).fetch = () =>
     Promise.reject(new Error('fetch is not available in tests'));

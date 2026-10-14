@@ -15,7 +15,6 @@
 #
 import logging
 import math
-import os
 import re
 
 from api.db.db_models import Document, File
@@ -334,8 +333,6 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
             req["tenant_embd_id"] = resolve_model_id(tenant_id, LLMType.EMBEDDING, req["embd_id"])
 
     if "pagerank" in req and req["pagerank"] != kb.pagerank:
-        if os.environ.get("DOC_ENGINE", "elasticsearch") == "infinity":
-            return False, "'pagerank' can only be set when doc_engine is elasticsearch"
 
         if req["pagerank"] > 0:
             from rag.nlp import search
@@ -583,9 +580,7 @@ def delete_tags(dataset_id: str, tenant_id: str, tags: list[str]):
     from rag.nlp import search
 
     for t in tags:
-        updated = settings.docStoreConn.update({"tag_kwd": t, "kb_id": [dataset_id]}, {"remove": {"tag_kwd": t}}, search.index_name(kb.tenant_id), dataset_id)
-        if callable(getattr(settings.docStoreConn, "db_type", None)) and settings.docStoreConn.db_type() == "gaussdb" and not updated:
-            return False, "Failed to update dataset tags in document store"
+        settings.docStoreConn.update({"tag_kwd": t, "kb_id": [dataset_id]}, {"remove": {"tag_kwd": t}}, search.index_name(kb.tenant_id), dataset_id)
 
     return True, {}
 
@@ -661,11 +656,9 @@ def rename_tag(dataset_id: str, tenant_id: str, from_tag: str, to_tag: str):
 
     from rag.nlp import search
 
-    updated = settings.docStoreConn.update(
+    settings.docStoreConn.update(
         {"tag_kwd": from_tag, "kb_id": [dataset_id]}, {"remove": {"tag_kwd": from_tag.strip()}, "add": {"tag_kwd": to_tag}}, search.index_name(kb.tenant_id), dataset_id
     )
-    if callable(getattr(settings.docStoreConn, "db_type", None)) and settings.docStoreConn.db_type() == "gaussdb" and not updated:
-        return False, "Failed to update dataset tags in document store"
 
     return True, {"from": from_tag, "to": to_tag}
 
@@ -903,11 +896,7 @@ def check_embedding(dataset_id: str, tenant_id: str, req: dict):
             cid = ids[0]
             full_doc = docStoreConn.get(cid, index_nm, [kb_id]) or {}
             vec_field = _guess_vec_field(full_doc)
-            vec_valid = full_doc.get(f"{vec_field}_valid") if vec_field else None
-            if callable(getattr(docStoreConn, "db_type", None)) and docStoreConn.db_type() == "gaussdb" and vec_valid is False:
-                vec = []
-            else:
-                vec = _as_float_vec(full_doc.get(vec_field))
+            vec = _as_float_vec(full_doc.get(vec_field))
 
             out.append(
                 {

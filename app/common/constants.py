@@ -180,12 +180,6 @@ class FileSource(StrEnum):
 
 class Storage(Enum):
     MINIO = 1
-    AZURE_SPN = 2
-    AZURE_SAS = 3
-    AWS_S3 = 4
-    OSS = 5
-    OPENDAL = 6
-    GCS = 7
 
 
 # environment

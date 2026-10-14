@@ -9,7 +9,7 @@ usage() {
     echo
     echo "Without arguments, starts ragflow."
     echo "Available service types:"
-    echo "  ragflow         Start RAGFlow server based on API_PROXY_SCHEME"
+    echo "  ragflow         Start the Python RAGFlow server"
     echo
     echo "Examples:"
     echo "  $0"
@@ -37,6 +37,23 @@ load_env_file() {
 
 # Load environment variables
 load_env_file
+
+case "${API_PROXY_SCHEME-python}" in
+    python) ;;
+    *) echo "Unsupported API_PROXY_SCHEME: ${API_PROXY_SCHEME}; only python is supported" >&2; exit 1 ;;
+esac
+case "${DB_TYPE-mysql}" in
+    mysql|MYSQL) ;;
+    *) echo "Unsupported DB_TYPE: ${DB_TYPE}; only mysql is supported" >&2; exit 1 ;;
+esac
+case "${DOC_ENGINE-elasticsearch}" in
+    elasticsearch) ;;
+    *) echo "Unsupported DOC_ENGINE: ${DOC_ENGINE}; only elasticsearch is supported" >&2; exit 1 ;;
+esac
+case "${STORAGE_IMPL-MINIO}" in
+    MINIO|minio) ;;
+    *) echo "Unsupported STORAGE_IMPL: ${STORAGE_IMPL}; only MINIO is supported" >&2; exit 1 ;;
+esac
 
 # Unset HTTP proxies that might be set by Docker daemon
 export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
@@ -82,11 +99,6 @@ trap cleanup SIGINT SIGTERM
 run_server(){
     local server_name="ragflow_server.py"
     local -a server_cmd=("$PY" "api/ragflow_server.py")
-    if [[ "${API_PROXY_SCHEME}" == "go" ]]; then
-        prepare_for_go
-        server_name="ragflow_server"
-        server_cmd=("bin/ragflow_server" "--api")
-    fi
     local retry_count=0
     while ! $STOP && [ $retry_count -lt $MAX_RETRIES ]; do
         echo "Starting $server_name (Attempt $((retry_count+1)))"
@@ -115,31 +127,7 @@ ensure_db_init() {
 }
 
 run_mysql_migrations() {
-    local db_type="${DB_TYPE:-mysql}"
-    db_type="${db_type,,}"
-    if [ "$db_type" = "gaussdb" ] || [ "$db_type" = "gauss" ]; then
-        # This migration script contains MySQL-only SQL and cannot run against
-        # a GaussDB metadata database.
-        echo "Skipping MySQL-specific model provider table migrations for DB_TYPE=${DB_TYPE:-mysql}."
-        return 0
-    fi
-
     tools/scripts/run_migrations.sh
-}
-
-prepare_for_go() {
-    if [ -d /usr/share/infinity/resource ]; then
-        echo "Resource directory already exists. Skipping preparation."
-        return
-    fi
-    mkdir -p /usr/share/infinity/resource
-    if [ "$NEED_MIRROR" == "1" ]; then
-        git clone --depth 1 --single-branch https://gitee.com/infiniflow/resource /tmp/resource;
-    else
-        git clone --depth 1 --single-branch https://github.com/infiniflow/resource.git /tmp/resource;
-    fi
-    cp -r /tmp/resource/* /usr/share/infinity/resource
-    rm -rf /tmp/resource
 }
 
 START_RAGFLOW=0

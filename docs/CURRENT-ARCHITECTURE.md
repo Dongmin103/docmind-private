@@ -29,7 +29,7 @@ app/는 2026-09-21 커스텀 소스 스냅샷에서 시작했으며, 현재 개�
 | web/src/pages/chunk, web/src/components/document-preview | 청크 목록과 원문 미리보기 공통 컴포넌트 |
 | common/settings.py | DB/저장소/검색기와 메모리·그래프 초기화. 미사용 패키지 삭제 전 정리 |
 | docker/ | Linux 배포 구성과 격리된 Windows 개발 Compose·env 예제·entrypoint |
-| internal/, cmd/ | Go 대체 실행/파서 경로. Python 배포라는 이유만으로 일괄 삭제하지 않음 |
+| Python/MySQL/Elasticsearch/MinIO | 기능 축소 브랜치에서 Go 및 대체 DB/저장소 소스 제거. 배포 통합 검증은 별도 필요 |
 
 현재 청크 텍스트는 ES, 원본·청크 이미지는 객체 저장소를 통해 조회한다. 현재 파일 업로드는 MinIO에 원본을 저장하고 워커가 읽는다. 새 요구의 임시 입력·평문 삭제로 치환하기 전 MinIO 서비스를 먼저 끄면 안 된다.
 

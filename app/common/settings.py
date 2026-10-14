@@ -17,9 +17,7 @@ import os
 import json
 import secrets
 import logging
-import re
 from datetime import date
-from importlib import import_module
 
 from common.constants import RAG_FLOW_SERVICE_NAME
 from common.file_utils import get_project_base_directory
@@ -27,9 +25,7 @@ from common.config_utils import get_base_config, decrypt_database_config
 from common.misc_utils import pip_install_torch
 from common.constants import SVR_QUEUE_NAME, Storage
 
-from rag.utils.redis_conn import REDIS_CONN
 
-from rag.nlp import search
 
 TIMEZONE = os.getenv("TZ", "Asia/Shanghai")
 
@@ -56,89 +52,29 @@ SECRET_KEY = None
 FACTORY_LLM_INFOS = None
 ALLOWED_LLM_FACTORIES = None
 
-# The metadata database and DocEngine may all use GaussDB while
-# targeting different databases, schemas, compatibility modes, or credentials.
-# The metadata database therefore reads only GAUSSDB_METADATA_*. The gaussdb
-# section in service_conf.yaml remains exclusive to DOC_ENGINE=gaussdb.
-GAUSSDB_ENV_DEFAULTS = {
-    "name": "rag_flow",
-    "user": "rag_flow",
-    "password": "infini_rag_flow",
-    "host": "gaussdb",
-    "port": 8000,
-    "schema": "public",
-    "max_connections": 100,
-    "stale_timeout": 30,
-    "options": "-c client_encoding=UTF8 -c default_transaction_read_only=off",
-}
-_GAUSSDB_SCHEMA_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+def _supported_backend(name: str, value: str | None, supported: str) -> str:
+    normalized = supported.lower() if value is None else value.strip().lower()
+    if normalized != supported.lower():
+        raise ValueError(f"Unsupported {name}: {value!r}; only {supported} is supported")
+    return supported
 
 
 def normalize_database_type(database_type: str | None = None) -> str:
-    # Only normalize the new GaussDB values. Existing database names retain
-    # their upstream spelling and lookup behavior.
-    raw_value = database_type or "mysql"
-    normalized = raw_value.strip().lower()
-    if normalized in {"gaussdb", "gauss"}:
-        return "gaussdb"
-    return raw_value
-
-
-def _get_int_env(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
-
-
-def _normalize_gaussdb_metadata_schema(value: str | None = None) -> str:
-    # The schema is interpolated into search_path in the libpq options. Restrict
-    # it to a plain SQL identifier so quotes, semicolons, or extra options cannot
-    # be injected. The metadata database currently accepts one schema only.
-    schema = (value or GAUSSDB_ENV_DEFAULTS["schema"]).strip() or GAUSSDB_ENV_DEFAULTS["schema"]
-    if not _GAUSSDB_SCHEMA_PATTERN.match(schema):
-        raise ValueError(f"invalid GAUSSDB_METADATA_SCHEMA: {schema}")
-    return schema
-
-
-def _gaussdb_metadata_options(schema: str) -> str:
-    explicit_options = os.environ.get("GAUSSDB_METADATA_OPTIONS")
-    if explicit_options is not None:
-        # An explicit value replaces the complete options string. Advanced
-        # deployments can control search_path, encoding, read-only behavior,
-        # and other libpq options, but must also include any required defaults.
-        return explicit_options
-    return f"-c search_path={schema} {GAUSSDB_ENV_DEFAULTS['options']}"
-
-
-def _gaussdb_env_config() -> dict:
-    # Read only GAUSSDB_METADATA_* so the metadata database does not share
-    # connection parameters with DOC_ENGINE=gaussdb.
-    schema = _normalize_gaussdb_metadata_schema(os.environ.get("GAUSSDB_METADATA_SCHEMA"))
-    return {
-        "name": os.environ.get("GAUSSDB_METADATA_DBNAME", GAUSSDB_ENV_DEFAULTS["name"]),
-        "user": os.environ.get("GAUSSDB_METADATA_USER", GAUSSDB_ENV_DEFAULTS["user"]),
-        "password": os.environ.get("GAUSSDB_METADATA_PASSWORD", GAUSSDB_ENV_DEFAULTS["password"]),
-        "host": os.environ.get("GAUSSDB_METADATA_HOST", GAUSSDB_ENV_DEFAULTS["host"]),
-        "port": _get_int_env("GAUSSDB_METADATA_PORT", GAUSSDB_ENV_DEFAULTS["port"]),
-        "max_connections": _get_int_env("GAUSSDB_METADATA_MAX_CONNECTIONS", GAUSSDB_ENV_DEFAULTS["max_connections"]),
-        "stale_timeout": _get_int_env("GAUSSDB_METADATA_STALE_TIMEOUT", GAUSSDB_ENV_DEFAULTS["stale_timeout"]),
-        "options": _gaussdb_metadata_options(schema),
-    }
+    return _supported_backend("DB_TYPE", database_type, "mysql")
 
 
 def load_database_config(database_type: str) -> dict:
-    database_type = normalize_database_type(database_type)
-    if database_type == "gaussdb":
-        # Always build DB_TYPE=gaussdb from GAUSSDB_METADATA_* so the metadata
-        # connection remains isolated from the gaussdb section used by
-        # DOC_ENGINE=gaussdb.
-        return decrypt_database_config(database=_gaussdb_env_config())
-    return decrypt_database_config(name=database_type)
+    return decrypt_database_config(name=normalize_database_type(database_type))
 
 
-DATABASE_TYPE = normalize_database_type(os.getenv("DB_TYPE", "mysql"))
+# Validate every backend choice before reading credentials or connecting.
+DATABASE_TYPE = normalize_database_type(os.getenv("DB_TYPE"))
+DOC_ENGINE = _supported_backend("DOC_ENGINE", os.getenv("DOC_ENGINE"), "elasticsearch")
+STORAGE_IMPL_TYPE = _supported_backend("STORAGE_IMPL", os.getenv("STORAGE_IMPL"), "MINIO")
 DATABASE = load_database_config(DATABASE_TYPE)
+
+from rag.utils.redis_conn import REDIS_CONN  # noqa: E402
+from rag.nlp import search  # noqa: E402
 
 # authentication
 AUTHENTICATION_CONF = None
@@ -149,11 +85,6 @@ HTTP_APP_KEY = None
 GITHUB_OAUTH = None
 FEISHU_OAUTH = None
 OAUTH_CONFIG = None
-DOC_ENGINE = os.getenv("DOC_ENGINE", "elasticsearch")
-DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
-DOC_ENGINE_OCEANBASE = DOC_ENGINE.lower() == "oceanbase"
-DOC_ENGINE_GAUSSDB = DOC_ENGINE.lower() == "gaussdb"
-DOC_ENGINE_SERENEDB = DOC_ENGINE.lower() == "serenedb"
 
 
 docStoreConn = None
@@ -182,16 +113,7 @@ MAIL_FRONTEND_URL = ""
 
 # move from rag.settings
 ES = {}
-INFINITY = {}
-AZURE = {}
-S3 = {}
 MINIO = {}
-OB = {}
-OSS = {}
-OS = {}
-GCS = {}
-GAUSSDB = {}
-SERENEDB = {}
 
 DOC_MAXIMUM_SIZE: int = 128 * 1024 * 1024
 DOC_BULK_SIZE: int = 32
@@ -219,7 +141,6 @@ def _embedding_throughput_options():
 
 PARALLEL_DEVICES: int = 0
 
-STORAGE_IMPL_TYPE = os.getenv("STORAGE_IMPL", "MINIO")
 STORAGE_IMPL = None
 
 
@@ -290,25 +211,20 @@ def _get_or_create_secret_key():
 
 
 class StorageFactory:
-    storage_mapping = {
-        Storage.MINIO: ("rag.utils.minio_conn", "RAGFlowMinio"),
-        Storage.AZURE_SPN: ("rag.utils.azure_spn_conn", "RAGFlowAzureSpnBlob"),
-        Storage.AZURE_SAS: ("rag.utils.azure_sas_conn", "RAGFlowAzureSasBlob"),
-        Storage.AWS_S3: ("rag.utils.s3_conn", "RAGFlowS3"),
-        Storage.OSS: ("rag.utils.oss_conn", "RAGFlowOSS"),
-        Storage.OPENDAL: ("rag.utils.opendal_conn", "OpenDALStorage"),
-        Storage.GCS: ("rag.utils.gcs_conn", "RAGFlowGCS"),
-    }
-
     @classmethod
     def create(cls, storage: Storage):
-        module_name, class_name = cls.storage_mapping[storage]
-        return getattr(import_module(module_name), class_name)()
+        if storage != Storage.MINIO:
+            raise ValueError("Unsupported STORAGE_IMPL; only MINIO is supported")
+        from rag.utils.minio_conn import RAGFlowMinio
+
+        return RAGFlowMinio()
 
 
 def init_settings():
-    global DATABASE_TYPE, DATABASE
-    DATABASE_TYPE = normalize_database_type(os.getenv("DB_TYPE", "mysql"))
+    global DATABASE_TYPE, DATABASE, DOC_ENGINE, STORAGE_IMPL_TYPE
+    DATABASE_TYPE = normalize_database_type(os.getenv("DB_TYPE"))
+    DOC_ENGINE = _supported_backend("DOC_ENGINE", os.getenv("DOC_ENGINE"), "elasticsearch")
+    STORAGE_IMPL_TYPE = _supported_backend("STORAGE_IMPL", os.getenv("STORAGE_IMPL"), "MINIO")
     DATABASE = load_database_config(DATABASE_TYPE)
 
     global ALLOWED_LLM_FACTORIES, LLM_FACTORY, LLM_BASE_URL
@@ -391,63 +307,12 @@ def init_settings():
     FEISHU_OAUTH = get_base_config("oauth", {}).get("feishu")
     OAUTH_CONFIG = get_base_config("oauth", {})
 
-    global DOC_ENGINE, DOC_ENGINE_INFINITY, DOC_ENGINE_OCEANBASE, DOC_ENGINE_GAUSSDB, DOC_ENGINE_SERENEDB, docStoreConn, ES, OB, OS, INFINITY, GAUSSDB, SERENEDB
-    DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch").strip()
-    DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
-    DOC_ENGINE_OCEANBASE = DOC_ENGINE.lower() == "oceanbase"
-    DOC_ENGINE_GAUSSDB = DOC_ENGINE.lower() == "gaussdb"
-    DOC_ENGINE_SERENEDB = DOC_ENGINE.lower() == "serenedb"
-    lower_case_doc_engine = DOC_ENGINE.lower()
-    if lower_case_doc_engine == "elasticsearch":
-        from rag.utils.es_conn import ESConnection
+    global docStoreConn, ES, MINIO
+    from rag.utils.es_conn import ESConnection
 
-        ES = get_base_config("es", {})
-        docStoreConn = ESConnection()
-    elif lower_case_doc_engine == "infinity":
-        from rag.utils.infinity_conn import InfinityConnection
-
-        INFINITY = get_base_config("infinity", {"uri": "infinity:23817", "postgres_port": 5432, "db_name": "default_db"})
-        docStoreConn = InfinityConnection()
-    elif lower_case_doc_engine == "opensearch":
-        from rag.utils.opensearch_conn import OSConnection
-
-        OS = get_base_config("os", {})
-        docStoreConn = OSConnection()
-    elif lower_case_doc_engine == "oceanbase":
-        from rag.utils.ob_conn import OBConnection
-
-        OB = get_base_config("oceanbase", {})
-        docStoreConn = OBConnection()
-    elif lower_case_doc_engine == "seekdb":
-        from rag.utils.ob_conn import OBConnection
-
-        OB = get_base_config("seekdb", {})
-        docStoreConn = OBConnection()
-    elif lower_case_doc_engine == "gaussdb":
-        from rag.utils.gaussdb_conn import GaussDBConnection
-
-        GAUSSDB = get_base_config("gaussdb", {})
-        docStoreConn = GaussDBConnection()
-    elif lower_case_doc_engine == "serenedb":
-        SERENEDB = get_base_config("serenedb", {})
-        # Imported lazily so psycopg2/SereneDB is only touched when selected.
-        from rag.utils import serenedb_conn
-
-        docStoreConn = serenedb_conn.SereneDBConnection()
-    else:
-        raise Exception(f"Not supported doc engine: {DOC_ENGINE}")
-
-    global AZURE, S3, MINIO, OSS, GCS
-    if STORAGE_IMPL_TYPE in ["AZURE_SPN", "AZURE_SAS"]:
-        AZURE = get_base_config("azure", {})
-    elif STORAGE_IMPL_TYPE == "AWS_S3":
-        S3 = get_base_config("s3", {})
-    elif STORAGE_IMPL_TYPE == "MINIO":
-        MINIO = decrypt_database_config(name="minio")
-    elif STORAGE_IMPL_TYPE == "OSS":
-        OSS = get_base_config("oss", {})
-    elif STORAGE_IMPL_TYPE == "GCS":
-        GCS = get_base_config("gcs", {})
+    ES = get_base_config("es", {})
+    docStoreConn = ESConnection()
+    MINIO = decrypt_database_config(name="minio")
 
     global STORAGE_IMPL
     storage_impl = StorageFactory.create(Storage[STORAGE_IMPL_TYPE])
