@@ -55,6 +55,7 @@ from api.db.gaussdb_error_utils import (
     is_duplicate_column_error,
     is_duplicate_object_error,
     is_psycopg_connection_error,
+    is_undefined_object_error,
     sqlstate_from_exception,
 )
 from api.utils.json_encode import json_dumps, json_loads
@@ -3047,6 +3048,221 @@ def migrate_db():
     alter_db_add_column(migrator, "document", "active_chunk_set_id", CharField(max_length=32, null=True, help_text="currently searchable parser-platform chunk set", index=True))
     alter_db_add_column(migrator, "parser_run", "retained_from_lifecycle", CharField(max_length=32, null=True))
     alter_db_add_column(migrator, "parser_run", "chunking_config", JSONField(null=False, default=dict))
+    alter_db_column_type(migrator, "tenant_llm", "api_key", TextField(null=True, help_text="API KEY"))
+    alter_db_add_column(migrator, "tenant_llm", "status", CharField(max_length=1, null=False, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True))
+    alter_db_add_column(migrator, "connector2kb", "auto_parse", CharField(max_length=1, null=False, default="1", index=False))
+    alter_db_add_column(migrator, "llm_factories", "rank", IntegerField(default=0, index=False))
+    alter_db_add_column(migrator, "api_4_conversation", "name", CharField(max_length=255, null=True, help_text="conversation name", index=False))
+    alter_db_add_column(migrator, "api_4_conversation", "exp_user_id", CharField(max_length=255, null=True, help_text="exp_user_id", index=True))
+    alter_db_add_column(migrator, "sync_logs", "task_type", CharField(max_length=32, null=False, default="sync", index=True))
+    # Migrate system_settings.value from CharField to TextField for longer sandbox configs.
+    # Use the dedicated field so the GaussDB column remains nullable after the
+    # type change and the ORM restores NULL to the application-level "".
+    alter_db_column_type(migrator, "system_settings", "value", EmptyStringTextField(null=False, help_text="Configuration value (JSON, string, etc.)"))
+    alter_db_add_column(migrator, "document", "content_hash", CharField(max_length=32, null=True, help_text="xxhash128 of document content for change detection", default="", index=True))
+    alter_db_add_column(migrator, "document", "requested_parse_run_id", CharField(max_length=32, null=True, index=True))
+    alter_db_add_column(migrator, "user_canvas_version", "release", BooleanField(null=False, help_text="is released", default=False, index=True))
+    alter_db_add_column(
+        migrator,
+        "user_canvas",
+        "tags",
+        EmptyStringCharField(
+            max_length=512,
+            null=False,
+            default="",
+            help_text="Comma-separated tags for organizing agents",
+            index=True,
+        ),
+    )
+    alter_db_add_column(migrator, "api_4_conversation", "version_title", CharField(max_length=255, null=True, help_text="canvas version title when session created", index=False))
+    alter_db_column_type(migrator, "document", "size", BigIntegerField(default=0, index=True))
+    alter_db_column_type(migrator, "file", "size", BigIntegerField(default=0, index=True))
+    alter_db_add_column(migrator, "tenant", "ocr_id", CharField(max_length=128, null=True, help_text="default ocr model ID", index=True))
+    alter_db_add_column(migrator, "tenant", "tenant_ocr_id", CharField(max_length=32, null=True, help_text="id in tenant_model", index=True))
+    alter_db_column_type(migrator, "chat_channel", "status", IntegerField(default=1, index=True))
+    alter_db_rename_column(migrator, "chat_channel", "dialog_id", "chat_id")
+    alter_db_add_column(
+        migrator,
+        "docmind_catalog_version",
+        "readiness_mode",
+        CharField(max_length=32, null=False, default="SEARCH_VALIDATED", index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_catalog_version",
+        "source_ready_version_id",
+        CharField(max_length=32, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_catalog_version",
+        "manual_saved_by",
+        CharField(max_length=32, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_catalog_version",
+        "manual_saved_at",
+        DateTimeField(null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_project",
+        "source_root_file_id",
+        CharField(max_length=32, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_source",
+        "default_folder_id",
+        CharField(max_length=32, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_ingestion_job",
+        "retry_not_before",
+        DateTimeField(null=True, index=True),
+    )
+    alter_db_add_column(migrator, "docmind_ingestion_job", "pdf_ocr_requested", BooleanField(default=False, null=False))
+    alter_db_add_column(migrator, "docmind_source_document", "source_dirty", BooleanField(default=False, null=False))
+    for table in ("docmind_source_document", "docmind_ingestion_job"):
+        for column in ("observation_epoch", "observation_generation"):
+            alter_db_add_column(migrator, table, column, BigIntegerField(default=0, null=False))
+    alter_db_add_column(migrator, "docmind_source_document", "last_change_sequence", BigIntegerField(default=0, null=False))
+    alter_db_add_column(migrator, "docmind_source_document", "last_change_received_at", DateTimeField(null=True, index=True))
+    alter_db_add_column(migrator, "docmind_source_document", "stable_observed_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "docmind_source_document", "latest_target_version_id", CharField(max_length=32, null=True))
+    alter_db_add_column(migrator, "docmind_source_scan", "protocol_version", IntegerField(default=1, null=False))
+    alter_db_add_column(migrator, "docmind_source_scan", "scan_start_epoch", BigIntegerField(default=0, null=False))
+    alter_db_add_column(migrator, "docmind_source_scan", "scan_start_sequence", BigIntegerField(default=0, null=False))
+    alter_db_add_column(migrator, "docmind_source_deletion", "deletion_generation", BigIntegerField(default=0, null=False))
+    alter_db_add_column(migrator, "docmind_ingestion_job", "pdf_ocr_consented_by", CharField(max_length=32, null=True))
+    alter_db_add_column(migrator, "docmind_ingestion_job", "pdf_ocr_consented_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "docmind_ingestion_job", "pdf_ocr_consent_key_hash", CharField(max_length=64, null=True))
+    alter_db_add_column(
+        migrator,
+        "docmind_source_version",
+        "search_cleanup_complete",
+        BooleanField(default=False, null=False),
+    )
+    backfill_docmind_search_cleanup_complete()
+    alter_db_add_column(
+        migrator,
+        "docmind_source_document",
+        "source_object_id",
+        CharField(max_length=255, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_source_document",
+        "host_file_identity",
+        CharField(max_length=255, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_source_scan_entry",
+        "host_file_identity",
+        CharField(max_length=255, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_folder",
+        "source_file_id",
+        CharField(max_length=32, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_catalog_version",
+        "snapshot_schema_version",
+        IntegerField(default=1, null=False, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_catalog_version",
+        "source_tree_hash",
+        CharField(max_length=64, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_catalog_version",
+        "root_identity_sha256",
+        CharField(max_length=64, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_folder_version",
+        "parent_folder_id",
+        CharField(max_length=32, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_folder_version",
+        "source_file_id",
+        CharField(max_length=32, null=True, index=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_folder_version",
+        "relative_path",
+        CharField(max_length=1024, null=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_folder_version",
+        "display_name",
+        CharField(max_length=255, null=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_folder_version",
+        "ordinal",
+        IntegerField(null=True),
+    )
+    alter_db_add_column(
+        migrator,
+        "docmind_folder_version",
+        "depth",
+        IntegerField(null=True),
+    )
+    alter_db_drop_index(migrator, "tenant_langfuse", "idx_tenant_langfuse_secret_key")
+    alter_db_drop_index(migrator, "tenant_langfuse", "idx_tenant_langfuse_public_key")
+    alter_db_drop_index(migrator, "tenant_langfuse", "idx_tenant_langfuse_host")
+    # Run after all alter_db_* calls so newly added compatible columns, such as
+    # user_canvas.tags, exist before their GaussDB NOT NULL constraints relax.
+    relax_gaussdb_empty_string_compatible_columns()
+    # Drop both the explicit "idx_*" name from later migrations AND the
+    # Peewee-auto-derived "<table-as-classname>_<col1>_<col2>" name from the
+    # original TenantModelInstance definition (commit dc4b82523). Databases
+    # created before #15460 dropped the model's `indexes = ((...,), True)`
+    # tuple still carry the auto-named compound unique index, which makes a
+    # second instance with an empty api_key (e.g. Ollama) fail with
+    # "Duplicate entry ... for key 'tenantmodelinstance_api_key_provider_id'"
+    # — see #15699.
+    legacy_indexes = [
+        ("tenant_model_instance", "idx_api_key_provider_id"),
+        ("tenant_model_instance", "tenantmodelinstance_api_key_provider_id"),
+        ("tenant_model", "idx_provider_model_instance"),
+    ]
+    for table_name, index_name in legacy_indexes:
+        try:
+            migrate(migrator.drop_index(table_name, index_name))
+        except (OperationalError, ProgrammingError) as ex:
+            msg = str(ex)
+            if is_gaussdb_compatible_database():
+                can_skip = is_undefined_object_error(ex) or is_duplicate_object_error(ex)
+            else:
+                can_skip = "1091" in msg or "can't DROP" in msg.lower() or "does not exist" in msg.lower() or "already exists" in msg.lower()
+            if can_skip:
+                pass
+            else:
+                logging.critical(f"Failed to drop index {index_name} on {table_name}: {ex}")
+        except Exception as ex:
+            logging.critical(f"Failed to drop index {index_name} on {table_name}: {ex}")
+    logging.disable(logging.NOTSET)
+    # this is after re-enabling logging to allow logging changed user emails
+    migrate_add_unique_email(migrator)
+    migrate_model_type_names()
+    ensure_model_indexes(migrator)
 
 
 def migrate_model_type_names():

@@ -671,10 +671,6 @@ def prompts():
     )
 
 
-# Synthetic ``canvas_category`` the frontend passes to list compilation template
-# groups through the merged /agents endpoint. Also the ``type`` discriminator
-# stamped on group items in the merged response.
-
 
 @manager.route("/agents", methods=["GET"])  # noqa: F821
 @login_required

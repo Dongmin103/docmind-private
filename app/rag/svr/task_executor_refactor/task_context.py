@@ -171,8 +171,6 @@ class TaskLimiters:
     embed: asyncio.Semaphore = None
     """Asyncio semaphore for embedding rate limiting."""
 
-    """Asyncio semaphore for knowledge graph rate limiting."""
-
 
 def _noop_progress(**kwargs: Any) -> None:
     """No-op progress callback."""
