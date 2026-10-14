@@ -206,7 +206,8 @@ services:
 
   bge-m3-cpu:
     <<: *docmind-service
-    profiles: [full]
+    # Explicit recovery only; the current Windows deployment uses host GTE.
+    profiles: [bge-cpu]
     platform: linux/amd64
     image: ${BGE_M3_IMAGE:-ghcr.io/huggingface/text-embeddings-inference@sha256:ad950d30878eceb72aaf32024d26fa2b1d04a75304fa0b4776b49aa1941fea07}
     command:
@@ -264,8 +265,6 @@ services:
       redis:
         condition: service_healthy
       minio:
-        condition: service_healthy
-      bge-m3-cpu:
         condition: service_healthy
     # Keep model/API credentials out of unrelated containers. Compose receives
     # them from the ignored --env-file and injects them only into the app.

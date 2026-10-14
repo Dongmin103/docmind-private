@@ -171,7 +171,7 @@ def test_tc_cfg_617_get_gaussdb_status_reuses_settings_doc_store_connection(monk
     monkeypatch.setattr(health_utils.settings, "docStoreConn", doc_store_conn, raising=False)
     monkeypatch.setenv("DOC_ENGINE", "gaussdb")
     constructor = Mock(side_effect=AssertionError("unexpected GaussDBConnection construction"))
-    monkeypatch.setattr(health_utils, "GaussDBConnection", constructor)
+    monkeypatch.setattr(sys.modules["rag.utils.gaussdb_conn"], "GaussDBConnection", constructor)
 
     result = health_utils.get_gaussdb_status()
 
@@ -185,7 +185,7 @@ def test_tc_cfg_618_get_gaussdb_status_constructs_adapter_without_shared_connect
     connection = object()
     constructor = Mock(return_value=connection)
     monkeypatch.setattr(health_utils.settings, "docStoreConn", None, raising=False)
-    monkeypatch.setattr(health_utils, "GaussDBConnection", constructor)
+    monkeypatch.setattr(sys.modules["rag.utils.gaussdb_conn"], "GaussDBConnection", constructor)
 
     resolved = health_utils._get_gaussdb_connection()
 
@@ -199,7 +199,7 @@ def test_tc_cfg_618_get_gaussdb_status_constructs_adapter_for_non_gaussdb_connec
     constructor = Mock(return_value=connection)
     other_doc_store = types.SimpleNamespace(db_type=lambda: "elasticsearch")
     monkeypatch.setattr(health_utils.settings, "docStoreConn", other_doc_store, raising=False)
-    monkeypatch.setattr(health_utils, "GaussDBConnection", constructor)
+    monkeypatch.setattr(sys.modules["rag.utils.gaussdb_conn"], "GaussDBConnection", constructor)
 
     resolved = health_utils._get_gaussdb_connection()
 

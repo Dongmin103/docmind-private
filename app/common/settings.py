@@ -19,6 +19,7 @@ import secrets
 import logging
 import re
 from datetime import date
+from importlib import import_module
 
 from common.constants import RAG_FLOW_SERVICE_NAME
 from common.file_utils import get_project_base_directory
@@ -26,27 +27,9 @@ from common.config_utils import get_base_config, decrypt_database_config
 from common.misc_utils import pip_install_torch
 from common.constants import SVR_QUEUE_NAME, Storage
 
-import rag.utils
-import rag.utils.es_conn
-import rag.utils.infinity_conn
-import rag.utils.ob_conn
-import rag.utils.opensearch_conn
-import rag.utils.gaussdb_conn
-from rag.utils.azure_sas_conn import RAGFlowAzureSasBlob
-from rag.utils.azure_spn_conn import RAGFlowAzureSpnBlob
-from rag.utils.gcs_conn import RAGFlowGCS
-from rag.utils.minio_conn import RAGFlowMinio
-from rag.utils.opendal_conn import OpenDALStorage
 from rag.utils.redis_conn import REDIS_CONN
-from rag.utils.s3_conn import RAGFlowS3
-from rag.utils.oss_conn import RAGFlowOSS
 
 from rag.nlp import search
-
-import memory.utils.es_conn as memory_es_conn
-import memory.utils.infinity_conn as memory_infinity_conn
-import memory.utils.ob_conn as memory_ob_conn
-import memory.utils.gaussdb_conn as memory_gaussdb_conn
 
 TIMEZONE = os.getenv("TZ", "Asia/Shanghai")
 
@@ -310,18 +293,19 @@ def _get_or_create_secret_key():
 
 class StorageFactory:
     storage_mapping = {
-        Storage.MINIO: RAGFlowMinio,
-        Storage.AZURE_SPN: RAGFlowAzureSpnBlob,
-        Storage.AZURE_SAS: RAGFlowAzureSasBlob,
-        Storage.AWS_S3: RAGFlowS3,
-        Storage.OSS: RAGFlowOSS,
-        Storage.OPENDAL: OpenDALStorage,
-        Storage.GCS: RAGFlowGCS,
+        Storage.MINIO: ("rag.utils.minio_conn", "RAGFlowMinio"),
+        Storage.AZURE_SPN: ("rag.utils.azure_spn_conn", "RAGFlowAzureSpnBlob"),
+        Storage.AZURE_SAS: ("rag.utils.azure_sas_conn", "RAGFlowAzureSasBlob"),
+        Storage.AWS_S3: ("rag.utils.s3_conn", "RAGFlowS3"),
+        Storage.OSS: ("rag.utils.oss_conn", "RAGFlowOSS"),
+        Storage.OPENDAL: ("rag.utils.opendal_conn", "OpenDALStorage"),
+        Storage.GCS: ("rag.utils.gcs_conn", "RAGFlowGCS"),
     }
 
     @classmethod
     def create(cls, storage: Storage):
-        return cls.storage_mapping[storage]()
+        module_name, class_name = cls.storage_mapping[storage]
+        return getattr(import_module(module_name), class_name)()
 
 
 def init_settings():
@@ -417,23 +401,35 @@ def init_settings():
     DOC_ENGINE_SERENEDB = DOC_ENGINE.lower() == "serenedb"
     lower_case_doc_engine = DOC_ENGINE.lower()
     if lower_case_doc_engine == "elasticsearch":
+        from rag.utils.es_conn import ESConnection
+
         ES = get_base_config("es", {})
-        docStoreConn = rag.utils.es_conn.ESConnection()
+        docStoreConn = ESConnection()
     elif lower_case_doc_engine == "infinity":
+        from rag.utils.infinity_conn import InfinityConnection
+
         INFINITY = get_base_config("infinity", {"uri": "infinity:23817", "postgres_port": 5432, "db_name": "default_db"})
-        docStoreConn = rag.utils.infinity_conn.InfinityConnection()
+        docStoreConn = InfinityConnection()
     elif lower_case_doc_engine == "opensearch":
+        from rag.utils.opensearch_conn import OSConnection
+
         OS = get_base_config("os", {})
-        docStoreConn = rag.utils.opensearch_conn.OSConnection()
+        docStoreConn = OSConnection()
     elif lower_case_doc_engine == "oceanbase":
+        from rag.utils.ob_conn import OBConnection
+
         OB = get_base_config("oceanbase", {})
-        docStoreConn = rag.utils.ob_conn.OBConnection()
+        docStoreConn = OBConnection()
     elif lower_case_doc_engine == "seekdb":
+        from rag.utils.ob_conn import OBConnection
+
         OB = get_base_config("seekdb", {})
-        docStoreConn = rag.utils.ob_conn.OBConnection()
+        docStoreConn = OBConnection()
     elif lower_case_doc_engine == "gaussdb":
+        from rag.utils.gaussdb_conn import GaussDBConnection
+
         GAUSSDB = get_base_config("gaussdb", {})
-        docStoreConn = rag.utils.gaussdb_conn.GaussDBConnection()
+        docStoreConn = GaussDBConnection()
     elif lower_case_doc_engine == "serenedb":
         SERENEDB = get_base_config("serenedb", {})
         # Imported lazily so psycopg2/SereneDB is only touched when selected.
@@ -446,18 +442,26 @@ def init_settings():
     global msgStoreConn
     # use the same engine for message store
     if DOC_ENGINE == "elasticsearch":
+        from memory.utils.es_conn import ESConnection as MemoryESConnection
+
         ES = get_base_config("es", {})
-        msgStoreConn = memory_es_conn.ESConnection()
+        msgStoreConn = MemoryESConnection()
     elif DOC_ENGINE == "infinity":
+        from memory.utils.infinity_conn import InfinityConnection as MemoryInfinityConnection
+
         INFINITY = get_base_config("infinity", {"uri": "infinity:23817", "postgres_port": 5432, "db_name": "default_db"})
-        msgStoreConn = memory_infinity_conn.InfinityConnection()
+        msgStoreConn = MemoryInfinityConnection()
     elif lower_case_doc_engine in ["oceanbase", "seekdb"]:
-        msgStoreConn = memory_ob_conn.OBConnection()
+        from memory.utils.ob_conn import OBConnection as MemoryOBConnection
+
+        msgStoreConn = MemoryOBConnection()
     elif lower_case_doc_engine == "gaussdb":
+        from memory.utils.gaussdb_conn import GaussDBMemoryConnection
+
         # Memory Store uses a dedicated adapter for message tables. It reads the
         # same GaussDB configuration and shares the lazy connection pool with
         # docStoreConn, but keeps its own table layout and query semantics.
-        msgStoreConn = memory_gaussdb_conn.GaussDBMemoryConnection()
+        msgStoreConn = GaussDBMemoryConnection()
 
     global AZURE, S3, MINIO, OSS, GCS
     if STORAGE_IMPL_TYPE in ["AZURE_SPN", "AZURE_SAS"]:

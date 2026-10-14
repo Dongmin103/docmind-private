@@ -65,6 +65,15 @@ def _install_settings_import_stubs(monkeypatch):
     importlib.import_module("rag.utils")
     importlib.import_module("memory.utils")
 
+    # Backend-selection tests supply their own configuration and must not read
+    # a deployment's service_conf.yaml or require its decryption dependencies.
+    _install_module(
+        monkeypatch,
+        "common.config_utils",
+        get_base_config=lambda _name, default=None: default or {},
+        decrypt_database_config=lambda database=None, **_: dict(database or {}),
+    )
+
     rag_modules = {
         "es_conn": {"ESConnection": FakeDocEngineConnection},
         "infinity_conn": {"InfinityConnection": FakeDocEngineConnection},

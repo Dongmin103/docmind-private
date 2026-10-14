@@ -76,6 +76,10 @@ if ($ApprovedDept2Reindex -and $securityEnvironment.DOCMIND_DEV_APPROVED_SOURCE_
 }
 
 $application = $config.services.'ragflow-cpu'
+if ($config.services.PSObject.Properties.Name -contains 'bge-m3-cpu' -or
+    $application.depends_on.PSObject.Properties.Name -contains 'bge-m3-cpu') {
+    throw 'The full Windows stack must not start or depend on the optional BGE service.'
+}
 if ($application.environment.DOCMIND_HOST_WORKER_KEY_ID -ne 'windows-host-1' -or
     $application.environment.DOCMIND_HOST_WORKER_HMAC_SECRET_FILE -ne '/run/secrets/docmind-host-worker-hmac' -or
     $application.environment.DOCMIND_EPHEMERAL_PARSER_ROOT -ne '/run/docmind-ephemeral-parser') {

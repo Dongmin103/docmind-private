@@ -133,9 +133,6 @@ export default {
   chatChannelRuntime: (id: string) =>
     `${restAPIv1}/chat-channels/${id}/runtime`,
 
-  // plugin
-  llmTools: `${restAPIv1}/plugin/tools`,
-
   chatsTranscriptions: `${restAPIv1}/chat/audio/transcription`,
 
   // knowledge base
@@ -435,11 +432,6 @@ export default {
     `${restAPIv1}/messages/${data.memory_id}:${data.message_id}`,
 
   // data pipeline
-  fetchDataflow: (id: string) => `${webAPI}/dataflow/get/${id}`,
-  setDataflow: `${webAPI}/dataflow/set`,
-  removeDataflow: `${webAPI}/dataflow/rm`,
-  listDataflow: `${webAPI}/dataflow/list`,
-  runDataflow: `${webAPI}/dataflow/run`,
   listBuiltinPipelines: `${restAPIv1}/pipelines`,
   getBuiltinPipeline: (id: string) => `${restAPIv1}/pipelines/${id}`,
 

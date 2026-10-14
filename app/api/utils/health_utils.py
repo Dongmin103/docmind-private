@@ -23,10 +23,6 @@ from timeit import default_timer as timer
 
 from api.db.db_models import DB
 from rag.utils.redis_conn import REDIS_CONN
-from rag.utils.es_conn import ESConnection
-from rag.utils.infinity_conn import InfinityConnection
-from rag.utils.ob_conn import OBConnection
-from rag.utils.gaussdb_conn import GaussDBConnection
 from common import settings
 from common.doc_store.gaussdb_conn_base import mask_gaussdb_text
 
@@ -84,6 +80,8 @@ def get_es_cluster_stats() -> dict:
     if doc_engine != "elasticsearch":
         raise Exception("Elasticsearch is not in use.")
     try:
+        from rag.utils.es_conn import ESConnection
+
         return {"status": "alive", "message": ESConnection().get_cluster_stats()}
     except Exception as e:
         return {
@@ -97,6 +95,8 @@ def get_infinity_status():
     if doc_engine != "infinity":
         raise Exception("Infinity is not in use.")
     try:
+        from rag.utils.infinity_conn import InfinityConnection
+
         return {"status": "alive", "message": InfinityConnection().health()}
     except Exception as e:
         return {
@@ -116,6 +116,8 @@ def get_oceanbase_status():
     if doc_engine != "oceanbase":
         raise Exception("OceanBase is not in use.")
     try:
+        from rag.utils.ob_conn import OBConnection
+
         ob_conn = OBConnection()
         health_info = ob_conn.health()
         performance_metrics = ob_conn.get_performance_metrics()
@@ -157,6 +159,8 @@ def _get_gaussdb_connection():
     conn = getattr(settings, "docStoreConn", None)
     if conn is not None and getattr(conn, "db_type", lambda: None)() == "gaussdb":
         return conn
+    from rag.utils.gaussdb_conn import GaussDBConnection
+
     return GaussDBConnection()
 
 
@@ -258,6 +262,8 @@ def check_oceanbase_health() -> dict:
         return {"status": "not_configured", "details": {"connection": "not_configured", "message": "OceanBase is not configured as the document engine"}}
 
     try:
+        from rag.utils.ob_conn import OBConnection
+
         ob_conn = OBConnection()
         health_info = ob_conn.health()
         performance_metrics = ob_conn.get_performance_metrics()

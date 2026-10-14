@@ -29,7 +29,7 @@ from api.utils.health_utils import get_oceanbase_status, check_oceanbase_health
 class TestOceanBaseHealthCheck:
     """Test cases for OceanBase health check functionality."""
 
-    @patch("api.utils.health_utils.OBConnection")
+    @patch("rag.utils.ob_conn.OBConnection")
     @patch.dict(os.environ, {"DOC_ENGINE": "oceanbase"})
     def test_get_oceanbase_status_success(self, mock_ob_class):
         """Test successful OceanBase status retrieval."""
@@ -67,7 +67,7 @@ class TestOceanBaseHealthCheck:
             get_oceanbase_status()
         assert "OceanBase is not in use" in str(exc_info.value)
 
-    @patch("api.utils.health_utils.OBConnection")
+    @patch("rag.utils.ob_conn.OBConnection")
     @patch.dict(os.environ, {"DOC_ENGINE": "oceanbase"})
     def test_get_oceanbase_status_connection_error(self, mock_ob_class):
         """Test OceanBase status when connection fails."""
@@ -78,7 +78,7 @@ class TestOceanBaseHealthCheck:
         assert result["status"] == "timeout"
         assert "error" in result["message"]
 
-    @patch("api.utils.health_utils.OBConnection")
+    @patch("rag.utils.ob_conn.OBConnection")
     @patch.dict(os.environ, {"DOC_ENGINE": "oceanbase"})
     def test_check_oceanbase_health_healthy(self, mock_ob_class):
         """Test OceanBase health check returns healthy status."""
@@ -103,7 +103,7 @@ class TestOceanBaseHealthCheck:
         assert result["details"]["latency_ms"] == 5.2
         assert result["details"]["query_per_second"] == 150
 
-    @patch("api.utils.health_utils.OBConnection")
+    @patch("rag.utils.ob_conn.OBConnection")
     @patch.dict(os.environ, {"DOC_ENGINE": "oceanbase"})
     def test_check_oceanbase_health_degraded(self, mock_ob_class):
         """Test OceanBase health check returns degraded status for high latency."""
@@ -126,7 +126,7 @@ class TestOceanBaseHealthCheck:
         assert result["status"] == "degraded"
         assert result["details"]["latency_ms"] == 1500.0
 
-    @patch("api.utils.health_utils.OBConnection")
+    @patch("rag.utils.ob_conn.OBConnection")
     @patch.dict(os.environ, {"DOC_ENGINE": "oceanbase"})
     def test_check_oceanbase_health_unhealthy(self, mock_ob_class):
         """Test OceanBase health check returns unhealthy status."""
