@@ -64,7 +64,6 @@ dependencies = [
     "pdfplumber==0.11.10",
     "pyclipper>=1.4.0,<2.0.0",
     "pycryptodomex==3.20.0",
-    "pyobvector==0.2.22",
     "pyodbc>=5.2.0,<6.0.0",
     "pypandoc>=1.16",
     "pypdf>=6.15.0",

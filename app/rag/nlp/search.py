@@ -253,12 +253,13 @@ class Dealer:
 
                 if candidate_mode == "dense":
                     matchExprs = [matchDense]
-                fusionExpr = FusionExpr(
-                    "weighted_sum",
-                    knn_top_k,
-                    {"weights": f"{1 - candidate_vector_similarity_weight:g},{candidate_vector_similarity_weight:g}"},
-                )
-                matchExprs = [matchText, matchDense, fusionExpr] if matchText else [matchDense]
+                else:
+                    fusionExpr = FusionExpr(
+                        "weighted_sum",
+                        knn_top_k,
+                        {"weights": f"{1 - candidate_vector_similarity_weight:g},{candidate_vector_similarity_weight:g}"},
+                    )
+                    matchExprs = [matchText, matchDense, fusionExpr] if matchText else [matchDense]
 
                 res = await thread_pool_exec(self.dataStore.search, src, highlightFields, filters, matchExprs, orderBy, offset, limit, idx_names, kb_ids, rank_feature=rank_feature)
                 total = self.dataStore.get_total(res)
