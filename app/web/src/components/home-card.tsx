@@ -60,7 +60,6 @@ export function HomeCard({
       data-testid={testId}
       data-agent-name={data.name}
       onClick={() => {
-        // navigateToSearch(data?.id);
         onClick?.();
       }}
       tabIndex={0}

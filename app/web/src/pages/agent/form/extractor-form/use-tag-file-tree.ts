@@ -1,7 +1,7 @@
 import { TreeNodeType } from '@/components/ui/async-tree-select';
 import { useFetchPureFileList } from '@/hooks/use-file-request';
 import { IFile } from '@/interfaces/database/file-manager';
-import { isFolderType } from '@/pages/files/util';
+import { isFolderType } from '@/utils/file-domain';
 import fileManagerService from '@/services/file-manager-service';
 import { getExtension } from '@/utils/document-util';
 import { uniqBy } from 'lodash';

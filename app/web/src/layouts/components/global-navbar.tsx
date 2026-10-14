@@ -14,11 +14,8 @@ import { HomeIcon } from '@/components/svg-icon';
 const PathMap = {
   [Routes.DocMind]: [Routes.DocMind],
   [Routes.Datasets]: [Routes.Datasets, Routes.DatasetBase],
-  [Routes.Chats]: [Routes.Chats, Routes.Chat],
-  [Routes.Searches]: [Routes.Searches, Routes.Search],
   [Routes.Agents]: [Routes.Agents, Routes.AgentTemplates],
   [Routes.Memories]: [Routes.Memories, Routes.Memory, Routes.MemoryMessage],
-  [Routes.Files]: [Routes.Files],
 } as const;
 
 // Match on path-segment boundaries so similarly named paths stay distinct.
@@ -50,20 +47,6 @@ const menuItems = [
     icon_name: 'datasets',
   },
   {
-    path: Routes.Chats,
-    name: 'header.chat',
-    icon: MenuItemsIcon,
-    icon_name: 'chats',
-    'data-testid': 'nav-chat',
-  },
-  {
-    path: Routes.Searches,
-    name: 'header.search',
-    icon: MenuItemsIcon,
-    icon_name: 'searches',
-    'data-testid': 'nav-search',
-  },
-  {
     path: Routes.Agents,
     name: 'header.flow',
     icon: MenuItemsIcon,
@@ -75,12 +58,6 @@ const menuItems = [
     name: 'header.memories',
     icon: MenuItemsIcon,
     icon_name: 'memory',
-  },
-  {
-    path: Routes.Files,
-    name: 'header.fileManager',
-    icon: MenuItemsIcon,
-    icon_name: 'file',
   },
 ];
 

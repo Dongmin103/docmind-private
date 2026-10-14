@@ -68,7 +68,7 @@ export const useNavigatePage = () => {
 
   const navigateToDataFile = useCallback(
     (id: string) => () => {
-      navigate(`${Routes.DatasetBase}${Routes.Files}/${id}`);
+      navigate(`${Routes.DatasetBase}${Routes.DatasetDocuments}/${id}`);
     },
     [navigate],
   );
@@ -91,17 +91,6 @@ export const useNavigatePage = () => {
   const navigateToOldProfile = useCallback(() => {
     navigate(Routes.UserSetting);
   }, [navigate]);
-
-  const navigateToChatList = useCallback(() => {
-    navigate(Routes.Chats);
-  }, [navigate]);
-
-  const navigateToChat = useCallback(
-    (id: string) => () => {
-      navigate(`${Routes.Chat}/${id}`);
-    },
-    [navigate],
-  );
 
   const navigateToAgents = useCallback(() => {
     navigate(Routes.Agents);
@@ -136,16 +125,6 @@ export const useNavigatePage = () => {
     navigate(Routes.AgentTemplates);
   }, [navigate]);
 
-  const navigateToSearchList = useCallback(() => {
-    navigate(Routes.Searches);
-  }, [navigate]);
-
-  const navigateToSearch = useCallback(
-    (id: string) => () => {
-      navigate(`${Routes.Search}/${id}`);
-    },
-    [navigate],
-  );
   const navigateToMemory = useCallback(
     (id: string) => () => {
       navigate(`${Routes.Memory}${Routes.MemoryMessage}/${id}`);
@@ -188,13 +167,6 @@ export const useNavigatePage = () => {
     [getQueryString, id, navigate],
   );
 
-  const navigateToFiles = useCallback(
-    (folderId?: string) => {
-      navigate(`${Routes.Files}?folderId=${folderId}`);
-    },
-    [navigate],
-  );
-
   const navigateToDataflowResult = useCallback(
     (props: NavigateToDataflowResultProps) => () => {
       const params: string[] = [];
@@ -225,8 +197,6 @@ export const useNavigatePage = () => {
     navigateToDatasetOverview,
     navigateToHome,
     navigateToProfile,
-    navigateToChatList,
-    navigateToChat,
     navigateToChunkParsedResult,
     getQueryString,
     navigateToChunk,
@@ -235,9 +205,6 @@ export const useNavigatePage = () => {
     navigateToAgentExplore,
     navigateToAgentLogs,
     navigateToAgentTemplates,
-    navigateToSearchList,
-    navigateToSearch,
-    navigateToFiles,
     navigateToAgentList,
     navigateToOldProfile,
     navigateToDataflowResult,

@@ -37,7 +37,7 @@ import {
 } from '@/interfaces/request/agent';
 import i18n from '@/locales/config';
 import { IInputs } from '@/pages/agent/interface';
-import { useGetSharedChatSearchParams } from '@/pages/next-chats/hooks/use-send-shared-message';
+import { useGetSharedChatSearchParams } from '@/hooks/use-shared-chat-search-params';
 import agentService, {
   createAgentSession,
   deleteAgentSession,

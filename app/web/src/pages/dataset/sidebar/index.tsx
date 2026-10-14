@@ -34,7 +34,7 @@ export function SideBar({ dataset: data }: PropType) {
       {
         icon: <LucideFolderOpen className="size-[1em]" />,
         label: t(`knowledgeDetails.subbarFiles`),
-        key: Routes.Files,
+        key: Routes.DatasetDocuments,
       },
       {
         icon: <LucideTextSearch className="size-[1em]" />,

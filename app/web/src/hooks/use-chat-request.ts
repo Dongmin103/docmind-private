@@ -22,14 +22,12 @@ import {
   IClientConversation,
   IConversation,
   IDialog,
-  IExternalChatInfo,
 } from '@/interfaces/database/chat';
 import {
   IAskRequestBody,
   IFeedbackRequestBody,
 } from '@/interfaces/request/chat';
 import i18n from '@/locales/config';
-import { useGetSharedChatSearchParams } from '@/pages/next-chats/hooks/use-send-shared-message';
 import chatService from '@/services/next-chat-service';
 import api from '@/utils/api';
 import { buildMessageListWithUuid } from '@/utils/chat';
@@ -62,7 +60,6 @@ export const enum ChatApiAction {
   FetchMindMap = 'fetchMindMap',
   FetchRelatedQuestions = 'fetchRelatedQuestions',
   UploadAndParse = 'upload_and_parse',
-  FetchExternalChatInfo = 'fetchExternalChatInfo',
   Feedback = 'feedback',
   CreateSharedConversation = 'createSharedConversation',
 }
@@ -559,28 +556,6 @@ export function useUploadAndParseFile() {
   return { data, loading, uploadAndParseFile: mutateAsync, cancel };
 }
 
-export const useFetchExternalChatInfo = () => {
-  const { sharedId: id } = useGetSharedChatSearchParams();
-
-  const {
-    data,
-    isFetching: loading,
-    refetch,
-  } = useQuery<IExternalChatInfo>({
-    queryKey: [ChatApiAction.FetchExternalChatInfo, id],
-    gcTime: 0,
-    initialData: {} as IExternalChatInfo,
-    enabled: !!id,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      const { data } = await chatService.fetchExternalChatInfo(id!);
-
-      return data?.data;
-    },
-  });
-
-  return { data, loading, refetch };
-};
 
 //#endregion Session
 

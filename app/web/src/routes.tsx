@@ -31,8 +31,8 @@ export enum Routes {
   Logout = '/logout',
   Datasets = '/datasets',
   DatasetBase = '/dataset',
-  Files = '/files',
-  Dataset = `${Routes.DatasetBase}/${Routes.Files}`,
+  DatasetDocuments = '/files',
+  Dataset = `${Routes.DatasetBase}/${Routes.DatasetDocuments}`,
   Agent = '/agent',
   AgentTemplates = '/agent-templates',
   Agents = '/agents',
@@ -43,12 +43,7 @@ export enum Routes {
   MemoryMessage = '/memory-message',
   MemorySetting = '/memory-setting',
   AgentList = '/agent-list',
-  Searches = '/searches',
-  Search = '/search',
-  SearchShare = '/search/share',
   DocMind = '/docmind',
-  Chats = '/chats',
-  Chat = '/chat',
 
   Skills = '/files/skills',
   ProfileSetting = '/profile-setting',
@@ -77,8 +72,6 @@ export enum Routes {
   Compilation = '/compilation',
   AgentLogPage = '/agent-log-page',
   AgentShare = '/agent/share',
-  ChatShare = `${Chats}/share`,
-  ChatWidget = `${Chats}/widget`,
   UserSetting = '/user-setting',
   DataSetOverview = '/logs',
   DataSetSetting = '/configuration',
@@ -134,18 +127,8 @@ const routeConfigOptions = [
     loader: redirectLegacyEntry,
   })),
   {
-    path: Routes.ChatShare,
-    Component: () => import('@/pages/next-chats/share'),
-    layout: false,
-  },
-  {
     path: Routes.AgentShare,
     Component: () => import('@/pages/agent/share'),
-    layout: false,
-  },
-  {
-    path: Routes.ChatWidget,
-    Component: () => import('@/pages/next-chats/widget'),
     layout: false,
   },
   {
@@ -177,10 +160,6 @@ const routeConfigOptions = [
     path: '/*',
     Component: () => import('@/pages/404'),
     layout: false,
-  },
-  {
-    path: Routes.Chat + '/:id',
-    Component: () => import('@/pages/next-chats/chat'),
   },
   {
     path: Routes.Root,
@@ -217,19 +196,6 @@ const routeConfigOptions = [
         ],
       },
       {
-        path: Routes.Chats,
-        Component: () => import('@/pages/next-chats'),
-      },
-      {
-        path: Routes.Searches,
-        Component: () => import('@/pages/next-searches'),
-      },
-      {
-        path: `${Routes.Search}/:id`,
-        layout: false,
-        Component: () => import('@/pages/next-search'),
-      },
-      {
         path: Routes.Agents,
         Component: () => import('@/pages/agents'),
       },
@@ -255,10 +221,6 @@ const routeConfigOptions = [
             Component: () => import('@/pages/memory/memory-setting'),
           },
         ],
-      },
-      {
-        path: Routes.Files,
-        Component: () => import('@/pages/files'),
       },
       {
         path: Routes.Skills,
@@ -314,10 +276,6 @@ const routeConfigOptions = [
     layout: false,
     Component: () =>
       import('@/pages/user-setting/compilation-templates/edit-next'),
-  },
-  {
-    path: `${Routes.SearchShare}`,
-    Component: () => import('@/pages/next-search/share'),
   },
   {
     path: `${Routes.DatasetBase}${Routes.Compilation}/:id`,

@@ -17,7 +17,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { Docagg } from '@/interfaces/database/chat';
-import PdfDrawer from '@/pages/next-search/document-preview-modal';
+import PdfDrawer from '@/components/document-reference-preview';
 import { middleEllipsis } from '@/utils/common-util';
 import { useState } from 'react';
 import FileIcon from '../file-icon';

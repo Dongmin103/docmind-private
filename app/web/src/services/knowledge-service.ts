@@ -40,7 +40,6 @@ const {
   setMeta,
   getMeta,
   getMetaKeys,
-  retrievalTestShare,
 } = api;
 
 const methods = {
@@ -79,10 +78,6 @@ const methods = {
   getMetaKeys: {
     url: getMetaKeys,
     method: 'get',
-  },
-  retrievalTestShare: {
-    url: retrievalTestShare,
-    method: 'post',
   },
   listPipelines: {
     url: listPipelines,

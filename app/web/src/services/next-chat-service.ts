@@ -36,7 +36,6 @@ const {
   chatsMindmap,
   chatsRelatedQuestions,
   documentInfoUpload,
-  fetchExternalChatInfo,
 } = api;
 
 const methods = {
@@ -111,10 +110,6 @@ const methods = {
   documentInfoUpload: {
     method: 'post',
     url: documentInfoUpload,
-  },
-  fetchExternalChatInfo: {
-    url: fetchExternalChatInfo,
-    method: 'get',
   },
 } as const;
 

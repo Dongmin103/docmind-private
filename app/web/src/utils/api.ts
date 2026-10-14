@@ -283,13 +283,8 @@ export default {
     `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/messages/${msgId}/feedback`,
   completionUrl: `${restAPIv1}/chat/completions`,
   chatsTts: `${restAPIv1}/chat/audio/speech`,
-  searchCompletion: (searchId: string) =>
-    `${restAPIv1}/searches/${searchId}/completions`,
   chatsMindmap: `${restAPIv1}/chat/mindmap`,
   chatsRelatedQuestions: `${restAPIv1}/chat/recommendation`,
-
-  // next chat
-  fetchExternalChatInfo: (id: string) => `${restAPIv1}/chatbots/${id}/info`,
 
   // file manager
   listFile: `${restAPIv1}/files`,
@@ -392,21 +387,6 @@ export default {
   exportMcpServer: (id: string) =>
     `${restAPIv1}/mcp/servers/${id}?mode=download`,
   testMcpServer: (id: string) => `${restAPIv1}/mcp/servers/${id}/test`,
-
-  // next-search
-  createSearch: `${restAPIv1}/searches`,
-  getSearchList: `${restAPIv1}/searches`,
-  deleteSearch: (params: { search_id: string }) =>
-    `${restAPIv1}/searches/${params.search_id}`,
-  getSearchDetail: (params: { search_id: string }) =>
-    `${restAPIv1}/searches/${params.search_id}`,
-  getSearchDetailShare: `${restAPIv1}/searchbots/detail`,
-  updateSearchSetting: (params: { search_id: string }) =>
-    `${restAPIv1}/searches/${params.search_id}`,
-  askShare: `${restAPIv1}/searchbots/ask`,
-  mindmapShare: `${restAPIv1}/searchbots/mindmap`,
-  getRelatedQuestionsShare: `${restAPIv1}/searchbots/related_questions`,
-  retrievalTestShare: `${restAPIv1}/searchbots/retrieval_test`,
 
   // memory
   createMemory: `${restAPIv1}/memories`,

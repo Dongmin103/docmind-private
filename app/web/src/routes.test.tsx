@@ -67,3 +67,26 @@ it.each(['/docmind', '/user-setting/model', '/user-setting/profile'])(
     expect(matches?.at(-1)?.route.path).toBe(path);
   },
 );
+
+it.each([
+  '/chats/share?shared_id=example',
+  '/chats/widget?mode=master',
+  '/chat/example',
+  '/chats',
+  '/searches',
+  '/search/example',
+  '/files?folderId=example',
+  '/search/share?shared_id=example',
+])('rejects the retired generic application route %s', (path) => {
+  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
+});
+
+it.each([
+  ['/document/example', '/document/:id'],
+  ['/chunk', '/chunk'],
+  ['/chunk/chunk/example', '/chunk/chunk/:id'],
+  ['/files/skills', '/files/skills'],
+  ['/dataset/files/example', '/dataset//files/:id'],
+])('preserves shared and deferred route %s', (path, pattern) => {
+  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe(pattern);
+});
