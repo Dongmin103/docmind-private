@@ -23,7 +23,6 @@ import {
 } from 'react-router';
 import FallbackComponent from './components/fallback-component';
 import DocMindWorkspaceError from './pages/docmind/workspace-error';
-import { IS_ENTERPRISE } from './pages/admin/utils';
 import authorizationUtil from './utils/authorization-util';
 import { initializeDocMindSharedWorkspace } from './utils/docmind-shared-workspace';
 
@@ -61,7 +60,6 @@ export enum Routes {
   Model = '/model',
   Prompt = '/prompt',
   CompilationTemplatesEditNext = '/compilation-templates/edit-next',
-  ChatChannel = '/chat-channel',
   ProfileMcp = `${ProfileSetting}${Mcp}`,
   ProfileTeam = `${ProfileSetting}${Team}`,
   ProfilePlan = `${ProfileSetting}${Plan}`,
@@ -85,13 +83,6 @@ export enum Routes {
   DataSetOverview = '/logs',
   DataSetSetting = '/configuration',
   DataflowResult = '/dataflow-result',
-  Admin = '/admin',
-  AdminServices = `${Admin}/services`,
-  AdminUserManagement = `${Admin}/users`,
-  AdminSandboxSettings = `${Admin}/sandbox-settings`,
-  AdminWhitelist = `${Admin}/whitelist`,
-  AdminRoles = `${Admin}/roles`,
-  AdminMonitoring = `${Admin}/monitoring`,
 }
 
 const defaultRouteFallback = (
@@ -308,11 +299,6 @@ const routeConfigOptions = [
             path: `${Routes.UserSetting}${Routes.Mcp}`,
             Component: () => import('@/pages/user-setting/mcp'),
           },
-
-          {
-            path: `${Routes.UserSetting}${Routes.ChatChannel}`,
-            Component: () => import('@/pages/user-setting/chat-channel'),
-          },
         ],
       },
     ],
@@ -381,59 +367,6 @@ const routeConfigOptions = [
       },
     ],
   },
-  {
-    path: Routes.Admin,
-    Component: () => import('@/pages/admin/layouts/root-layout'),
-    children: [
-      {
-        path: Routes.Admin,
-        Component: () => import('@/pages/admin/login'),
-      },
-      {
-        path: Routes.Admin,
-        Component: () => import('@/pages/admin/layouts/authorized-layout'),
-        children: [
-          {
-            path: `${Routes.AdminUserManagement}/:id`,
-            Component: () => import('@/pages/admin/user-detail'),
-          },
-          {
-            Component: () => import('@/pages/admin/layouts/navigation-layout'),
-            children: [
-              {
-                path: Routes.AdminServices,
-                Component: () => import('@/pages/admin/service-status'),
-              },
-              {
-                path: Routes.AdminUserManagement,
-                Component: () => import('@/pages/admin/users'),
-              },
-              {
-                path: Routes.AdminSandboxSettings,
-                Component: () => import('@/pages/admin/sandbox-settings'),
-              },
-              ...(IS_ENTERPRISE
-                ? [
-                    {
-                      path: Routes.AdminWhitelist,
-                      Component: () => import('@/pages/admin/whitelist'),
-                    },
-                    {
-                      path: Routes.AdminRoles,
-                      Component: () => import('@/pages/admin/roles'),
-                    },
-                    {
-                      path: Routes.AdminMonitoring,
-                      Component: () => import('@/pages/admin/monitoring'),
-                    },
-                  ]
-                : []),
-            ],
-          },
-        ],
-      },
-    ],
-  } satisfies LazyRouteConfig,
 ];
 
 const wrapRoutes = (routes: LazyRouteConfig[]): RouteObject[] =>

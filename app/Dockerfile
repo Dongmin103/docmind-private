@@ -271,7 +271,6 @@ COPY docker/nginx/ragflow.conf.golang \
 
 RUN rm -f /etc/nginx/sites-enabled/default
 
-COPY admin admin
 COPY api api
 COPY conf conf
 COPY deepdoc deepdoc

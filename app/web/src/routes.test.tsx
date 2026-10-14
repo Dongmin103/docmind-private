@@ -46,7 +46,21 @@ it.each([
   expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
 });
 
-it.each(['/docmind', '/user-setting/model', '/user-setting/chat-channel'])(
+it.each([
+  '/admin',
+  '/admin/users',
+  '/admin/users/example',
+  '/admin/services',
+  '/admin/sandbox-settings',
+  '/admin/roles',
+  '/admin/whitelist',
+  '/admin/monitoring',
+  '/user-setting/chat-channel',
+])('rejects the retired administration or messaging route %s', (path) => {
+  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
+});
+
+it.each(['/docmind', '/user-setting/model', '/user-setting/profile'])(
   'preserves the supported route %s',
   (path) => {
     const matches = matchRoutes(routers.routes, path);

@@ -21,8 +21,7 @@ const PathMap = {
   [Routes.Files]: [Routes.Files],
 } as const;
 
-// Match on path-segment boundaries, not a loose substring, so e.g.
-// "/user-setting/chat-channel" does not match the "/chat" tab.
+// Match on path-segment boundaries so similarly named paths stay distinct.
 const matchesPath = (pathname: string, candidate: string) =>
   pathname === candidate || pathname.startsWith(`${candidate}/`);
 

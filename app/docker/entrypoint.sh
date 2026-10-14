@@ -13,7 +13,6 @@ function usage() {
     echo
     echo "  --disable-webserver                     Disables the web server (nginx + ragflow_server)."
     echo "  --enable-mcpserver                      Enables the MCP server."
-    echo "  --enable-adminserver                    Enables the Admin server."
     echo "  --init-model-provider-tables            Run model provider table migrations and exit."
     echo "  --init-superuser                        Initializes the superuser."
     echo "  --mcp-host=<string>                     Address the MCP server binds to (default: 127.0.0.1)."
@@ -30,7 +29,6 @@ function usage() {
     echo
     echo "Examples:"
     echo "  $0 --enable-mcpserver"
-    echo "  $0 --enable-adminserver"
     echo "  $0 --init-superuser"
     exit 1
 }
@@ -39,7 +37,6 @@ function usage() {
 # standalone queue consumers or external connector sync daemons to launch.
 ENABLE_WEBSERVER=1 # Default to enable web server
 ENABLE_MCP_SERVER=0
-ENABLE_ADMIN_SERVER=0 # Default close admin server
 INIT_SUPERUSER_ARGS="" # Default to not initialize superuser
 INIT_MODEL_PROVIDER_TABLES=0
 
@@ -62,10 +59,6 @@ for arg in "$@"; do
       ;;
     --enable-mcpserver)
       ENABLE_MCP_SERVER=1
-      shift
-      ;;
-    --enable-adminserver)
-      ENABLE_ADMIN_SERVER=1
       shift
       ;;
     --init-model-provider-tables)
@@ -224,19 +217,6 @@ if [[ "${INIT_MODEL_PROVIDER_TABLES}" -eq 1 ]]; then
         echo "Skipping MySQL-specific model provider table migrations for DB_TYPE=${DB_TYPE:-mysql}."
     else
         tools/scripts/run_migrations.sh
-    fi
-fi
-
-if [[ "${ENABLE_ADMIN_SERVER}" -eq 1 ]]; then
-
-    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "python" ]]; then
-        echo "Attempt to start Admin python server..."
-        run_with_restart "Admin python server" "$PY" admin/server/admin_server.py &
-    fi
-
-    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "go" ]]; then
-        echo "Starting Admin go server..."
-        run_with_restart "Admin go server" bin/ragflow_server --admin &
     fi
 fi
 

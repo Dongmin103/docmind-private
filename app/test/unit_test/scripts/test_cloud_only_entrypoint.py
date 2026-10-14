@@ -12,7 +12,7 @@ APP = Path(__file__).resolve().parents[3]
 
 @unittest.skipUnless(os.name == "posix", "Shell process harness runs on Linux")
 class CloudOnlyEntrypointTest(unittest.TestCase):
-    def run_entrypoint(self, args):
+    def run_entrypoint(self, args, filename="entrypoint.sh"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             app = root / "ragflow"
@@ -26,7 +26,7 @@ class CloudOnlyEntrypointTest(unittest.TestCase):
                 path = binpath / name
                 path.write_text('#!/bin/sh\nprintf "%s %s\\n" "' + name + '" "$*" >> "$TRACE"\nexit 0\n')
                 path.chmod(0o755)
-            source = (APP / "docker/entrypoint.sh").read_text()
+            source = (APP / "docker" / filename).read_text()
             source = source.replace("/ragflow/", str(app) + "/").replace("/usr/sbin/nginx", str(binpath / "nginx"))
             script = root / "entrypoint.sh"
             script.write_text(source)
@@ -44,11 +44,23 @@ class CloudOnlyEntrypointTest(unittest.TestCase):
                     os.killpg(p.pid, signal.SIGTERM)
                     p.wait(timeout=3)
 
-    def test_default_starts_only_api_and_admin(self):
-        _, lines = self.run_entrypoint(["--enable-adminserver"])
+    def test_default_starts_only_api(self):
+        _, lines = self.run_entrypoint([])
         self.assertTrue(any("api/ragflow_server.py" in l for l in lines), lines)
-        self.assertTrue(any("admin/server/admin_server.py" in l for l in lines), lines)
+        self.assertFalse(any("admin/server/admin_server.py" in l for l in lines), lines)
         self.assertFalse(any("task_executor.py" in l or "sync_data_source.py" in l for l in lines), lines)
+
+    def test_removed_admin_option_cannot_launch_services(self):
+        code, lines = self.run_entrypoint(["--enable-adminserver"])
+        self.assertEqual(code, 1, lines)
+        self.assertFalse(any(l.startswith("python3 ") for l in lines), lines)
+
+    def test_local_launcher_rejects_removed_admin_service_names(self):
+        for option in ["admin", "admin_server", "admin-server", "all"]:
+            with self.subTest(option=option):
+                code, lines = self.run_entrypoint([option], "launch_backend_service.sh")
+                self.assertEqual(code, 1, lines)
+                self.assertFalse(any(l.startswith("python3 ") for l in lines), lines)
 
     def test_removed_worker_options_cannot_start_a_worker(self):
         for option in ["--workers=2", "--consumer-no-end=2", "--host-id=test"]:

@@ -301,7 +301,6 @@ services:
     ports:
       - 127.0.0.1:${DOCMIND_DEV_WEB_PORT:-18080}:80
       - 127.0.0.1:${DOCMIND_DEV_API_PORT:-19380}:9380
-      - 127.0.0.1:${DOCMIND_DEV_ADMIN_PORT:-19381}:9381
     volumes:
       - ./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template:ro
       - ./entrypoint.sh:/ragflow/entrypoint.sh:ro

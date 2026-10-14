@@ -7,11 +7,6 @@ license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    # discord-py==2.3.2 unconditionally imports audioop in discord/player.py at module-
-    # load time. audioop was removed from the CPython stdlib in Python 3.13 (PEP 594),
-    # so any import of the discord package raises ImportError on Python 3.13 — even in
-    # tests that never use voice features. audioop-lts provides the module as a backport.
-    "audioop-lts>=0.2.1",
     "aiosmtplib>=5.1.1,<6.0.0",
     "akshare>=1.15.78,<2.0.0",
     "anthropic==0.76.0",
@@ -33,7 +28,6 @@ dependencies = [
     "deepl==1.18.0",
     "debugpy>=1.8.13",
     "demjson3==3.0.6",
-    "discord-py==2.3.2",
     "dropbox==12.0.2",
     "duckduckgo-search>=7.2.0,<8.0.0",
     "elasticsearch-dsl==8.12.0",
@@ -41,11 +35,6 @@ dependencies = [
     "feedparser>=6.0.11,<7.0.0",
     "extract-msg>=0.39.0",
     "ffmpeg-python>=0.2.0",
-    "flasgger>=0.9.7.1,<0.10.0",
-    "flask-cors==6.0.2",
-    "flask-login==0.6.3",
-    "flask-mail>=0.10.0",
-    "flask-session==0.8.0",
     "google-api-python-client>=2.190.0,<3.0.0",
     "google-auth-oauthlib>=1.2.0,<2.0.0",
     "google-cloud-bigquery>=3.25.0,<4.0.0",
@@ -82,7 +71,6 @@ dependencies = [
     "opensearch-py==2.7.1",
     "ormsgpack>=1.6.0",
     "pdfplumber==0.11.10",
-    "pluginlib>=0.10.0",
     "psycopg2-binary>=2.9.11,<3.0.0",
     "pyclipper>=1.4.0,<2.0.0",
     # "pywencai>=0.13.1,<1.0.0",  # Temporarily disabled: conflicts with agentrun-sdk (pydash>=8), needed for agent/tools/wencai.py
@@ -182,13 +170,7 @@ dependencies = [
     "pygithub>=2.8.1",
     "asana>=5.2.2",
     "python-gitlab>=7.0.0",
-    "alibabacloud-dingtalk>=2.0.0",
     "quart-schema==0.23.0",
-    "lark-oapi>=1.2.0",
-    "discord.py>=2.3.0",
-    "python-telegram-bot>=21.0",
-    "line-bot-sdk>=3.0.0",
-    "wechatpy>=1.8.18",
     "aiohttp>=3.14.3",
     "paddleocr==3.7.0",
     "paddlepaddle==3.3.1",
@@ -308,7 +290,7 @@ packages = [
 
 [tool.ruff]
 line-length = 200
-exclude = [".venv", "rag/svr/discord_svr.py"]
+exclude = [".venv"]
 
 [tool.ruff.lint]
 extend-select = ["ASYNC", "ASYNC1"]

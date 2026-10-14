@@ -3,9 +3,6 @@ general:
 ragflow:
   host: ${RAGFLOW_HOST:-0.0.0.0}
   http_port: 9380
-admin:
-  host: ${RAGFLOW_HOST:-0.0.0.0}
-  http_port: 9381
 mysql:
   name: '${MYSQL_DBNAME:-rag_flow}'
   user: '${MYSQL_USER:-root}'
@@ -220,7 +217,7 @@ user_default_llm:
 # log:
 #   level: info              # debug | info | warn | error
 #   format: text             # text | json (reserved; text only today)
-#   path: server_main.log    # empty/missing = binary default (server_main.log / admin_server.log / ingestion_server.log)
+#   path: server_main.log    # empty/missing = binary default (server_main.log / ingestion_server.log)
 #   max_size: 100            # MB before rotation
 #   max_backups: 10          # retained rotated files
 #   max_age: 30              # days

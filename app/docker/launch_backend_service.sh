@@ -5,17 +5,15 @@ set -e
 
 usage() {
     local exit_code=${1:-1}
-    echo "Usage: $0 [ragflow|admin]..."
+    echo "Usage: $0 [ragflow]"
     echo
     echo "Without arguments, starts ragflow."
     echo "Available service types:"
     echo "  ragflow         Start RAGFlow server based on API_PROXY_SCHEME"
-    echo "  admin           Start Admin server based on API_PROXY_SCHEME"
     echo
     echo "Examples:"
     echo "  $0"
     echo "  $0 ragflow"
-    echo "  $0 admin"
     exit "$exit_code"
 }
 
@@ -110,35 +108,6 @@ run_server(){
     fi
 }
 
-# Function to execute admin_server with retry logic
-run_admin_server(){
-    local server_name="admin_server.py"
-    local -a server_cmd=("$PY" "admin/server/admin_server.py")
-    if [[ "${API_PROXY_SCHEME}" == "go" ]]; then
-        prepare_for_go
-        server_name="admin_server"
-        server_cmd=("bin/ragflow_server" "--admin")
-    fi
-    local retry_count=0
-    while ! $STOP && [ $retry_count -lt $MAX_RETRIES ]; do
-        echo "Starting $server_name (Attempt $((retry_count+1)))"
-        "${server_cmd[@]}"
-        EXIT_CODE=$?
-        if [ $EXIT_CODE -eq 0 ]; then
-            echo "$server_name exited successfully."
-            break
-        else
-            echo "$server_name failed with exit code $EXIT_CODE. Retrying..." >&2
-            retry_count=$((retry_count + 1))
-            sleep 2
-        fi
-    done
-    if [ $retry_count -ge $MAX_RETRIES ]; then
-        echo "$server_name failed after $MAX_RETRIES attempts. Exiting..." >&2
-        cleanup
-    fi
-}
-
 ensure_db_init() {
     echo "Initializing database tables..."
     "$PY" -c "from api.db.db_models import init_database_tables as init_web_db; init_web_db()"
@@ -175,8 +144,6 @@ prepare_for_go() {
 
 START_RAGFLOW=0
 
-START_ADMIN=0
-
 if [ $# -eq 0 ]; then
   START_RAGFLOW=1
 fi
@@ -185,13 +152,6 @@ for arg in "$@"; do
   case $arg in
     ragflow|server|webserver)
       START_RAGFLOW=1
-      ;;
-    admin|admin_server|admin-server)
-      START_ADMIN=1
-      ;;
-    all)
-      START_RAGFLOW=1
-      START_ADMIN=1
       ;;
     -h|--help)
       usage 0
@@ -211,12 +171,6 @@ fi
 # Start the RAGFlow server
 if [[ "$START_RAGFLOW" -eq 1 ]]; then
   run_server &
-  PIDS+=($!)
-fi
-
-# Start the Admin server
-if [[ "$START_ADMIN" -eq 1 ]]; then
-  run_admin_server &
   PIDS+=($!)
 fi
 

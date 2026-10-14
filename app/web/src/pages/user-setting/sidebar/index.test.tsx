@@ -11,8 +11,6 @@ jest.mock('./hooks', () => ({
 jest.mock('@/routes', () => ({
   Routes: {
     Model: '/model',
-    DataSource: '/data-source',
-    ChatChannel: '/chat-channel',
     Mcp: '/mcp',
     Team: '/team',
     Profile: '/profile',
@@ -41,13 +39,16 @@ jest.mock('@/components/theme-switch', () => ({
   default: () => null,
 }));
 
-it('offers model and chat-channel navigation without external data sources', () => {
+it('offers model and profile navigation without external integrations', () => {
   render(<SideBar />);
   expect(
     screen.queryByRole('button', { name: 'setting.dataSources' }),
   ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'setting.model' }));
   expect(mockNavigate).toHaveBeenLastCalledWith('/model');
-  fireEvent.click(screen.getByRole('button', { name: 'setting.chatChannels' }));
-  expect(mockNavigate).toHaveBeenLastCalledWith('/chat-channel');
+  expect(
+    screen.queryByRole('button', { name: 'setting.chatChannels' }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'setting.profile' }));
+  expect(mockNavigate).toHaveBeenLastCalledWith('/profile');
 });

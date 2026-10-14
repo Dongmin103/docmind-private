@@ -124,15 +124,6 @@ export default {
   }) =>
     `${restAPIv1}/providers/${provider_name}/instances/${instance_name}/models`,
 
-  // chat channel
-  chatChannelSet: `${restAPIv1}/chat-channels`,
-  chatChannelList: `${restAPIv1}/chat-channels`,
-  chatChannelDetail: (id: string) => `${restAPIv1}/chat-channels/${id}`,
-  chatChannelUpdate: (id: string) => `${restAPIv1}/chat-channels/${id}`,
-  chatChannelDel: (id: string) => `${restAPIv1}/chat-channels/${id}`,
-  chatChannelRuntime: (id: string) =>
-    `${restAPIv1}/chat-channels/${id}/runtime`,
-
   chatsTranscriptions: `${restAPIv1}/chat/audio/transcription`,
 
   // knowledge base
@@ -434,67 +425,6 @@ export default {
   // data pipeline
   listBuiltinPipelines: `${restAPIv1}/pipelines`,
   getBuiltinPipeline: (id: string) => `${restAPIv1}/pipelines/${id}`,
-
-  // admin
-  adminLogin: `${restAPIv1}/admin/login`,
-  adminLogout: `${restAPIv1}/admin/logout`,
-  adminListUsers: `${restAPIv1}/admin/users`,
-  adminCreateUser: `${restAPIv1}/admin/users`,
-  adminSetSuperuser: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/admin`,
-  adminGetUserDetails: (username: string) =>
-    `${restAPIv1}/admin/users/${username}`,
-  adminUpdateUserStatus: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/activate`,
-  adminUpdateUserPassword: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/password`,
-  adminDeleteUser: (username: string) => `${restAPIv1}/admin/users/${username}`,
-  adminListUserDatasets: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/datasets`,
-  adminListUserAgents: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/agents`,
-
-  adminListServices: `${restAPIv1}/admin/services`,
-  adminShowServiceDetails: (serviceId: string) =>
-    `${restAPIv1}/admin/services/${serviceId}`,
-
-  adminListRoles: `${restAPIv1}/admin/roles`,
-  adminListRolesWithPermission: `${restAPIv1}/admin/roles_with_permission`,
-  adminGetRolePermissions: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/permissions`,
-  adminAssignRolePermissions: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/permission`,
-  adminRevokeRolePermissions: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/permission`,
-  adminCreateRole: `${restAPIv1}/admin/roles`,
-  adminDeleteRole: (roleName: string) => `${restAPIv1}/admin/roles/${roleName}`,
-  adminUpdateRoleDescription: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}`,
-
-  adminUpdateUserRole: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/role`,
-  adminGetUserPermissions: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/permissions`,
-
-  adminListResources: `${restAPIv1}/admin/roles/resource`,
-
-  adminListWhitelist: `${restAPIv1}/admin/whitelist`,
-  adminCreateWhitelistEntry: `${restAPIv1}/admin/whitelist/add`,
-  adminUpdateWhitelistEntry: (id: number) =>
-    `${restAPIv1}/admin/whitelist/${id}`,
-  adminDeleteWhitelistEntry: (email: string) =>
-    `${restAPIv1}/admin/whitelist/${email}`,
-  adminImportWhitelist: `${restAPIv1}/admin/whitelist/batch`,
-
-  adminGetSystemVersion: `${restAPIv1}/admin/version`,
-
-  // Sandbox settings
-  adminListSandboxProviders: `${restAPIv1}/admin/sandbox/providers`,
-  adminGetSandboxProviderSchema: (providerId: string) =>
-    `${restAPIv1}/admin/sandbox/providers/${providerId}/schema`,
-  adminGetSandboxConfig: `${restAPIv1}/admin/sandbox/config`,
-  adminSetSandboxConfig: `${restAPIv1}/admin/sandbox/config`,
-  adminTestSandboxConnection: `${restAPIv1}/admin/sandbox/test`,
 
   // Skill spaces
   skillSpaces: `${restAPIv1}/skills/spaces`,

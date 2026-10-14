@@ -58,11 +58,6 @@ export default defineConfig(({ mode }) => {
 
   const proxySchemes = {
     python: {
-      '/api/v1/admin': {
-        target: 'http://127.0.0.1:9381/',
-        changeOrigin: true,
-        ws: true,
-      },
       '/api': {
         target: 'http://127.0.0.1:9380/',
         changeOrigin: true,
@@ -81,17 +76,6 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true,
         },
-      '^(/api/v1/admin/sandbox)|^(/api/v1/admin/roles)|^(/api/v1/admin/roles/owner/permission)|^(/api/v1/admin/roles_with_permission)|^(/api/v1/admin/whitelist)|^(/api/v1/admin/variables)':
-        {
-          target: 'http://127.0.0.1:9381/',
-          changeOrigin: true,
-          ws: true,
-        },
-      '/api/v1/admin': {
-        target: 'http://127.0.0.1:9383/',
-        changeOrigin: true,
-        ws: true,
-      },
       '/api/v1/users/me/models': {
         target: 'http://127.0.0.1:9380/',
         changeOrigin: true,
@@ -120,11 +104,6 @@ export default defineConfig(({ mode }) => {
       },
     },
     go: {
-      '/api/v1/admin': {
-        target: 'http://127.0.0.1:9383/',
-        changeOrigin: true,
-        ws: true,
-      },
       '/api': {
         target: 'http://127.0.0.1:9384/',
         changeOrigin: true,

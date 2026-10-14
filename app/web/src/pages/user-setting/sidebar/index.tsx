@@ -30,7 +30,6 @@ import { TFunction } from 'i18next';
 import {
   LucideBox,
   LucideLogOut,
-  LucideMessagesSquare,
   LucideUnplug,
   LucideUser,
   LucideUsers,
@@ -45,11 +44,6 @@ const menuItems = (t: TFunction) => [
     label: t('setting.model'),
     key: Routes.Model,
     'data-testid': 'settings-nav-model-providers',
-  },
-  {
-    icon: <LucideMessagesSquare className="size-[1em]" />,
-    label: t('setting.chatChannels'),
-    key: Routes.ChatChannel,
   },
   {
     icon: <IconFontFill name="mcp" className="size-[1em]" />,
