@@ -276,17 +276,10 @@ packages = [
     'api',
     'deepdoc',
     'rag.graphrag',
-    'tools.chatgpt_on_wechat.plugins',
     'mcp.server',
     'rag',
     'sdk.python.ragflow_sdk',
 ]
-
-# tools/ holds standalone Python projects whose names contain hyphens
-# (chatgpt-on-wechat). Python package names cannot contain hyphens, so
-# we map the underscored Python name to the hyphenated filesystem path.
-[tool.setuptools.package-dir]
-"tools.chatgpt_on_wechat.plugins" = "tools/chatgpt-on-wechat/plugins"
 
 [tool.ruff]
 line-length = 200
