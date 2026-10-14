@@ -65,7 +65,7 @@ def test_docx_to_markdown_empty_binary_does_not_open_display_name(monkeypatch):
 
 
 @pytest.mark.p2
-def test_deepdoc_empty_binary_passes_bytes_to_pdf_parser(monkeypatch):
+def test_plain_pdf_empty_binary_passes_bytes_to_pdf_parser(monkeypatch):
     captured = []
 
     class CapturingPdf:
@@ -73,8 +73,8 @@ def test_deepdoc_empty_binary_passes_bytes_to_pdf_parser(monkeypatch):
             captured.append(source)
             return [], []
 
-    monkeypatch.setattr(naive, "vision_figure_parser_pdf_wrapper", lambda **kwargs: kwargs["tbls"])
+    monkeypatch.setattr(naive, "PlainParser", CapturingPdf)
 
-    naive.by_deepdoc("report.pdf", binary=b"", pdf_cls=CapturingPdf)
+    naive.by_plaintext("report.pdf", binary=b"")
 
     assert captured == [b""]

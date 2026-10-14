@@ -21,7 +21,6 @@ import { buildModelInfoFromValues } from './utils';
 
 /**
  * Factory configuration for local/compatible factories
- * Used for scenarios after OllamaModal merge
  */
 export const LocalLlmConfigs: Record<string, ProviderConfig> = {
   [LLMFactory.OpenAiAPICompatible]: buildLocalConfig(
@@ -33,13 +32,6 @@ export const LocalLlmConfigs: Record<string, ProviderConfig> = {
   ),
 
 
-  //   'TokenPony',
-  //   ['chat', 'embedding', 'rerank', 'image2text'],
-  //   undefined,
-  //   false,
-  //   undefined,
-  //   'https://docs.tokenpony.cn/#/',
-  // ),
 };
 
 /**

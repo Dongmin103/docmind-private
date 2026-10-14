@@ -130,9 +130,3 @@ class JinaRerank(Base):
             seen.add(index)
             rank[index] = relevance_score
         return rank, total_token_count_from_response(res)
-
-
-# Reranker connector for AWS Bedrock, calling the bedrock-agent-runtime Rerank
-# API (e.g. amazon.rerank-v1:0, cohere.rerank-v3-5:0). The JSON key protocol
-# (auth_mode / bedrock_region / bedrock_ak / bedrock_sk) mirrors BedrockEmbed in
-# embedding_model.py.

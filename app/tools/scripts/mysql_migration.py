@@ -1587,16 +1587,19 @@ class ModelTypeMergeStage(MigrationStage):
             logger.error("Source table 'tenant_model' does not exist")
             return 0, []
 
-        # Create temporary table with model_type as INTEGER
-        self.create_target_table()
+        # Validate every historical type before any DDL, inserts or table swaps.
+        cursor = self.db.execute_sql("SELECT id, model_name, provider_id, instance_id, model_type, status, extra, create_time, create_date, update_time, update_date FROM tenant_model ORDER BY id")
+        all_rows = cursor.fetchall()
+        invalid_rows = [(row[0], row[4]) for row in all_rows if row[4] not in self.MODEL_TYPE_STR_TO_INT]
+        if invalid_rows:
+            details = ", ".join(f"id={row_id!r}, type={kind!r}" for row_id, kind in invalid_rows)
+            raise ValueError(f"Unsupported stored model type in tenant_model; migration aborted before mutation: {details}")
 
+        # Create temporary table only after the source preflight succeeds.
+        self.create_target_table()
         if self.create_table_only:
             logger.info("[CREATE TABLE ONLY] Temporary table created, skipping data merge")
             return 0, self.target_tables
-
-        # Load all records from tenant_model
-        cursor = self.db.execute_sql("SELECT id, model_name, provider_id, instance_id, model_type, status, extra, create_time, create_date, update_time, update_date FROM tenant_model ORDER BY id")
-        all_rows = cursor.fetchall()
 
         # Group by (provider_id, instance_id, model_name)
         from collections import defaultdict
@@ -1619,7 +1622,7 @@ class ModelTypeMergeStage(MigrationStage):
 
             for row in rows:
                 _, _, _, _, model_type_str, status, _, _, _, _, _ = row
-                type_bit = self.MODEL_TYPE_STR_TO_INT.get(model_type_str, 0)
+                type_bit = self.MODEL_TYPE_STR_TO_INT[model_type_str]
                 if status == "unsupported":
                     unsupported_bits |= type_bit
                 else:

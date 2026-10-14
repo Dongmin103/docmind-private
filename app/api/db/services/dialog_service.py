@@ -679,8 +679,6 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         # HTML-escape for frontend display so DOMPurify does not strip
         # unknown tags (e.g. <abc> → &lt;abc&gt;), which would otherwise
         # leave the content blank and stall the UI on "Searching…".
-        # The raw value is still used for TTS (which has its own tag-
-        # citation normalization).
         escaped_answer = html.escape(empty_res)
         yield {"answer": escaped_answer, "reference": {}, "prompt": "", "final": False}
         yield {"answer": escaped_answer, "reference": kbinfos, "prompt": "\n\n### Query:\n%s" % " ".join(questions), "final": True}

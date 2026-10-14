@@ -66,13 +66,6 @@ export const MODEL_FIELD_SCHEMA: AddCustomModelDialogFields[] = [
   },
 ];
 
-/**
- * SoMark feature-config options appended to the `features` switch-group
- * when the provider is SoMark. Selected entries (prefixed `somark_`) are
- * converted to boolean values in `model_info[].extra` by the dialog's
- * `handleSubmit`, so the data shape stays compatible with the legacy
- * `SoMarkInstanceCard` payload.
- */
 export const useCustomModelFields = (
   providerName?: string,
 ): AddCustomModelDialogFields[] => {

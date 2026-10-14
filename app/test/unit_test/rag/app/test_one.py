@@ -13,38 +13,20 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import logging
 from unittest.mock import Mock
-
-import pytest
 
 from rag.app import one
 
 
-@pytest.mark.p1
-def test_docx_chunk_forwards_language_to_vision_wrapper(monkeypatch, caplog):
-    docx_parser = Mock(return_value=[("caption", object(), None)])
-    monkeypatch.setattr(one.naive, "Docx", Mock(return_value=docx_parser))
-
-    vision_wrapper = Mock()
-    monkeypatch.setattr(one, "vision_figure_parser_docx_wrapper_naive", vision_wrapper)
+def test_docx_chunk_preserves_text_order_table_and_language(monkeypatch):
+    parser = Mock(return_value=[("first", None, None), ("caption", object(), None), ("table:", None, [["cell"]]), ("last", None, None)])
+    monkeypatch.setattr(one.naive, "Docx", Mock(return_value=parser))
     monkeypatch.setattr(one.rag_tokenizer, "tokenize", lambda text: text)
     monkeypatch.setattr(one.rag_tokenizer, "fine_grained_tokenize", lambda text: text)
-    monkeypatch.setattr(one, "tokenize", Mock())
-
-    with caplog.at_level(logging.INFO, logger=one.__name__):
-        one.chunk(
-            "document.docx",
-            binary=b"docx",
-            lang="Japanese",
-            callback=lambda *_args, **_kwargs: None,
-            tenant_id="tenant-id",
-        )
-
-    vision_wrapper.assert_called_once()
-    args = vision_wrapper.call_args.args
-    kwargs = vision_wrapper.call_args.kwargs
-    assert args[1] == [0]
-    assert kwargs["lang"] == "Japanese"
-    assert kwargs["tenant_id"] == "tenant-id"
-    assert "DOCX figure vision enhancement: language=Japanese image_count=1" in caplog.messages
+    tokenize = Mock()
+    monkeypatch.setattr(one, "tokenize", tokenize)
+    result = one.chunk("document.docx", binary=b"docx", lang="Japanese", callback=lambda *_: None)
+    assert len(result) == 1
+    parser.assert_called_once_with("document.docx", b"docx")
+    assert tokenize.call_args.args[1] == "first\ncaption\ntable:[['cell']]\nlast"
+    assert tokenize.call_args.kwargs == {"language": "Japanese"}
