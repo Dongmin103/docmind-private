@@ -42,7 +42,6 @@ export default {
   // llm model
   listAllAddedModels: `${restAPIv1}/models`,
   defaultModel: `${restAPIv1}/models/default`,
-  // AIMLAPI agent-authorization (OAuth device grant) — obtain a key from the provider dialog
   listProviders: `${restAPIv1}/providers`,
   addProvider: `${restAPIv1}/providers`,
   addProviderInstance: ({ llm_factory }: { llm_factory: string }) =>

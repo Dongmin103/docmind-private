@@ -1,5 +1,5 @@
 # Recovery timing and workspace mount for the Windows cloud-source deployment.
-# The image entrypoint starts only the API; admin is on demand.
+# The image entrypoint starts only the API.
 # Discovery uses the host watcher.
 services:
   ragflow-cpu:

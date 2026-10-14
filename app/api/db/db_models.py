@@ -538,7 +538,7 @@ class Tenant(DataBaseModel):
     tenant_llm_id = CharField(max_length=32, null=True, help_text="id in tenant_model", index=True)
     embd_id = CharField(max_length=128, null=False, help_text="default embedding model ID", index=True)
     tenant_embd_id = CharField(max_length=32, null=True, help_text="id in tenant_model", index=True)
-    asr_id = CharField(max_length=128, null=False, help_text="default ASR model ID", index=True)
+    asr_id = CharField(max_length=128, null=False, default="", help_text="historical ASR model ID", index=True)
     tenant_asr_id = CharField(max_length=32, null=True, help_text="id in tenant_model", index=True)
     img2txt_id = CharField(max_length=128, null=False, help_text="default image to text model ID", index=True)
     tenant_img2txt_id = CharField(max_length=32, null=True, help_text="id in tenant_model", index=True)
