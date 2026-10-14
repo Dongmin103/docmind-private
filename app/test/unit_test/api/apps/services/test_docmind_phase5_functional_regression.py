@@ -27,6 +27,7 @@ from api.db.db_models import (
     DocmindSourceScan,
     DocmindSourceScanBatch,
     DocmindSourceScanEntry,
+    DocmindSourceSyncSession,
     DocmindSourceVersion,
     Document,
     ParserRun,
@@ -71,6 +72,7 @@ MODELS = [
     DocmindSourceScan,
     DocmindSourceScanBatch,
     DocmindSourceScanEntry,
+    DocmindSourceSyncSession,
     DocmindSourceDeletion,
     DocmindSourceReconciliationSchedule,
 ]
