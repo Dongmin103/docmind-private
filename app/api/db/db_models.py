@@ -55,7 +55,6 @@ from api.db.gaussdb_error_utils import (
     is_duplicate_column_error,
     is_duplicate_object_error,
     is_psycopg_connection_error,
-    is_undefined_object_error,
     sqlstate_from_exception,
 )
 from api.utils.json_encode import json_dumps, json_loads
@@ -559,8 +558,6 @@ class RetryingPooledGaussDBDatabase(GaussDBPsycopgRetryMixin, PooledPostgresqlDa
     # constraints globally, so preserve the existing schema with replication.
     distributed_replication_tables = frozenset(
         {
-            "compilation_template",
-            "compilation_template_group",
             "file_commit_item",
             "tenant_llm",
             "tenant_model_provider",
@@ -1280,31 +1277,6 @@ class Knowledgebase(DataBaseModel):
     parser_config = JSONField(null=False, default={"pages": [[1, 1000000]], "table_context_size": 0, "image_context_size": 0})
     pagerank = IntegerField(default=0, index=False)
 
-    graphrag_task_id = CharField(max_length=32, null=True, help_text="Graph RAG task ID", index=True)
-    graphrag_task_finish_at = DateTimeField(null=True)
-    raptor_task_id = CharField(max_length=32, null=True, help_text="RAPTOR task ID", index=True)
-    raptor_task_finish_at = DateTimeField(null=True)
-    mindmap_task_id = CharField(max_length=32, null=True, help_text="Mindmap task ID", index=True)
-    mindmap_task_finish_at = DateTimeField(null=True)
-    wiki_task_id = CharField(max_length=32, null=True, help_text="Artifact compilation task ID", index=True)
-    wiki_task_finish_at = DateTimeField(null=True)
-    skill_task_id = CharField(max_length=32, null=True, help_text="Skill generation task ID", index=True)
-    skill_task_finish_at = DateTimeField(null=True)
-    # KB-wide structure-graph merge tasks, one traceable task id per merged kind
-    # (rebuild_dataset_structure_graph_json). ``structure_task_id`` is the
-    # merge-all variant that rebuilds every dataset-merge kind at once.
-    structure_graph_task_id = CharField(max_length=32, null=True, help_text="Structure graph merge task ID", index=True)
-    structure_graph_task_finish_at = DateTimeField(null=True)
-    structure_mindmap_task_id = CharField(max_length=32, null=True, help_text="Structure mindmap merge task ID", index=True)
-    structure_mindmap_task_finish_at = DateTimeField(null=True)
-    timeline_task_id = CharField(max_length=32, null=True, help_text="Timeline merge task ID", index=True)
-    timeline_task_finish_at = DateTimeField(null=True)
-    session_graph_task_id = CharField(max_length=32, null=True, help_text="Session graph merge task ID", index=True)
-    session_graph_task_finish_at = DateTimeField(null=True)
-    session_essence_task_id = CharField(max_length=32, null=True, help_text="Session essence merge task ID", index=True)
-    session_essence_task_finish_at = DateTimeField(null=True)
-    structure_task_id = CharField(max_length=32, null=True, help_text="Structure merge-all task ID", index=True)
-    structure_task_finish_at = DateTimeField(null=True)
 
     status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
 
@@ -1384,14 +1356,6 @@ class FileCommit(DataBaseModel):
     author_id = CharField(max_length=32, null=False, help_text="user who created the commit", index=True)
     file_count = IntegerField(default=0, help_text="number of files in this commit")
     tree_state = LongTextField(null=True, help_text="JSON snapshot of the full folder tree at this commit")
-    # ---- Artifact-commit extension ----
-    # Populated only for commits recorded via
-    # ``FileCommitService.record_page_edit`` (i.e. artifact-page saves).
-    # For workspace file commits both fields stay null and the ``message``
-    # column carries the commit body.
-    title = CharField(max_length=255, null=True, help_text="commit title (artifact-page edits)")
-    comments = TextField(null=True, help_text="commit body/description (artifact-page edits)")
-
     class Meta:
         db_table = "file_commit"
 
@@ -1407,27 +1371,11 @@ class FileCommitItem(DataBaseModel):
     new_location = CharField(max_length=255, null=True, help_text="new storage location")
     old_name = CharField(max_length=255, null=True, help_text="old file name (for rename)")
     new_name = CharField(max_length=255, null=True, help_text="new file name (for rename)")
-    # ---- Artifact-commit extension ----
-    # Populated only for artifact-page saves recorded via
-    # ``FileCommitService.record_page_edit``.
-    diff = LongTextField(null=True, help_text="pre-computed unified diff (artifact-page edits)")
-    content_after_storage = CharField(max_length=16, null=True, help_text="'minio' | 'es' — where the post-save blob lives", index=True)
-    content_after_location = CharField(max_length=512, null=True, help_text="storage key/id for the post-save blob")
-    slug_kwd = CharField(max_length=512, null=True, help_text="artifact page slug (<page_type>/<name>)", index=True)
-    page_type_kwd = CharField(max_length=32, null=True, help_text="artifact page type", index=True)
-
     class Meta:
         db_table = "file_commit_item"
         indexes = (
             (("commit_id", "file_id"), True),  # unique composite index
         )
-
-
-# ``ArtifactCommit`` retired — artifact page history is now stored under
-# ``FileCommit`` + ``FileCommitItem`` via ``FileCommitService.record_page_edit``
-# (see the artifact-commit extension columns on those models above).
-# Pre-existing ``wiki_commit`` rows are intentionally left in place;
-# no code path reads them.
 
 
 class Task(DataBaseModel):
@@ -1649,34 +1597,6 @@ class MCPServer(DataBaseModel):
         db_table = "mcp_server"
 
 
-class CompilationTemplate(DataBaseModel):
-    id = CharField(max_length=32, primary_key=True)
-    tenant_id = CharField(max_length=32, null=True, index=True)
-    group_id = CharField(max_length=32, null=True, index=True)
-    name = CharField(max_length=128, null=False, index=True)
-    description = TextField(null=True, default="")
-    kind = CharField(max_length=64, null=False, index=True)
-    config = JSONField(null=False, default={})
-    is_builtin = BooleanField(null=False, default=False, index=True)
-    status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
-
-    class Meta:
-        db_table = "compilation_template"
-        indexes = ((("tenant_id", "group_id", "name", "is_builtin", "status"), True),)
-
-
-class CompilationTemplateGroup(DataBaseModel):
-    id = CharField(max_length=32, primary_key=True)
-    tenant_id = CharField(max_length=32, null=False, index=True)
-    name = CharField(max_length=128, null=False, index=True)
-    description = TextField(null=True, default="")
-    scope = CharField(max_length=16, null=False, index=True, help_text="file | dataset")
-    status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
-
-    class Meta:
-        db_table = "compilation_template_group"
-
-
 class Search(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     avatar = TextField(null=True, help_text="avatar base64 string")
@@ -1691,7 +1611,6 @@ class Search(DataBaseModel):
             "doc_ids": [],
             "similarity_threshold": 0.2,
             "vector_similarity_weight": 0.3,
-            "use_kg": False,
             # rerank settings
             "rerank_id": "",
             "top_k": 1024,
@@ -1713,7 +1632,6 @@ class Search(DataBaseModel):
             "keyword": False,
             "web_search": False,
             "related_search": False,
-            "query_mindmap": False,
         },
     )
     status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
@@ -2487,8 +2405,6 @@ class SyncLogs(DataBaseModel):
         db_table = "sync_logs"
 
 
-
-
 class SystemSettings(DataBaseModel):
     name = CharField(max_length=128, primary_key=True)
     source = CharField(max_length=32, null=False, index=False)
@@ -3131,250 +3047,6 @@ def migrate_db():
     alter_db_add_column(migrator, "document", "active_chunk_set_id", CharField(max_length=32, null=True, help_text="currently searchable parser-platform chunk set", index=True))
     alter_db_add_column(migrator, "parser_run", "retained_from_lifecycle", CharField(max_length=32, null=True))
     alter_db_add_column(migrator, "parser_run", "chunking_config", JSONField(null=False, default=dict))
-    alter_db_add_column(migrator, "knowledgebase", "graphrag_task_id", CharField(max_length=32, null=True, help_text="Gragh RAG task ID", index=True))
-    alter_db_add_column(migrator, "knowledgebase", "raptor_task_id", CharField(max_length=32, null=True, help_text="RAPTOR task ID", index=True))
-    alter_db_add_column(migrator, "knowledgebase", "graphrag_task_finish_at", DateTimeField(null=True))
-    alter_db_add_column(migrator, "knowledgebase", "raptor_task_finish_at", DateTimeField(null=True))
-    alter_db_add_column(migrator, "knowledgebase", "mindmap_task_id", CharField(max_length=32, null=True, help_text="Mindmap task ID", index=True))
-    alter_db_add_column(migrator, "knowledgebase", "mindmap_task_finish_at", DateTimeField(null=True))
-    alter_db_rename_column(migrator, "knowledgebase", "artifact_task_id", "wiki_task_id")
-    alter_db_rename_column(migrator, "knowledgebase", "artifact_task_finish_at", "wiki_task_finish_at")
-    alter_db_add_column(migrator, "knowledgebase", "wiki_task_id", CharField(max_length=32, null=True, help_text="Artifact compilation task ID", index=True))
-    alter_db_add_column(migrator, "knowledgebase", "wiki_task_finish_at", DateTimeField(null=True))
-    alter_db_add_column(migrator, "knowledgebase", "skill_task_id", CharField(max_length=32, null=True, help_text="Skill generation task ID", index=True))
-    alter_db_add_column(migrator, "knowledgebase", "skill_task_finish_at", DateTimeField(null=True))
-    for _structure_type in ("structure_graph", "structure_mindmap", "timeline", "session_graph", "session_essence", "structure"):
-        alter_db_add_column(migrator, "knowledgebase", f"{_structure_type}_task_id", CharField(max_length=32, null=True, help_text=f"{_structure_type} merge task ID", index=True))
-        alter_db_add_column(migrator, "knowledgebase", f"{_structure_type}_task_finish_at", DateTimeField(null=True))
-    alter_db_column_type(migrator, "tenant_llm", "api_key", TextField(null=True, help_text="API KEY"))
-    alter_db_add_column(migrator, "tenant_llm", "status", CharField(max_length=1, null=False, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True))
-    alter_db_add_column(migrator, "connector2kb", "auto_parse", CharField(max_length=1, null=False, default="1", index=False))
-    alter_db_add_column(migrator, "llm_factories", "rank", IntegerField(default=0, index=False))
-    alter_db_add_column(migrator, "api_4_conversation", "name", CharField(max_length=255, null=True, help_text="conversation name", index=False))
-    alter_db_add_column(migrator, "api_4_conversation", "exp_user_id", CharField(max_length=255, null=True, help_text="exp_user_id", index=True))
-    alter_db_add_column(migrator, "sync_logs", "task_type", CharField(max_length=32, null=False, default="sync", index=True))
-    # Migrate system_settings.value from CharField to TextField for longer sandbox configs.
-    # Use the dedicated field so the GaussDB column remains nullable after the
-    # type change and the ORM restores NULL to the application-level "".
-    alter_db_column_type(migrator, "system_settings", "value", EmptyStringTextField(null=False, help_text="Configuration value (JSON, string, etc.)"))
-    alter_db_add_column(migrator, "document", "content_hash", CharField(max_length=32, null=True, help_text="xxhash128 of document content for change detection", default="", index=True))
-    alter_db_add_column(migrator, "document", "requested_parse_run_id", CharField(max_length=32, null=True, index=True))
-    alter_db_add_column(migrator, "user_canvas_version", "release", BooleanField(null=False, help_text="is released", default=False, index=True))
-    alter_db_add_column(
-        migrator,
-        "user_canvas",
-        "tags",
-        EmptyStringCharField(
-            max_length=512,
-            null=False,
-            default="",
-            help_text="Comma-separated tags for organizing agents",
-            index=True,
-        ),
-    )
-    alter_db_add_column(migrator, "api_4_conversation", "version_title", CharField(max_length=255, null=True, help_text="canvas version title when session created", index=False))
-    alter_db_column_type(migrator, "document", "size", BigIntegerField(default=0, index=True))
-    alter_db_column_type(migrator, "file", "size", BigIntegerField(default=0, index=True))
-    alter_db_add_column(migrator, "tenant", "ocr_id", CharField(max_length=128, null=True, help_text="default ocr model ID", index=True))
-    alter_db_add_column(migrator, "tenant", "tenant_ocr_id", CharField(max_length=32, null=True, help_text="id in tenant_model", index=True))
-    alter_db_column_type(migrator, "chat_channel", "status", IntegerField(default=1, index=True))
-    alter_db_rename_column(migrator, "chat_channel", "dialog_id", "chat_id")
-    # ---- FileCommit / FileCommitItem: artifact-page commit extension ----
-    alter_db_add_column(migrator, "file_commit", "title", CharField(max_length=255, null=True))
-    alter_db_add_column(migrator, "file_commit", "comments", TextField(null=True))
-    alter_db_add_column(migrator, "file_commit_item", "diff", LongTextField(null=True))
-    alter_db_add_column(migrator, "file_commit_item", "content_after_storage", CharField(max_length=16, null=True, index=True))
-    alter_db_add_column(migrator, "file_commit_item", "content_after_location", CharField(max_length=512, null=True))
-    alter_db_add_column(migrator, "file_commit_item", "slug_kwd", CharField(max_length=512, null=True, index=True))
-    alter_db_add_column(migrator, "file_commit_item", "page_type_kwd", CharField(max_length=32, null=True, index=True))
-    alter_db_add_column(
-        migrator,
-        "docmind_catalog_version",
-        "readiness_mode",
-        CharField(max_length=32, null=False, default="SEARCH_VALIDATED", index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_catalog_version",
-        "source_ready_version_id",
-        CharField(max_length=32, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_catalog_version",
-        "manual_saved_by",
-        CharField(max_length=32, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_catalog_version",
-        "manual_saved_at",
-        DateTimeField(null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_project",
-        "source_root_file_id",
-        CharField(max_length=32, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_source",
-        "default_folder_id",
-        CharField(max_length=32, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_ingestion_job",
-        "retry_not_before",
-        DateTimeField(null=True, index=True),
-    )
-    alter_db_add_column(migrator, "docmind_ingestion_job", "pdf_ocr_requested", BooleanField(default=False, null=False))
-    alter_db_add_column(migrator, "docmind_source_document", "source_dirty", BooleanField(default=False, null=False))
-    for table in ("docmind_source_document", "docmind_ingestion_job"):
-        for column in ("observation_epoch", "observation_generation"):
-            alter_db_add_column(migrator, table, column, BigIntegerField(default=0, null=False))
-    alter_db_add_column(migrator, "docmind_source_document", "last_change_sequence", BigIntegerField(default=0, null=False))
-    alter_db_add_column(migrator, "docmind_source_document", "last_change_received_at", DateTimeField(null=True, index=True))
-    alter_db_add_column(migrator, "docmind_source_document", "stable_observed_at", DateTimeField(null=True))
-    alter_db_add_column(migrator, "docmind_source_document", "latest_target_version_id", CharField(max_length=32, null=True))
-    alter_db_add_column(migrator, "docmind_source_scan", "protocol_version", IntegerField(default=1, null=False))
-    alter_db_add_column(migrator, "docmind_source_scan", "scan_start_epoch", BigIntegerField(default=0, null=False))
-    alter_db_add_column(migrator, "docmind_source_scan", "scan_start_sequence", BigIntegerField(default=0, null=False))
-    alter_db_add_column(migrator, "docmind_source_deletion", "deletion_generation", BigIntegerField(default=0, null=False))
-    alter_db_add_column(migrator, "docmind_ingestion_job", "pdf_ocr_consented_by", CharField(max_length=32, null=True))
-    alter_db_add_column(migrator, "docmind_ingestion_job", "pdf_ocr_consented_at", DateTimeField(null=True))
-    alter_db_add_column(migrator, "docmind_ingestion_job", "pdf_ocr_consent_key_hash", CharField(max_length=64, null=True))
-    alter_db_add_column(
-        migrator,
-        "docmind_source_version",
-        "search_cleanup_complete",
-        BooleanField(default=False, null=False),
-    )
-    backfill_docmind_search_cleanup_complete()
-    alter_db_add_column(
-        migrator,
-        "docmind_source_document",
-        "source_object_id",
-        CharField(max_length=255, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_source_document",
-        "host_file_identity",
-        CharField(max_length=255, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_source_scan_entry",
-        "host_file_identity",
-        CharField(max_length=255, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_folder",
-        "source_file_id",
-        CharField(max_length=32, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_catalog_version",
-        "snapshot_schema_version",
-        IntegerField(default=1, null=False, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_catalog_version",
-        "source_tree_hash",
-        CharField(max_length=64, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_catalog_version",
-        "root_identity_sha256",
-        CharField(max_length=64, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_folder_version",
-        "parent_folder_id",
-        CharField(max_length=32, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_folder_version",
-        "source_file_id",
-        CharField(max_length=32, null=True, index=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_folder_version",
-        "relative_path",
-        CharField(max_length=1024, null=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_folder_version",
-        "display_name",
-        CharField(max_length=255, null=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_folder_version",
-        "ordinal",
-        IntegerField(null=True),
-    )
-    alter_db_add_column(
-        migrator,
-        "docmind_folder_version",
-        "depth",
-        IntegerField(null=True),
-    )
-    alter_db_drop_index(migrator, "tenant_langfuse", "idx_tenant_langfuse_secret_key")
-    alter_db_drop_index(migrator, "tenant_langfuse", "idx_tenant_langfuse_public_key")
-    alter_db_drop_index(migrator, "tenant_langfuse", "idx_tenant_langfuse_host")
-    # Run after all alter_db_* calls so newly added compatible columns, such as
-    # user_canvas.tags, exist before their GaussDB NOT NULL constraints relax.
-    relax_gaussdb_empty_string_compatible_columns()
-    # Drop both the explicit "idx_*" name from later migrations AND the
-    # Peewee-auto-derived "<table-as-classname>_<col1>_<col2>" name from the
-    # original TenantModelInstance definition (commit dc4b82523). Databases
-    # created before #15460 dropped the model's `indexes = ((...,), True)`
-    # tuple still carry the auto-named compound unique index, which makes a
-    # second instance with an empty api_key (e.g. Ollama) fail with
-    # "Duplicate entry ... for key 'tenantmodelinstance_api_key_provider_id'"
-    # — see #15699.
-    legacy_indexes = [
-        ("tenant_model_instance", "idx_api_key_provider_id"),
-        ("tenant_model_instance", "tenantmodelinstance_api_key_provider_id"),
-        ("tenant_model", "idx_provider_model_instance"),
-        ("compilation_template", "compilationtemplate_tenant_id_name_is_builtin_status"),
-        ("compilation_template", "compilation_template_tenant_id_name_is_builtin_status"),
-        ("compilation_template", "idx_compilation_template_tenant_id_name_is_builtin_status"),
-        ("compilation_template_group", "compilationtemplategroup_tenant_id_name_status"),
-        ("compilation_template_group", "compilation_template_group_tenant_id_name_status"),
-        ("compilation_template_group", "idx_compilation_template_group_tenant_id_name_status"),
-    ]
-    for table_name, index_name in legacy_indexes:
-        try:
-            migrate(migrator.drop_index(table_name, index_name))
-        except (OperationalError, ProgrammingError) as ex:
-            msg = str(ex)
-            if is_gaussdb_compatible_database():
-                can_skip = is_undefined_object_error(ex) or is_duplicate_object_error(ex)
-            else:
-                can_skip = "1091" in msg or "can't DROP" in msg.lower() or "does not exist" in msg.lower() or "already exists" in msg.lower()
-            if can_skip:
-                pass
-            else:
-                logging.critical(f"Failed to drop index {index_name} on {table_name}: {ex}")
-        except Exception as ex:
-            logging.critical(f"Failed to drop index {index_name} on {table_name}: {ex}")
-    logging.disable(logging.NOTSET)
-    # this is after re-enabling logging to allow logging changed user emails
-    migrate_add_unique_email(migrator)
-    migrate_model_type_names()
-    ensure_model_indexes(migrator)
 
 
 def migrate_model_type_names():

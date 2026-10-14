@@ -37,7 +37,6 @@ Usage example::
             minio=minio_limiter,
             chunk=chunk_limiter,
             embed=embed_limiter,
-            kg=kg_limiter,
         ),
         callbacks=TaskCallbacks(
             progress=progress_callback,
@@ -135,7 +134,7 @@ class TaskDict(TypedDict, total=False):
     """Ending page number for processing (-1 means all pages)."""
 
     task_type: str
-    """Task type (e.g., 'dataflow', 'raptor', 'graphrag')."""
+    """Task type (e.g., standard or 'dataflow')."""
 
     dataflow_id: str
     """Dataflow/pipeline identifier."""
@@ -145,8 +144,6 @@ class TaskDict(TypedDict, total=False):
 
     file: Any
     """File object for dataflow processing."""
-
-
 
 
 # ============================================================================
@@ -174,7 +171,6 @@ class TaskLimiters:
     embed: asyncio.Semaphore = None
     """Asyncio semaphore for embedding rate limiting."""
 
-    kg: asyncio.Semaphore = None
     """Asyncio semaphore for knowledge graph rate limiting."""
 
 
@@ -412,7 +408,7 @@ class TaskContext:
 
     @property
     def task_type(self) -> str:
-        """Task type (e.g., 'dataflow', 'raptor', 'graphrag')."""
+        """Task type (e.g., standard or 'dataflow')."""
         return self._task.get("task_type", self._DEFAULTS["task_type"])
 
     @property
@@ -436,8 +432,6 @@ class TaskContext:
 
     # =========================================================================
     # =========================================================================
-
-
 
 
     # =========================================================================
@@ -485,10 +479,6 @@ class TaskContext:
         """Asyncio semaphore for embedding rate limiting."""
         return self.limiters.embed or asyncio.Semaphore(1)
 
-    @property
-    def kg_limiter(self) -> asyncio.Semaphore:
-        """Asyncio semaphore for knowledge graph rate limiting."""
-        return self.limiters.kg or asyncio.Semaphore(1)
 
     # =========================================================================
     # Context and interceptor properties

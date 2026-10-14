@@ -371,58 +371,21 @@ def get_parser_config(chunk_method, parser_config):
             "auto_questions": 0,
             "html4excel": False,
             "topn_tags": 3,
-            "raptor": {
-                "use_raptor": True,
-                "prompt": "Summarize the paragraphs below without inventing facts or changing numbers.\nOutput exactly two parts in the same language as the source:\n1. First line: a concise title only.\n2. Following lines: a concise summary of the content.\nDo not output labels, Markdown headings, bullet points, or any other commentary.\n\nParagraphs:\n{cluster_content}",
-                "max_token": 512,
-                "clustering_threshold": 0.3,
-                "clustering_ratio": 0.5,
-                "max_cluster": 64,
-                "random_seed": 0,
-            },
-            "graphrag": {
-                "use_graphrag": True,
-                "entity_types": [
-                    "organization",
-                    "person",
-                    "geo",
-                    "event",
-                    "category",
-                ],
-                "method": "light",
-                "batch_chunk_token_size": 4096,
-                "retry_attempts": 2,
-                "retry_backoff_seconds": 2.0,
-                "retry_backoff_max_seconds": 60.0,
-                "build_subgraph_timeout_per_chunk_seconds": 300,
-                "build_subgraph_min_timeout_seconds": 600,
-                "merge_timeout_seconds": 180,
-                "resolution_timeout_seconds": 1800,
-                "community_timeout_seconds": 1800,
-                "lock_acquire_timeout_seconds": 600,
-            },
             "parent_child": {
                 "use_parent_child": False,
                 "children_delimiter": "\n",
             },
         },
-        "qa": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
+        "qa": None,
         "tag": None,
         "resume": None,
-        "manual": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
+        "manual": None,
         "table": None,
-        "paper": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
-        "book": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
-        "laws": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
-        "presentation": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
+        "paper": None,
+        "book": None,
+        "laws": None,
+        "presentation": None,
         "one": None,
-        "knowledge_graph": {
-            "chunk_token_num": 8192,
-            "delimiter": "\n",
-            "entity_types": ["organization", "person", "location", "event", "time"],
-            "raptor": {"use_raptor": False},
-            "graphrag": {"use_graphrag": False},
-        },
         "email": None,
         "picture": None,
     }
@@ -439,7 +402,6 @@ def get_parser_config(chunk_method, parser_config):
         # If parser_config is provided but no defaults for this method
         merged_config = deep_merge(base_defaults, parser_config)
     else:
-        # Ensure raptor and graph_rag fields have default values if not provided
         merged_config = deep_merge(base_defaults, default_config)
         merged_config = deep_merge(merged_config, parser_config)
 

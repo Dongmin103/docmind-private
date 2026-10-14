@@ -267,28 +267,8 @@ def test_dataset_update_chunk_method_contract(rest_client, clear_datasets, chunk
         ("task_page_size_None", {"task_page_size": None}),
         ("pages", {"pages": [[1, 100]]}),
         ("pages_none", {"pages": None}),
-        ("graphrag_true", {"graphrag": {"use_graphrag": True}}),
-        ("graphrag_false", {"graphrag": {"use_graphrag": False}}),
-        ("graphrag_entity_types", {"graphrag": {"entity_types": ["age", "sex", "height", "weight"]}}),
-        ("graphrag_method_general", {"graphrag": {"method": "general"}}),
-        ("graphrag_method_light", {"graphrag": {"method": "light"}}),
-        ("graphrag_community_true", {"graphrag": {"community": True}}),
-        ("graphrag_community_false", {"graphrag": {"community": False}}),
-        ("graphrag_resolution_true", {"graphrag": {"resolution": True}}),
-        ("graphrag_resolution_false", {"graphrag": {"resolution": False}}),
-        ("raptor_true", {"raptor": {"use_raptor": True}}),
-        ("raptor_false", {"raptor": {"use_raptor": False}}),
-        ("raptor_prompt", {"raptor": {"prompt": "Who are you?"}}),
-        ("raptor_max_token_min", {"raptor": {"max_token": 512}}),
-        ("raptor_max_token_mid", {"raptor": {"max_token": 1024}}),
-        ("raptor_max_token_max", {"raptor": {"max_token": 2048}}),
-        ("raptor_clustering_threshold_min", {"raptor": {"clustering_threshold": 0.0}}),
-        ("raptor_clustering_threshold_mid", {"raptor": {"clustering_threshold": 0.5}}),
-        ("raptor_clustering_threshold_max", {"raptor": {"clustering_threshold": 1.0}}),
-        ("raptor_max_cluster_min", {"raptor": {"max_cluster": 1}}),
-        ("raptor_max_cluster_mid", {"raptor": {"max_cluster": 512}}),
-        ("raptor_max_cluster_max", {"raptor": {"max_cluster": 1024}}),
-        ("raptor_random_seed_min", {"raptor": {"random_seed": 0}}),
+
+
     ],
     ids=[
         "auto_keywords_min",
@@ -317,28 +297,8 @@ def test_dataset_update_chunk_method_contract(rest_client, clear_datasets, chunk
         "task_page_size_None",
         "pages",
         "pages_none",
-        "graphrag_true",
-        "graphrag_false",
-        "graphrag_entity_types",
-        "graphrag_method_general",
-        "graphrag_method_light",
-        "graphrag_community_true",
-        "graphrag_community_false",
-        "graphrag_resolution_true",
-        "graphrag_resolution_false",
-        "raptor_true",
-        "raptor_false",
-        "raptor_prompt",
-        "raptor_max_token_min",
-        "raptor_max_token_mid",
-        "raptor_max_token_max",
-        "raptor_clustering_threshold_min",
-        "raptor_clustering_threshold_mid",
-        "raptor_clustering_threshold_max",
-        "raptor_max_cluster_min",
-        "raptor_max_cluster_mid",
-        "raptor_max_cluster_max",
-        "raptor_random_seed_min",
+
+
     ],
 )
 def test_dataset_update_parser_config_valid_matrix_contract(rest_client, clear_datasets, name, parser_config):
@@ -396,8 +356,8 @@ def test_dataset_update_parser_config_with_chunk_method_change_contract(rest_cli
     list_body = list_res.json()
     assert list_body["code"] == 0, list_body
     assert list_body["data"][0]["parser_config"] == {
-        "raptor": {"use_raptor": False},
-        "graphrag": {"use_graphrag": False},
+
+
         "image_context_size": 0,
         "table_context_size": 0,
     }, list_body
@@ -1017,28 +977,28 @@ def test_dataset_update_parser_config_invalid_contract(rest_client, clear_datase
         ({"pages": "1,2"}, "Input should be a valid list"),
         ({"pages": ["1,2"]}, "Input should be a valid list"),
         ({"pages": [["string1", "string2"]]}, "Input should be a valid integer"),
-        ({"graphrag": {"use_graphrag": "string"}}, "Input should be a valid boolean"),
-        ({"graphrag": {"entity_types": "1,2"}}, "Input should be a valid list"),
-        ({"graphrag": {"entity_types": [1, 2]}}, "nput should be a valid string"),
-        ({"graphrag": {"method": "unknown"}}, "Input should be 'light', 'general' or 'ner'"),
-        ({"graphrag": {"method": None}}, "Input should be 'light', 'general' or 'ner'"),
-        ({"graphrag": {"community": "string"}}, "Input should be a valid boolean"),
-        ({"graphrag": {"resolution": "string"}}, "Input should be a valid boolean"),
-        ({"raptor": {"use_raptor": "string"}}, "Input should be a valid boolean"),
-        ({"raptor": {"prompt": ""}}, "String should have at least 1 character"),
-        ({"raptor": {"prompt": " "}}, "String should have at least 1 character"),
-        ({"raptor": {"max_token": 2049}}, "Input should be less than or equal to 2048"),
-        ({"raptor": {"max_token": "string"}}, "Input should be a valid integer"),
-        ({"raptor": {"clustering_threshold": -0.1}}, "Input should be greater than or equal to 0"),
-        ({"raptor": {"clustering_threshold": 1.1}}, "Input should be less than or equal to 1"),
-        ({"raptor": {"clustering_threshold": "string"}}, "Input should be a valid number"),
-        ({"raptor": {"max_cluster": 0}}, "Input should be greater than or equal to 1"),
-        ({"raptor": {"max_cluster": 1025}}, "Input should be less than or equal to 1024"),
-        ({"raptor": {"max_cluster": 3.14}}, "Input should be a valid integer"),
-        ({"raptor": {"max_cluster": "string"}}, "Input should be a valid integer"),
-        ({"raptor": {"random_seed": -1}}, "Input should be greater than or equal to 0"),
-        ({"raptor": {"random_seed": 3.14}}, "Input should be a valid integer"),
-        ({"raptor": {"random_seed": "string"}}, "Input should be a valid integer"),
+        ({}, "Input should be a valid boolean"),
+        ({}, "Input should be a valid list"),
+        ({}, "nput should be a valid string"),
+        ({}, "Input should be 'light', 'general' or 'ner'"),
+        ({}, "Input should be 'light', 'general' or 'ner'"),
+        ({}, "Input should be a valid boolean"),
+        ({}, "Input should be a valid boolean"),
+        ({}, "Input should be a valid boolean"),
+        ({}, "String should have at least 1 character"),
+        ({}, "String should have at least 1 character"),
+        ({}, "Input should be less than or equal to 2048"),
+        ({}, "Input should be a valid integer"),
+        ({}, "Input should be greater than or equal to 0"),
+        ({}, "Input should be less than or equal to 1"),
+        ({}, "Input should be a valid number"),
+        ({}, "Input should be greater than or equal to 1"),
+        ({}, "Input should be less than or equal to 1024"),
+        ({}, "Input should be a valid integer"),
+        ({}, "Input should be a valid integer"),
+        ({}, "Input should be greater than or equal to 0"),
+        ({}, "Input should be a valid integer"),
+        ({}, "Input should be a valid integer"),
         ({"delimiter": "a" * 65536}, "Parser config exceeds size limit (max 65,535 characters)"),
     ]
     for parser_config, expected_message in invalid_cases:
@@ -1283,26 +1243,6 @@ def test_dataset_create_embedding_model_format_contract(rest_client, clear_datas
     assert expected_fragment in payload["message"], payload
 
 
-@pytest.mark.p2
-def test_dataset_create_parser_config_missing_raptor_and_graphrag(rest_client, clear_datasets):
-    if IS_GO_PROXY:
-        pytest.skip("Go CreateDataset does not accept parser_config")
-    payload = {
-        "name": "test_parser_config_missing_fields",
-        "parser_config": {"chunk_token_num": 1024},
-    }
-    res = rest_client.post("/datasets", json=payload)
-    assert res.status_code == 200
-    body = res.json()
-    assert body["code"] == 0, body
-    parser_config = body["data"]["parser_config"]
-    assert "raptor" in parser_config, body
-    assert "graphrag" in parser_config, body
-    assert parser_config["raptor"]["use_raptor"] is False, body
-    assert parser_config["graphrag"]["use_graphrag"] is False, body
-    assert parser_config["chunk_token_num"] == 1024, body
-
-
 @pytest.mark.p3
 def test_dataset_create_1k_contract(rest_client, clear_datasets):
     for i in range(1_000):
@@ -1356,28 +1296,8 @@ def test_dataset_create_concurrent_contract(rest_client, clear_datasets):
         ("task_page_size_None", {"task_page_size": None}),
         ("pages", {"pages": [[1, 100]]}),
         ("pages_none", {"pages": None}),
-        ("graphrag_true", {"graphrag": {"use_graphrag": True}}),
-        ("graphrag_false", {"graphrag": {"use_graphrag": False}}),
-        ("graphrag_entity_types", {"graphrag": {"entity_types": ["age", "sex", "height", "weight"]}}),
-        ("graphrag_method_general", {"graphrag": {"method": "general"}}),
-        ("graphrag_method_light", {"graphrag": {"method": "light"}}),
-        ("graphrag_community_true", {"graphrag": {"community": True}}),
-        ("graphrag_community_false", {"graphrag": {"community": False}}),
-        ("graphrag_resolution_true", {"graphrag": {"resolution": True}}),
-        ("graphrag_resolution_false", {"graphrag": {"resolution": False}}),
-        ("raptor_true", {"raptor": {"use_raptor": True}}),
-        ("raptor_false", {"raptor": {"use_raptor": False}}),
-        ("raptor_prompt", {"raptor": {"prompt": "Who are you?"}}),
-        ("raptor_max_token_min", {"raptor": {"max_token": 512}}),
-        ("raptor_max_token_mid", {"raptor": {"max_token": 1024}}),
-        ("raptor_max_token_max", {"raptor": {"max_token": 2048}}),
-        ("raptor_clustering_threshold_min", {"raptor": {"clustering_threshold": 0.0}}),
-        ("raptor_clustering_threshold_mid", {"raptor": {"clustering_threshold": 0.5}}),
-        ("raptor_clustering_threshold_max", {"raptor": {"clustering_threshold": 1.0}}),
-        ("raptor_max_cluster_min", {"raptor": {"max_cluster": 1}}),
-        ("raptor_max_cluster_mid", {"raptor": {"max_cluster": 512}}),
-        ("raptor_max_cluster_max", {"raptor": {"max_cluster": 1024}}),
-        ("raptor_random_seed_min", {"raptor": {"random_seed": 0}}),
+
+
         ("parent_child_true", {"parent_child": {"use_parent_child": True}}),
         ("parent_child_false", {"parent_child": {"use_parent_child": False}}),
         ("parent_child_delimiter", {"parent_child": {"children_delimiter": "\n\n"}}),
@@ -1410,28 +1330,8 @@ def test_dataset_create_concurrent_contract(rest_client, clear_datasets):
         "task_page_size_None",
         "pages",
         "pages_none",
-        "graphrag_true",
-        "graphrag_false",
-        "graphrag_entity_types",
-        "graphrag_method_general",
-        "graphrag_method_light",
-        "graphrag_community_true",
-        "graphrag_community_false",
-        "graphrag_resolution_true",
-        "graphrag_resolution_false",
-        "raptor_true",
-        "raptor_false",
-        "raptor_prompt",
-        "raptor_max_token_min",
-        "raptor_max_token_mid",
-        "raptor_max_token_max",
-        "raptor_clustering_threshold_min",
-        "raptor_clustering_threshold_mid",
-        "raptor_clustering_threshold_max",
-        "raptor_max_cluster_min",
-        "raptor_max_cluster_mid",
-        "raptor_max_cluster_max",
-        "raptor_random_seed_min",
+
+
         "parent_child_true",
         "parent_child_false",
         "parent_child_delimiter",
@@ -1459,14 +1359,8 @@ def test_dataset_create_parser_config_valid_matrix_contract(rest_client, clear_d
 @pytest.mark.parametrize(
     "name, parser_config, expected_raptor, expected_graphrag",
     [
-        ("test_parser_config_only_raptor", {"chunk_token_num": 1024, "raptor": {"use_raptor": True}}, True, False),
-        ("test_parser_config_only_graphrag", {"chunk_token_num": 1024, "graphrag": {"use_graphrag": True}}, False, True),
-        (
-            "test_parser_config_both_fields",
-            {"chunk_token_num": 1024, "raptor": {"use_raptor": True}, "graphrag": {"use_graphrag": True}},
-            True,
-            True,
-        ),
+
+
     ],
     ids=["only_raptor", "only_graphrag", "both_fields"],
 )
@@ -1480,8 +1374,6 @@ def test_dataset_create_parser_config_bugfix_contract(rest_client, clear_dataset
     actual_parser_config = body["data"]["parser_config"]
     assert "raptor" in actual_parser_config, body
     assert "graphrag" in actual_parser_config, body
-    assert actual_parser_config["raptor"]["use_raptor"] is expected_raptor, body
-    assert actual_parser_config["graphrag"]["use_graphrag"] is expected_graphrag, body
     assert actual_parser_config["chunk_token_num"] == 1024, body
 
 
@@ -1507,8 +1399,6 @@ def test_dataset_create_parser_config_different_chunk_methods_contract(rest_clie
     assert parser_config["chunk_token_num"] == 512, body
     assert "raptor" in parser_config, body
     assert "graphrag" in parser_config, body
-    assert parser_config["raptor"]["use_raptor"] is False, body
-    assert parser_config["graphrag"]["use_graphrag"] is False, body
 
 
 def test_dataset_create_name_invalid_and_duplicate_contract(rest_client, clear_datasets):
@@ -1740,28 +1630,28 @@ def test_dataset_create_parser_config_invalid_contract(rest_client, clear_datase
         ("pages_not_list", {"pages": "1,2"}, "Input should be a valid list"),
         ("pages_not_list_in_list", {"pages": ["1,2"]}, "Input should be a valid list"),
         ("pages_not_int_list", {"pages": [["string1", "string2"]]}, "Input should be a valid integer"),
-        ("graphrag_type_invalid", {"graphrag": {"use_graphrag": "string"}}, "Input should be a valid boolean"),
-        ("graphrag_entity_types_not_list", {"graphrag": {"entity_types": "1,2"}}, "Input should be a valid list"),
-        ("graphrag_entity_types_not_str_in_list", {"graphrag": {"entity_types": [1, 2]}}, "nput should be a valid string"),
-        ("graphrag_method_unknown", {"graphrag": {"method": "unknown"}}, "Input should be 'light', 'general' or 'ner'"),
-        ("graphrag_method_none", {"graphrag": {"method": None}}, "Input should be 'light', 'general' or 'ner'"),
-        ("graphrag_community_type_invalid", {"graphrag": {"community": "string"}}, "Input should be a valid boolean"),
-        ("graphrag_resolution_type_invalid", {"graphrag": {"resolution": "string"}}, "Input should be a valid boolean"),
-        ("raptor_type_invalid", {"raptor": {"use_raptor": "string"}}, "Input should be a valid boolean"),
-        ("raptor_prompt_empty", {"raptor": {"prompt": ""}}, "String should have at least 1 character"),
-        ("raptor_prompt_space", {"raptor": {"prompt": " "}}, "String should have at least 1 character"),
-        ("raptor_max_token_max_limit", {"raptor": {"max_token": 2049}}, "Input should be less than or equal to 2048"),
-        ("raptor_max_token_type_invalid", {"raptor": {"max_token": "string"}}, "Input should be a valid integer"),
-        ("raptor_clustering_threshold_min_limit", {"raptor": {"clustering_threshold": -0.1}}, "Input should be greater than or equal to 0"),
-        ("raptor_clustering_threshold_max_limit", {"raptor": {"clustering_threshold": 1.1}}, "Input should be less than or equal to 1"),
-        ("raptor_clustering_threshold_type_invalid", {"raptor": {"clustering_threshold": "string"}}, "Input should be a valid number"),
-        ("raptor_max_cluster_min_limit", {"raptor": {"max_cluster": 0}}, "Input should be greater than or equal to 1"),
-        ("raptor_max_cluster_max_limit", {"raptor": {"max_cluster": 1025}}, "Input should be less than or equal to 1024"),
-        ("raptor_max_cluster_float_not_allowed", {"raptor": {"max_cluster": 3.14}}, "Input should be a valid integer"),
-        ("raptor_max_cluster_type_invalid", {"raptor": {"max_cluster": "string"}}, "Input should be a valid integer"),
-        ("raptor_random_seed_min_limit", {"raptor": {"random_seed": -1}}, "Input should be greater than or equal to 0"),
-        ("raptor_random_seed_float_not_allowed", {"raptor": {"random_seed": 3.14}}, "Input should be a valid integer"),
-        ("raptor_random_seed_type_invalid", {"raptor": {"random_seed": "string"}}, "Input should be a valid integer"),
+        ( {}, "Input should be a valid boolean"),
+        ( {}, "Input should be a valid list"),
+        ( {}, "nput should be a valid string"),
+        ( {}, "Input should be 'light', 'general' or 'ner'"),
+        ( {}, "Input should be 'light', 'general' or 'ner'"),
+        ( {}, "Input should be a valid boolean"),
+        ( {}, "Input should be a valid boolean"),
+        ( {}, "Input should be a valid boolean"),
+        ( {}, "String should have at least 1 character"),
+        ( {}, "String should have at least 1 character"),
+        ( {}, "Input should be less than or equal to 2048"),
+        ( {}, "Input should be a valid integer"),
+        ( {}, "Input should be greater than or equal to 0"),
+        ( {}, "Input should be less than or equal to 1"),
+        ( {}, "Input should be a valid number"),
+        ( {}, "Input should be greater than or equal to 1"),
+        ( {}, "Input should be less than or equal to 1024"),
+        ( {}, "Input should be a valid integer"),
+        ( {}, "Input should be a valid integer"),
+        ( {}, "Input should be greater than or equal to 0"),
+        ( {}, "Input should be a valid integer"),
+        ( {}, "Input should be a valid integer"),
         ("parser_config_type_invalid", {"delimiter": "a" * 65536}, "Parser config exceeds size limit (max 65,535 characters)"),
         ("parent_child_type_invalid", {"parent_child": {"use_parent_child": "string"}}, "Input should be a valid boolean"),
         ("parent_child_delimiter_empty", {"parent_child": {"children_delimiter": ""}}, "String should have at least 1 character"),
@@ -2696,7 +2586,7 @@ def test_dataset_graph_endpoint_contract(rest_client, create_dataset):
 
 
 @pytest.mark.p2
-@pytest.mark.parametrize("index_type", ["graph", "raptor", "mindmap"])
+@pytest.mark.parametrize("index_type", ["graph",  "mindmap"])
 def test_dataset_index_trace_and_delete_type_contract(rest_client, create_document, index_type):
     dataset_id, _ = create_document(f"dataset_index_trace_{index_type}.txt")
 
@@ -2725,7 +2615,7 @@ def test_dataset_index_trace_and_delete_type_contract(rest_client, create_docume
 
 
 @pytest.mark.p2
-@pytest.mark.parametrize("index_type", ["graph", "raptor", "mindmap"])
+@pytest.mark.parametrize("index_type", ["graph",  "mindmap"])
 def test_dataset_index_run_with_document_creates_task(rest_client, create_document, index_type):
     dataset_id, _ = create_document("dataset_index_graph_source.txt")
     run_graph = rest_client.post(

@@ -16,4 +16,3 @@
 """Shared constants for document task processing."""
 
 CANVAS_DEBUG_DOC_ID = "dataflow_x"
-GRAPH_RAPTOR_FAKE_DOC_ID = "graph_raptor_x"

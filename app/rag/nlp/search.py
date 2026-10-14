@@ -724,8 +724,7 @@ class Dealer:
             "candidate_mode": candidate_mode,
             "candidate_vector_similarity_weight": candidate_vector_similarity_weight,
         }
-        if isinstance(must_not, dict) and must_not:
-            req["must_not"] = must_not
+        req["must_not"] = must_not or {"exists": "compile_kwd"}
         logging.debug(f"[Search] page={page}, page_size={page_size}, candidate_window={candidate_window}")
 
         if isinstance(tenant_ids, str):

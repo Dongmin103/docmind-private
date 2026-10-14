@@ -36,8 +36,6 @@ class FakeGaussDBConnection:
         return "gaussdb"
 
 
-
-
 class FakeStorage:
     def health(self):
         return True
@@ -86,10 +84,7 @@ def _install_settings_import_stubs(monkeypatch):
         _install_module(monkeypatch, f"rag.utils.{short_name}", **attrs)
 
     fake_search = types.SimpleNamespace(Dealer=lambda conn: ("dealer", conn))
-    fake_kg_search = types.SimpleNamespace(KGSearch=lambda conn: ("kg", conn))
     _install_module(monkeypatch, "rag.nlp", search=fake_search)
-    _install_module(monkeypatch, "rag.graphrag", search=fake_kg_search)
-    _install_module(monkeypatch, "rag.graphrag.search", KGSearch=fake_kg_search.KGSearch)
 
 
 def _import_settings(monkeypatch):

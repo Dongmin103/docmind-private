@@ -62,7 +62,6 @@ def get_parser(parser_id: str):
         ParserType.ONE.value: one,
         ParserType.AUDIO.value: audio,
         ParserType.EMAIL.value: email,
-        ParserType.KG.value: naive,
         ParserType.TAG.value: tag,
     }
     return factory[parser_id.lower()]

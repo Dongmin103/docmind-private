@@ -63,13 +63,6 @@ class TestRunIndex:
         assert res["code"] == 0, res
         assert res["data"].get("task_id"), res
 
-    @pytest.mark.p2
-    def test_run_index_raptor(self, HttpApiAuth, add_dataset_func, tmp_path):
-        dataset_id = add_dataset_func
-        bulk_upload_documents(HttpApiAuth, dataset_id, 1, tmp_path)
-        res = run_index(HttpApiAuth, dataset_id, "raptor")
-        assert res["code"] == 0, res
-        assert res["data"].get("task_id"), res
 
     @pytest.mark.p2
     def test_run_index_mindmap(self, HttpApiAuth, add_dataset_func, tmp_path):
@@ -101,11 +94,6 @@ class TestDeleteIndex:
         res = delete_index(HttpApiAuth, dataset_id, "graph")
         assert res["code"] == 0, res
 
-    @pytest.mark.p2
-    def test_delete_raptor(self, HttpApiAuth, add_dataset_func):
-        dataset_id = add_dataset_func
-        res = delete_index(HttpApiAuth, dataset_id, "raptor")
-        assert res["code"] == 0, res
 
     @pytest.mark.p2
     def test_delete_mindmap(self, HttpApiAuth, add_dataset_func):
@@ -132,15 +120,6 @@ class TestTraceIndex:
         res = trace_index(HttpApiAuth, dataset_id, "graph")
         assert res["code"] == 0, res
 
-    @pytest.mark.p2
-    def test_trace_index_raptor(self, HttpApiAuth, add_dataset_func, tmp_path):
-        dataset_id = add_dataset_func
-        bulk_upload_documents(HttpApiAuth, dataset_id, 1, tmp_path)
-        res = run_index(HttpApiAuth, dataset_id, "raptor")
-        assert res["code"] == 0, res
-        _index_task_created(HttpApiAuth, dataset_id, "raptor")
-        res = trace_index(HttpApiAuth, dataset_id, "raptor")
-        assert res["code"] == 0, res
 
     @pytest.mark.p2
     def test_trace_index_mindmap(self, HttpApiAuth, add_dataset_func, tmp_path):

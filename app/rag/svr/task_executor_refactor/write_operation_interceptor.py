@@ -32,7 +32,6 @@ ALLOWED_METHOD_NAMES = {
     "DocMetadataService.update_document_metadata",
     "PipelineOperationLogService.record_pipeline_operation",
     "PipelineOperationLogService.create",
-    "delete_raptor_chunks",
     "docStoreConn.insert",
     "docStoreConn.delete",
 }

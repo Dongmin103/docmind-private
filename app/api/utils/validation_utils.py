@@ -352,75 +352,6 @@ class Base(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
-class RaptorConfig(Base):
-    """Dataset parser configuration for RAPTOR summary generation."""
-
-    use_raptor: Annotated[bool, Field(default=False)]
-    prompt: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, min_length=1),
-        Field(
-            default="Summarize the paragraphs below without inventing facts or changing numbers.\nOutput exactly two parts in the same language as the source:\n1. First line: a concise title only.\n2. Following lines: a concise summary of the content.\nDo not output labels, Markdown headings, bullet points, or any other commentary.\n\nParagraphs:\n{cluster_content}"
-        ),
-    ]
-    max_token: Annotated[int, Field(default=512, ge=512, le=2048)]
-    clustering_threshold: Annotated[float, Field(default=0.3, ge=0.0, le=1.0)]
-    clustering_ratio: Annotated[float, Field(default=0.5, ge=0.0, le=1.0)]
-    max_cluster: Annotated[int, Field(default=64, ge=1, le=1024)]
-    random_seed: Annotated[int, Field(default=0, ge=0)]
-    scope: Annotated[Literal["file", "dataset"], Field(default="file")]
-    auto_disable_for_structured_data: Annotated[bool, Field(default=True)]
-
-    @model_validator(mode="before")
-    @classmethod
-    def normalize_legacy_fields(cls, value: Any) -> Any:
-        """Accept old RAPTOR fields but do not retain them in the config."""
-        if not isinstance(value, dict):
-            return value
-
-        normalized = dict(value)
-        changed_fields = []
-        legacy_ext = normalized.pop("ext", None)
-        if legacy_ext is not None:
-            changed_fields.append("ext")
-        if isinstance(legacy_ext, dict) and normalized.get("clustering_threshold") is None:
-            if "clustering_threshold" in legacy_ext:
-                normalized["clustering_threshold"] = legacy_ext["clustering_threshold"]
-                changed_fields.append("ext.clustering_threshold")
-
-        for field in ("threshold", "clustering_method", "tree_builder"):
-            if field in normalized:
-                normalized.pop(field)
-                changed_fields.append(field)
-        max_token = normalized.get("max_token")
-        if isinstance(max_token, (int, float)) and not isinstance(max_token, bool) and max_token < 512:
-            normalized["max_token"] = 512
-            changed_fields.append("max_token")
-        if changed_fields:
-            logging.debug("RaptorConfig normalized legacy fields: %s", sorted(changed_fields))
-        return normalized
-
-
-class GraphragConfig(Base):
-    """Dataset parser configuration for GraphRAG generation."""
-
-    use_graphrag: Annotated[bool, Field(default=False)]
-    entity_types: Annotated[list[str], Field(default_factory=lambda: ["organization", "person", "geo", "event", "category"])]
-    method: Annotated[Literal["light", "general", "ner"], Field(default="light")]
-    community: Annotated[bool, Field(default=False)]
-    resolution: Annotated[bool, Field(default=False)]
-    batch_chunk_token_size: Annotated[int, Field(default=4096, ge=512, le=8196)]
-    retry_attempts: Annotated[int, Field(default=2, ge=1, le=10)]
-    retry_backoff_seconds: Annotated[float, Field(default=2.0, ge=0.0, le=600.0)]
-    retry_backoff_max_seconds: Annotated[float, Field(default=60.0, ge=0.0, le=3600.0)]
-    build_subgraph_timeout_per_chunk_seconds: Annotated[int, Field(default=300, ge=1, le=86400)]
-    build_subgraph_min_timeout_seconds: Annotated[int, Field(default=600, ge=1, le=86400)]
-    merge_timeout_seconds: Annotated[int, Field(default=180, ge=0, le=86400)]
-    resolution_timeout_seconds: Annotated[int, Field(default=1800, ge=0, le=86400)]
-    community_timeout_seconds: Annotated[int, Field(default=1800, ge=0, le=86400)]
-    lock_acquire_timeout_seconds: Annotated[int, Field(default=600, ge=0, le=86400)]
-
-
 class ParentChildConfig(Base):
     """Dataset parser configuration for parent-child chunking."""
 
@@ -454,19 +385,16 @@ class ParserConfig(Base):
     auto_questions: Annotated[int, Field(default=0, ge=0, le=10)]
     chunk_token_num: Annotated[int, Field(default=512, ge=1, le=2048)]
     delimiter: Annotated[str, Field(default="\n", min_length=1)]
-    graphrag: Annotated[GraphragConfig, Field(default_factory=lambda: GraphragConfig(use_graphrag=False))]
     html4excel: Annotated[bool, Field(default=False)]
     layout_recognize: Annotated[str, Field(default="DeepDOC")]
     parent_child: Annotated[ParentChildConfig, Field(default_factory=lambda: ParentChildConfig(use_parent_child=False))]
     enable_children: Annotated[bool, Field(default=False)]
     children_delimiter: Annotated[str, Field(default="", min_length=0)]
-    raptor: Annotated[RaptorConfig, Field(default_factory=lambda: RaptorConfig(use_raptor=False))]
     tag_kb_ids: Annotated[list[str], Field(default_factory=list)]
     topn_tags: Annotated[int, Field(default=1, ge=1, le=10)]
     filename_embd_weight: Annotated[float | None, Field(default=0.1, ge=0.0, le=1.0)]
     task_page_size: Annotated[int | None, Field(default=None, ge=1)]
     pages: Annotated[list[list[int]] | None, Field(default=None)]
-    compilation_template_group_id: Annotated[list[str], Field(default_factory=list)]
     ext: Annotated[dict, Field(default={})]
     # Table parser: column name -> "indexing" | "metadata" | "both". Absence => all columns "both".
     # Table parser: "auto" = all columns both (default), "manual" = use table_column_roles. None → treated as "auto".
@@ -487,25 +415,6 @@ class ParserConfig(Base):
             k = key if isinstance(key, str) else str(key)
             out[k] = "indexing" if val == "vectorize" else val
         return out
-
-    @field_validator("compilation_template_group_id", mode="before")
-    @classmethod
-    def normalize_compilation_template_group_ids(cls, v: Any) -> Any:
-        if v is None:
-            return []
-        raw = [v] if isinstance(v, str) else v
-        if not isinstance(raw, list):
-            return []
-        ids: list[str] = []
-        seen: set[str] = set()
-        for group_id in raw:
-            if not isinstance(group_id, str):
-                continue
-            group_id = group_id.strip()
-            if group_id and group_id not in seen:
-                seen.add(group_id)
-                ids.append(group_id)
-        return ids
 
 
 class UpdateDocumentReq(Base):
@@ -533,7 +442,7 @@ class UpdateDocumentReq(Base):
         """Validate an optional document parser method."""
         if chunk_method:
             # Validate chunk method if present
-            valid_chunk_method = {"naive", "manual", "qa", "table", "paper", "book", "laws", "presentation", "picture", "one", "knowledge_graph", "email", "audio", "tag"}
+            valid_chunk_method = {"naive", "manual", "qa", "table", "paper", "book", "laws", "presentation", "picture", "one", "email", "audio", "tag"}
             if chunk_method not in valid_chunk_method:
                 raise PydanticCustomError("format_invalid", "`chunk_method` {chunk_method} doesn't exist", {"chunk_method": chunk_method})
 
@@ -994,7 +903,6 @@ class SearchDatasetReq(BaseModel):
     knn_num_candidates: Annotated[int, Field(default=2048, ge=1, le=10000)]
     similarity_threshold: Annotated[float, Field(default=0.0, ge=0.0, le=1.0)]
     vector_similarity_weight: Annotated[float, Field(default=0.3, ge=0.0, le=1.0)]
-    use_kg: Annotated[bool, Field(default=False)]
     cross_languages: Annotated[list[str], Field(default=[])]
     keyword: Annotated[bool, Field(default=False)]
     search_id: Annotated[str | None, Field(default=None)]
@@ -1002,7 +910,6 @@ class SearchDatasetReq(BaseModel):
     rerank_candidate_limit: Annotated[int | None, Field(default=None, ge=1, le=500)]
     tenant_rerank_id: Annotated[str | None, Field(default=None)]
     meta_data_filter: Annotated[dict | None, Field(default=None)]
-    include_knowledge_compilation: Annotated[bool, Field(default=True)]
 
     @model_validator(mode="after")
     def validate_knn_parameters(self):
@@ -1027,7 +934,6 @@ class SearchDatasetsReq(BaseModel):
     knn_num_candidates: Annotated[int, Field(default=2048, ge=1, le=10000)]
     similarity_threshold: Annotated[float, Field(default=0.0, ge=0.0, le=1.0)]
     vector_similarity_weight: Annotated[float, Field(default=0.3, ge=0.0, le=1.0)]
-    use_kg: Annotated[bool, Field(default=False)]
     cross_languages: Annotated[list[str], Field(default=[])]
     keyword: Annotated[bool, Field(default=False)]
     search_id: Annotated[str | None, Field(default=None)]
@@ -1035,7 +941,6 @@ class SearchDatasetsReq(BaseModel):
     rerank_candidate_limit: Annotated[int | None, Field(default=None, ge=1, le=500)]
     tenant_rerank_id: Annotated[str | None, Field(default=None)]
     meta_data_filter: Annotated[dict | None, Field(default=None)]
-    include_knowledge_compilation: Annotated[bool, Field(default=True)]
 
     @model_validator(mode="after")
     def validate_knn_parameters(self):

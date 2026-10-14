@@ -26,7 +26,6 @@ from api.db import UserTenantRole
 from api.db.db_models import init_database_tables as init_web_db
 from api.db.services import UserService
 from api.db.services.canvas_service import CanvasTemplateService
-from api.db.services.compilation_template_service import CompilationTemplateService
 from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
@@ -175,12 +174,6 @@ def add_graph_templates():
             logging.exception("Add agent templates error for %s: %s", template_path, e)
 
 
-def add_compilation_templates():
-    CompilationTemplateService.ensure_table()
-    CompilationTemplateService.filter_delete([CompilationTemplateService.model.is_builtin])
-    CompilationTemplateService.seed_builtins_from_files()
-
-
 def init_web_data():
     start_time = time.time()
 
@@ -193,7 +186,6 @@ def init_web_data():
     #    init_superuser()
 
     add_graph_templates()
-    add_compilation_templates()
     logging.info("init web data success:{}".format(time.time() - start_time))
 
 

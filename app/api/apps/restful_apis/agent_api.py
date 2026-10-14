@@ -674,7 +674,6 @@ def prompts():
 # Synthetic ``canvas_category`` the frontend passes to list compilation template
 # groups through the merged /agents endpoint. Also the ``type`` discriminator
 # stamped on group items in the merged response.
-_COMPILATION_TEMPLATE_GROUP_CATEGORY = "compilation_template_group"
 
 
 @manager.route("/agents", methods=["GET"])  # noqa: F821
@@ -723,127 +722,7 @@ def list_agents(tenant_id):
         effective_owner_ids = list(requested_owner_ids)
     else:
         effective_owner_ids = list(authorized_owner_ids)
-    include_template_groups = tenant_id in effective_owner_ids
-
-    # Groups-only: when ``compilation_template_group`` is the only selected
-    # category, return just the caller's template groups (no agents) via
-    # list_saved, so the frontend can render a dedicated tab. list_saved
-    # paginates in Python.
-    if canvas_category_list == [_COMPILATION_TEMPLATE_GROUP_CATEGORY]:
-        from api.db.services.compilation_template_group_service import CompilationTemplateGroupService
-
-        groups = []
-        if include_template_groups:
-            try:
-                groups = CompilationTemplateGroupService.list_saved(tenant_id, keywords, "", order_by, desc)
-            except Exception:
-                logging.exception("list_agents: compilation template group list failed for tenant=%s", tenant_id)
-        for group in groups:
-            group["type"] = _COMPILATION_TEMPLATE_GROUP_CATEGORY
-        total = len(groups)
-        if page_number and items_per_page:
-            start = (page_number - 1) * items_per_page
-            groups = groups[start : start + items_per_page]
-        return get_json_result(data={"canvas": groups, "total": total})
-
-    # Split selected categories: ``compilation_template_group`` is synthetic
-    # (resolves to template groups, not agents); everything else filters
-    # agents by canvas_category IN (...).
-    wants_groups = _COMPILATION_TEMPLATE_GROUP_CATEGORY in canvas_category_list
-    agent_categories = [c for c in canvas_category_list if c != _COMPILATION_TEMPLATE_GROUP_CATEGORY]
-
-    # Merge mode: with no ``canvas_category`` (and no agent-only filters), list
-    # the caller's compilation template groups alongside agents, interleaved by
-    # ``update_time``. ``canvas_type`` / ``tags`` are agent-only concepts, so
-    # their presence keeps the response agent-only.
-    merge_groups = not canvas_category_list and not canvas_type and not tags
-    if merge_groups:
-        from api.db.services.compilation_template_group_service import CompilationTemplateGroupService
-
-        # Fetch every matching agent (page_number=0 disables SQL pagination) so
-        # the two sources can be globally ordered before we page in Python.
-        agents, _ = UserCanvasService.get_by_tenant_ids(
-            effective_owner_ids,
-            tenant_id,
-            0,
-            0,
-            order_by,
-            desc,
-            keywords,
-            None,
-            tags,
-            canvas_type,
-        )
-        # Groups are owner-only (no team sharing), so they're scoped to the
-        # caller. Keyword filters the group name; scope is left unfiltered.
-        groups = []
-        if include_template_groups:
-            try:
-                groups = CompilationTemplateGroupService.list_saved(tenant_id, keywords, "", order_by, desc)
-            except Exception:
-                logging.exception("list_agents: compilation template group merge failed for tenant=%s", tenant_id)
-
-        items: list[dict] = []
-        for agent in agents:
-            agent["type"] = "agent"
-            items.append(agent)
-        for group in groups:
-            group["type"] = _COMPILATION_TEMPLATE_GROUP_CATEGORY
-            group["title"] = group["name"]
-            items.append(group)
-
-        # Interleave by update_time (the requested merge key); items missing the
-        # field sort as oldest.
-        items.sort(key=lambda item: item.get("update_time") or 0, reverse=desc)
-
-        total = len(items)
-        if page_number and items_per_page:
-            start = (page_number - 1) * items_per_page
-            items = items[start : start + items_per_page]
-
-        return get_json_result(data={"canvas": items, "total": total})
-
-    # Mixed mode: both template groups and agent categories are selected - fetch
-    # agents filtered by the agent categories and merge with template groups,
-    # interleaved by ``update_time`` (same merge strategy as merge mode).
-    if wants_groups and agent_categories:
-        from api.db.services.compilation_template_group_service import CompilationTemplateGroupService
-
-        agents, _ = UserCanvasService.get_by_tenant_ids(
-            effective_owner_ids,
-            tenant_id,
-            0,
-            0,
-            order_by,
-            desc,
-            keywords,
-            agent_categories,
-            tags,
-            canvas_type,
-        )
-        groups = []
-        if include_template_groups:
-            try:
-                groups = CompilationTemplateGroupService.list_saved(tenant_id, keywords, "", order_by, desc)
-            except Exception:
-                logging.exception("list_agents: compilation template group mixed failed for tenant=%s", tenant_id)
-
-        items = []
-        for agent in agents:
-            agent["type"] = "agent"
-            items.append(agent)
-        for group in groups:
-            group["type"] = _COMPILATION_TEMPLATE_GROUP_CATEGORY
-            group["title"] = group["name"]
-            items.append(group)
-        items.sort(key=lambda item: item.get("update_time") or 0, reverse=desc)
-
-        total = len(items)
-        if page_number and items_per_page:
-            start = (page_number - 1) * items_per_page
-            items = items[start : start + items_per_page]
-
-        return get_json_result(data={"canvas": items, "total": total})
+    agent_categories = canvas_category_list
 
     canvas, total = UserCanvasService.get_by_tenant_ids(
         effective_owner_ids,
@@ -1291,9 +1170,7 @@ async def rerun_agent(tenant_id):
     except DocmindProtectedEvidenceError as error:
         return get_data_error_result(message=error.code)
 
-    from rag.advanced_rag.knowlege_compile.dataset_nav import remove_dataset_nav_doc_sync
 
-    remove_dataset_nav_doc_sync(tenant_id, doc["kb_id"], doc["id"])
     if settings.docStoreConn.index_exist(search.index_name(tenant_id), doc["kb_id"]):
         settings.docStoreConn.delete({"doc_id": doc["id"]}, search.index_name(tenant_id), doc["kb_id"])
     doc["progress_msg"] = ""

@@ -200,7 +200,6 @@ class RAGFlow:
         keyword: bool = False,
         cross_languages: list[str] | None = None,
         metadata_condition: dict | None = None,
-        use_kg: bool = False,
         toc_enhance: bool = False,
     ):
         if document_ids is None:
@@ -218,7 +217,6 @@ class RAGFlow:
             "document_ids": document_ids,
             "cross_languages": cross_languages,
             "metadata_condition": metadata_condition,
-            "use_kg": use_kg,
             "toc_enhance": toc_enhance,
         }
         # Send a POST request to the backend service (using requests library as an example, actual implementation may vary)

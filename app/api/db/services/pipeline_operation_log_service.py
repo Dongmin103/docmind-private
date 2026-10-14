@@ -17,7 +17,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from peewee import fn
 
@@ -27,29 +27,10 @@ from api.db.services.canvas_service import UserCanvasService
 from api.db.services.common_service import CommonService
 from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.db.services.task_service import GRAPH_RAPTOR_FAKE_DOC_ID, TaskService
-from common.constants import PipelineTaskType, TaskStatus
+from common.constants import TaskStatus
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, datetime_format
 
-
-# KB-level fan-out pipeline task types (task row carries a fake doc_id; the real
-# participants live in task["doc_ids"]) → the KB ``<type>_task_finish_at`` column
-# stamped when the task completes. Membership also marks a task as KB-scoped so
-# the per-document progress update is skipped.
-_PIPELINE_TASK_TYPE_TO_FINISH_FIELD = {
-    PipelineTaskType.GRAPH_RAG: "graphrag_task_finish_at",
-    PipelineTaskType.RAPTOR: "raptor_task_finish_at",
-    PipelineTaskType.MINDMAP: "mindmap_task_finish_at",
-    PipelineTaskType.ARTIFACT: "wiki_task_finish_at",
-    PipelineTaskType.SKILL: "skill_task_finish_at",
-    PipelineTaskType.STRUCTURE_GRAPH: "structure_graph_task_finish_at",
-    PipelineTaskType.STRUCTURE_MINDMAP: "structure_mindmap_task_finish_at",
-    PipelineTaskType.TIMELINE: "timeline_task_finish_at",
-    PipelineTaskType.SESSION_GRAPH: "session_graph_task_finish_at",
-    PipelineTaskType.SESSION_ESSENCE: "session_essence_task_finish_at",
-    PipelineTaskType.STRUCTURE: "structure_task_finish_at",
-}
 
 _EMBEDDING_VECTOR_FIELD = re.compile(r"^q_\d+_vec$")
 
@@ -138,16 +119,13 @@ class PipelineOperationLogService(CommonService):
     @classmethod
     @DB.connection_context()
     def create(cls, document_id, pipeline_id, task_type, task_id=None, referred_document_id=None, dsl: str = "{}"):
-        if document_id != GRAPH_RAPTOR_FAKE_DOC_ID:
-            referred_document_id = document_id
+        referred_document_id = document_id
 
-        # no need to update document for KB-level fan-out tasks
-        if task_type not in _PIPELINE_TASK_TYPE_TO_FINISH_FIELD:
-            ok, document = DocumentService.get_by_id(referred_document_id)
-            if not ok:
-                logging.warning(f"Document for referred_document_id {referred_document_id} not found")
-                return None
-            DocumentService.update_progress_immediately([document.to_dict()])
+        ok, document = DocumentService.get_by_id(referred_document_id)
+        if not ok:
+            logging.warning(f"Document for referred_document_id {referred_document_id} not found")
+            return None
+        DocumentService.update_progress_immediately([document.to_dict()])
 
         ok, document = DocumentService.get_by_id(referred_document_id)
         if not ok:
@@ -180,35 +158,13 @@ class PipelineOperationLogService(CommonService):
         if task_type not in VALID_PIPELINE_TASK_TYPES:
             raise ValueError(f"Invalid task type: {task_type}")
 
-        if task_type in _PIPELINE_TASK_TYPE_TO_FINISH_FIELD:
-            # query task to get progress information from task
-            ok, task = TaskService.get_by_id(task_id)
-            if not ok:
-                raise RuntimeError(f"Task not found for dataset {document.kb_id}")
-            title = task_type
-            document_name = task_type
-            operation_status = TaskStatus.DONE.value if task.progress == 1 else TaskStatus.FAIL.value if task.progress == -1 else TaskStatus.RUNNING.value
-            progress = task.progress
-            progress_msg = task.progress_msg
-            process_begin_at = task.begin_at
-            process_duration = task.process_duration
-
-            if not cls._is_final_state(progress, operation_status):
-                logging.info("Skip non-final dataset pipeline operation log task_id=%s task_type=%s progress=%s", task_id, task_type, progress)
-                return None
-
-            finish_at = process_begin_at + timedelta(seconds=process_duration)
-            KnowledgebaseService.update_by_id(
-                document.kb_id,
-                {_PIPELINE_TASK_TYPE_TO_FINISH_FIELD[task_type]: finish_at},
-            )
-        elif not cls._is_final_state(progress, operation_status):
+        if not cls._is_final_state(progress, operation_status):
             logging.info("Skip non-final file pipeline operation log document_id=%s task_type=%s progress=%s", document_id, task_type, progress)
             return None
 
         log = dict(
             id=get_uuid(),
-            document_id=document_id,  # GRAPH_RAPTOR_FAKE_DOC_ID or real document_id
+            document_id=document_id,
             tenant_id=tenant_id,
             kb_id=document.kb_id,
             pipeline_id=pipeline_id,
@@ -235,7 +191,7 @@ class PipelineOperationLogService(CommonService):
         log["update_date"] = datetime_now
         with DB.atomic():
             operation_status_value = operation_status.value if isinstance(operation_status, TaskStatus) else str(operation_status)
-            if document_id != GRAPH_RAPTOR_FAKE_DOC_ID and operation_status_value == TaskStatus.CANCEL.value:
+            if operation_status_value == TaskStatus.CANCEL.value:
                 # Serialize page-task finalizers for the same canceled document.
                 locked_document = Document.select(Document.id, Document.run, Document.update_time).where(Document.id == document.id).for_update().first()
                 if locked_document is None or locked_document.run != TaskStatus.CANCEL.value:
@@ -293,7 +249,6 @@ class PipelineOperationLogService(CommonService):
         else:
             logs = cls.model.select(*fields).where(cls.model.kb_id == kb_id)
 
-        logs = logs.where(cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID)
 
         if operation_status:
             logs = logs.where(cls.model.operation_status.in_([status.value if isinstance(status, TaskStatus) else str(status) for status in operation_status]))
@@ -328,9 +283,9 @@ class PipelineOperationLogService(CommonService):
     def get_dataset_logs_by_kb_id(cls, kb_id, page_number, items_per_page, orderby, desc, operation_status, create_date_from=None, create_date_to=None, keywords=None):
         fields = cls.get_dataset_logs_fields()
         if keywords:
-            logs = cls.model.select(*fields).where((cls.model.kb_id == kb_id), (cls.model.document_id == GRAPH_RAPTOR_FAKE_DOC_ID), (fn.LOWER(cls.model.document_name).contains(keywords.lower())))
+            logs = cls.model.select(*fields).where((cls.model.kb_id == kb_id), (fn.LOWER(cls.model.document_name).contains(keywords.lower())))
         else:
-            logs = cls.model.select(*fields).where((cls.model.kb_id == kb_id), (cls.model.document_id == GRAPH_RAPTOR_FAKE_DOC_ID))
+            logs = cls.model.select(*fields).where((cls.model.kb_id == kb_id))
 
         if operation_status:
             logs = logs.where(cls.model.operation_status.in_([status.value if isinstance(status, TaskStatus) else str(status) for status in operation_status]))

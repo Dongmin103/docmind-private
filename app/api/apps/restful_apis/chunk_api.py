@@ -16,7 +16,6 @@
 import base64
 import binascii
 import datetime
-import json
 import logging
 import re
 
@@ -24,7 +23,6 @@ from pydantic import BaseModel, Field, validator
 from quart import request
 
 from api.apps import login_required
-from api.apps.services import structure_graph_common as sgc
 from api.db.db_models import Document, Task
 from api.db.joint_services.tenant_model_service import (
     get_tenant_default_model_by_type,
@@ -55,7 +53,6 @@ from api.utils.reference_metadata_utils import (
 )
 from common import settings
 from common.constants import LLMType, ParserType, RetCode, TaskStatus
-from common.doc_store.doc_store_base import OrderByExpr
 from common.metadata_utils import convert_conditions, filter_doc_ids_by_metadata
 from common.misc_utils import thread_pool_exec
 from common.string_utils import is_content_empty, remove_redundant_spaces
@@ -204,12 +201,6 @@ def _get_dataset_tenant_id(dataset_id):
     if not ok:
         return None
     return kb.tenant_id
-
-
-def _compilation_template_kind(kind) -> str:
-    if not isinstance(kind, str):
-        return ""
-    return kind.strip().lower().replace("-", "_")
 
 
 def _resolve_reference_metadata(req: dict, search_config: dict | None = None):
@@ -406,7 +397,6 @@ async def retrieval_test(tenant_id):
     if not question:
         return get_result(data={"total": 0, "chunks": [], "doc_aggs": {}})
     doc_ids = req.get("document_ids", [])
-    use_kg = req.get("use_kg", False)
     toc_enhance = req.get("toc_enhance", False)
     langs = req.get("cross_languages", [])
     if not isinstance(doc_ids, list):
@@ -456,9 +446,6 @@ async def retrieval_test(tenant_id):
         return get_error_data_result("`rerank_candidates_count` must be greater than 0")
     if rerank_candidates_count < page * size:
         return get_error_data_result(f"`rerank_candidates_count` must be at least `page` multiplied by `page_size` ({page * size})")
-    include_knowledge_compilation = req.get("include_knowledge_compilation", True)
-    if not isinstance(include_knowledge_compilation, bool):
-        return get_error_data_result("`include_knowledge_compilation` should be a boolean")
     highlight_val = req.get("highlight", None)
     if highlight_val is None:
         highlight = False
@@ -503,7 +490,7 @@ async def retrieval_test(tenant_id):
             rerank_mdl=rerank_mdl,
             highlight=highlight,
             rank_feature=label_question(question, kbs),
-            must_not=None if include_knowledge_compilation else {"exists": "compile_kwd"},
+            must_not={"exists": "compile_kwd"},
             rerank_candidates_count=rerank_candidates_count,
         )
         if toc_enhance:
@@ -512,11 +499,6 @@ async def retrieval_test(tenant_id):
             if cks:
                 ranks["chunks"] = cks
         ranks["chunks"] = settings.retriever.retrieval_by_children(ranks["chunks"], tenant_ids)
-        if use_kg:
-            chat_model_config = get_tenant_default_model_by_type(kb.tenant_id, LLMType.CHAT)
-            ck = await settings.kg_retriever.retrieval(question, [k.tenant_id for k in kbs], kb_ids, embd_mdl, LLMBundle(kb.tenant_id, chat_model_config))
-            if ck["content_with_weight"]:
-                ranks["chunks"].insert(0, ck)
 
         for c in ranks["chunks"]:
             c.pop("vector", None)
@@ -681,392 +663,6 @@ async def get_chunk(tenant_id, dataset_id, document_id, chunk_id):
     except Exception as e:
         if str(e).find("NotFoundError") >= 0:
             return get_result(data=False, message="Chunk not found!", code=RetCode.DATA_ERROR)
-        return server_error_response(e)
-
-
-@manager.route("/datasets/<dataset_id>/documents/<document_id>/structure/graph", methods=["GET"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-async def get_document_structure_graph(tenant_id, dataset_id, document_id):
-    """Return per-template structure graphs for a document.
-
-    Response shape::
-
-        {
-          "templates": [
-            {
-              "template_id": "<id> | 'legacy:<compile_kwd>'",
-              "template_name": "<display name>",
-              "kind": "list | set | hypergraph | timeline | page_index | …",
-              "entities": [...],
-              "relations": [...]
-            },
-            ...
-          ]
-        }
-
-    Rows that pre-date the ``compilation_template_ids`` stamp are surfaced
-    under a synthetic ``legacy:<compile_kwd>`` bucket so an in-flight
-    migration doesn't drop their data on the floor. Empty templates
-    (zero entities AND zero relations) are filtered out.
-    """
-    from api.db.services.compilation_template_group_service import CompilationTemplateGroupService
-    from api.db.services.compilation_template_service import CompilationTemplateService
-    from rag.nlp import search
-
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
-        return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
-    dataset_tenant_id = _get_dataset_tenant_id(dataset_id)
-    if not dataset_tenant_id:
-        return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
-    docs = DocumentService.query(id=document_id, kb_id=dataset_id)
-    if not docs:
-        return get_error_data_result(message=f"you don't own the document {document_id}")
-
-    # Resolve the doc's configured template group → child template ids
-    # so we can render tabs in the order the user picked them.
-    # Artifacts-kind templates render on the dataset Artifact tab, not
-    # here, so they're filtered out.
-    parser_config = docs[0].parser_config or {}
-
-    def _group_ids(raw) -> list[str]:
-        if isinstance(raw, str):
-            raw = [raw]
-        if not isinstance(raw, list):
-            return []
-        ids: list[str] = []
-        seen: set[str] = set()
-        for gid in raw:
-            if not isinstance(gid, str):
-                continue
-            gid = gid.strip()
-            if gid and gid not in seen:
-                seen.add(gid)
-                ids.append(gid)
-        return ids
-
-    group_ids: list[str] = []
-    if isinstance(parser_config, dict):
-        if "compilation_template_group_id" in parser_config:
-            group_ids = _group_ids(parser_config.get("compilation_template_group_id"))
-        elif isinstance(parser_config.get("ext"), dict):
-            group_ids = _group_ids(parser_config["ext"].get("compilation_template_group_id"))
-
-    configured_ids: list[str] = []
-    seen_configured_ids: set[str] = set()
-    template_meta: dict[str, dict] = {}
-    template_meta_by_kind: dict[str, list[dict]] = {}
-    template_meta_by_id: dict[str, dict] = {}
-    for group_id in group_ids:
-        group = CompilationTemplateGroupService.get_saved(group_id, tenant_id)
-        if not group:
-            continue
-        for template in group.get("templates") or []:
-            if not isinstance(template, dict):
-                continue
-            template_id = str(template.get("id") or "").strip()
-            if not template_id or template_id in seen_configured_ids:
-                continue
-            config = template.get("config") if isinstance(template.get("config"), dict) else {}
-            raw_kind = (config.get("kind") if isinstance(config, dict) else "") or template.get("kind") or ""
-            kind_norm = _compilation_template_kind(raw_kind)
-            if kind_norm == "wiki":
-                continue
-            seen_configured_ids.add(template_id)
-            configured_ids.append(template_id)
-            meta = {
-                "template_id": template_id,
-                "template_name": template.get("name") or template_id,
-                "kind": raw_kind or kind_norm,
-                "kind_norm": kind_norm,
-            }
-            template_meta[template_id] = meta
-            template_meta_by_id[template_id] = meta
-            template_meta_by_kind.setdefault(kind_norm, []).append(meta)
-
-    index_name = search.index_name(dataset_tenant_id)
-    keywords = (request.args.get("keywords") or "").strip()
-
-    def _row_template_id(row: dict) -> str | None:
-        raw = row.get("compilation_template_ids")
-        if isinstance(raw, list):
-            for v in raw:
-                if isinstance(v, str) and v.strip():
-                    return v.strip()
-        if isinstance(raw, str) and raw.strip():
-            return raw.strip()
-        return None
-
-    def _resolve_bucket(row: dict) -> tuple[dict, dict]:
-        """``(bucket_meta, scope_filter)`` for a graph/entity row.
-
-        ``bucket_meta`` = ``{template_id, template_name, kind}``;
-        ``scope_filter`` is the raw entity/relation-row filter (doc +
-        template, or legacy compile_kwd) WITHOUT ``knowledge_graph_kwd``.
-        """
-        tid = _row_template_id(row)
-        compile_kwd_val = row.get("compile_kwd") or ""
-        kind_val = row.get("compilation_template_kind_kwd") or compile_kwd_val
-        if tid:
-            bucket_id = tid
-            row_kind_norm = _compilation_template_kind(kind_val)
-            meta = template_meta.get(bucket_id)
-            if not meta:
-                # Pipeline Compiler receives template groups as component
-                # parameters and does not persist those group ids in the
-                # document parser_config. Resolve the exact template id
-                # directly so Pipeline-produced rows do not fall back to
-                # exposing the opaque id as the display name.
-                if bucket_id not in template_meta_by_id:
-                    saved_template = CompilationTemplateService.get_saved(bucket_id, tenant_id)
-                    if saved_template:
-                        template_meta_by_id[bucket_id] = {
-                            "template_id": bucket_id,
-                            "template_name": saved_template.get("name") or bucket_id,
-                            "kind": saved_template.get("kind") or kind_val,
-                            "kind_norm": _compilation_template_kind(saved_template.get("kind")),
-                        }
-                    else:
-                        template_meta_by_id[bucket_id] = {}
-                meta = template_meta_by_id[bucket_id] or None
-            if not meta:
-                kind_matches = template_meta_by_kind.get(row_kind_norm) or []
-                if len(kind_matches) == 1:
-                    meta = kind_matches[0]
-            bucket_name = (meta or {}).get("template_name") or bucket_id
-            bucket_kind = (meta or {}).get("kind") or kind_val
-            scope = {"doc_id": [document_id], "compilation_template_ids": [bucket_id]}
-        else:
-            # Legacy row (pre-dates the template stamp): keyed by compile_kwd
-            # so multiple legacy kinds surface as separate tabs. Scope excludes
-            # rows that DO carry a template id so it can't shadow a real bucket.
-            bucket_id = f"legacy:{compile_kwd_val}"
-            bucket_name = f"Legacy ({compile_kwd_val})"
-            bucket_kind = kind_val
-            scope = {"doc_id": [document_id], "compile_kwd": [compile_kwd_val], "must_not": {"exists": "compilation_template_ids"}}
-        return {"template_id": bucket_id, "template_name": bucket_name, "kind": bucket_kind}, scope
-
-    # ── keywords mode: name matching/KNN → matched entities' subgraph ──
-    if keywords:
-        try:
-            embd_id = DocumentService.get_embd_id(document_id)
-            model_config = resolve_model_config(dataset_tenant_id, LLMType.EMBEDDING.value, embd_id)
-            embd_mdl = TenantLLMService.model_instance(model_config)
-        except Exception:
-            logging.exception("structure graph: embedding bind failed for doc=%s", document_id)
-            return get_result(data={"templates": []})
-        try:
-            bucket_meta, kw_entities, kw_relations = await sgc.keyword_subgraph(
-                index_name,
-                dataset_id,
-                embd_mdl,
-                {"doc_id": [document_id], "knowledge_graph_kwd": ["entity"]},
-                keywords,
-                _resolve_bucket,
-                log_ctx=f"doc={document_id}",
-            )
-        except Exception as e:
-            return server_error_response(e)
-        if not bucket_meta or (not kw_entities and not kw_relations):
-            return get_result(data={"templates": []})
-        bucket = dict(bucket_meta)
-        bucket["entities"] = kw_entities
-        bucket["relations"] = kw_relations
-        return get_result(data={"templates": [bucket]})
-
-    # ── normal mode: per-template subgraph sampling from the raw rows ──
-    # Metadata-only scan of the per-doc graph blob rows (one per
-    # (compile_kwd, template_id)) purely to discover buckets and resolve their
-    # display name/kind — WITHOUT loading the (potentially huge)
-    # content_with_weight. Each bucket's entities/relations are then fetched
-    # from the raw ``knowledge_graph_kwd`` rows with subgraph sampling.
-    meta_fields = ["compile_kwd", "compilation_template_ids", "compilation_template_kind_kwd"]
-    try:
-        res = await thread_pool_exec(
-            settings.docStoreConn.search,
-            meta_fields,
-            [],
-            {"doc_id": [document_id], "knowledge_graph_kwd": ["graph"]},
-            [],
-            OrderByExpr(),
-            0,
-            1000,
-            index_name,
-            [dataset_id],
-        )
-        meta_rows = settings.docStoreConn.get_fields(res, meta_fields) or {}
-    except Exception as e:
-        return server_error_response(e)
-
-    # Discover unique buckets. A template can own multiple compile_kwd blob
-    # rows; scoping by template_id folds them together, matching prior behavior.
-    bucket_metas: dict[str, dict] = {}
-    bucket_scopes: dict[str, dict] = {}
-    for row in meta_rows.values():
-        meta, scope = _resolve_bucket(row)
-        bid = meta["template_id"]
-        if bid not in bucket_metas:
-            bucket_metas[bid] = meta
-            bucket_scopes[bid] = scope
-
-    grouped: dict[str, dict] = {}
-    for bid, meta in bucket_metas.items():
-        try:
-            entities, relations = await sgc.build_bucket(index_name, dataset_id, bucket_scopes[bid])
-        except Exception as e:
-            return server_error_response(e)
-        if not entities and not relations:
-            continue
-        grouped[bid] = {**meta, "entities": entities, "relations": relations}
-
-    # RAPTOR summary graph: a standalone blob (no ``knowledge_graph_kwd``, and
-    # no raw entity/relation rows), so read its content directly and don't
-    # sample it.
-    try:
-        res_raptor = await thread_pool_exec(
-            settings.docStoreConn.search,
-            ["content_with_weight", "compile_kwd"],
-            [],
-            {"doc_id": [document_id], "compile_kwd": ["raptor_graph"]},
-            [],
-            OrderByExpr(),
-            0,
-            16,
-            index_name,
-            [dataset_id],
-        )
-        raptor_rows = settings.docStoreConn.get_fields(res_raptor, ["content_with_weight", "compile_kwd"]) or {}
-    except Exception:
-        logging.exception("structure graph: RAPTOR blob load failed for doc=%s", document_id)
-        raptor_rows = {}
-    for row in raptor_rows.values():
-        try:
-            graph = json.loads(row.get("content_with_weight") or "{}")
-        except Exception:
-            continue
-        if not isinstance(graph, dict):
-            continue
-        r_entities = graph.get("entities") or []
-        r_relations = graph.get("relations") or []
-        if not r_entities and not r_relations:
-            continue
-        rb = grouped.setdefault("raptor", {"template_id": "raptor", "template_name": "RAPTOR Summary", "kind": "raptor", "entities": [], "relations": []})
-        rb["entities"].extend(r_entities)
-        rb["relations"].extend(r_relations)
-
-    # Order: configured templates first (in the user's chosen order),
-    # then any discovered / legacy / raptor buckets after.
-    ordered_ids: list[str] = []
-    for tid in configured_ids:
-        if tid in grouped and tid not in ordered_ids:
-            ordered_ids.append(tid)
-    for bucket_id in grouped:
-        if bucket_id not in ordered_ids:
-            ordered_ids.append(bucket_id)
-
-    page_index_groups = [group for group in grouped.values() if _compilation_template_kind(group.get("kind")) in {"page_index", "pageindex"}]
-    if page_index_groups:
-        # PageIndex nodes should follow the document's chunk order. Use the
-        # current chunk query order directly. Do not derive the order
-        # from page/position metadata because some document formats do not
-        # populate those fields.
-        chunk_order: dict[str, int] = {}
-        try:
-            chunk_res = await settings.retriever.search(
-                {
-                    "doc_ids": [document_id],
-                    "page": 1,
-                    "size": 10000,
-                    "question": "",
-                    "sort": True,
-                    "must_not": {"exists": "compile_kwd"},
-                },
-                index_name,
-                [dataset_id],
-                emb_mdl=None,
-                highlight=True,
-            )
-            for index, chunk_id in enumerate(chunk_res.ids or []):
-                chunk_id = str(chunk_id)
-                if chunk_id:
-                    chunk_order[chunk_id] = index
-        except Exception:
-            logging.exception("structure graph: failed to load document chunk order for PageIndex ordering")
-
-        for group in page_index_groups:
-            original_entities = list(group.get("entities") or [])
-
-            def entity_position(entity: dict, fallback: int):
-                chunk_indexes = [chunk_order[chunk_id] for chunk_id in entity.get("source_chunk_ids") or [] if isinstance(chunk_id, str) and chunk_id in chunk_order]
-                return (min(chunk_indexes), fallback) if chunk_indexes else (float("inf"), fallback)
-
-            group["entities"] = [
-                entity
-                for _, entity in sorted(
-                    enumerate(original_entities),
-                    key=lambda item: entity_position(item[1], item[0]),
-                )
-            ]
-
-    templates_out = [grouped[bid] for bid in ordered_ids if grouped[bid]["entities"] or grouped[bid]["relations"]]
-    return get_result(data={"templates": templates_out})
-
-
-@manager.route("/datasets/<dataset_id>/documents/<document_id>/structure/graph", methods=["DELETE"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-async def delete_document_structure_graph(tenant_id, dataset_id, document_id):
-    """Delete one structure-graph tab for a document.
-
-    Request body::
-
-        {"template_id": "<template id> | legacy:<compile_kwd> | raptor"}
-
-    Template-backed structure tabs remove both the compact graph row and
-    the underlying entity/relation rows. RAPTOR only removes the graph
-    projection row so summary chunks remain available for retrieval.
-    """
-    from rag.nlp import search
-
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
-        return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
-    dataset_tenant_id = _get_dataset_tenant_id(dataset_id)
-    if not dataset_tenant_id:
-        return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
-    docs = DocumentService.query(id=document_id, kb_id=dataset_id)
-    if not docs:
-        return get_error_data_result(message=f"you don't own the document {document_id}")
-
-    req = await get_request_json()
-    template_id = str(req.get("template_id") or "").strip()
-    if not template_id:
-        return get_error_data_result(message="`template_id` is required")
-
-    index_name = search.index_name(dataset_tenant_id)
-
-    def _delete(condition: dict) -> int:
-        return settings.docStoreConn.delete(condition, index_name, dataset_id)
-
-    if denial := _docmind_mutation_denial(document_id, "DELETE_DOCUMENT_STRUCTURE_GRAPH"):
-        return denial
-    try:
-        deleted = 0
-        if template_id == "raptor":
-            deleted += _delete({"doc_id": [document_id], "compile_kwd": ["raptor_graph"]})
-            return get_result(data={"deleted": deleted}, message=f"deleted {deleted} structure graph rows")
-
-        if template_id.startswith("legacy:"):
-            compile_kwd = template_id[len("legacy:") :].strip()
-            if not compile_kwd:
-                return get_error_data_result(message="`template_id` is invalid")
-            base_condition = {"doc_id": [document_id], "compile_kwd": [compile_kwd]}
-        else:
-            base_condition = {"doc_id": [document_id], "compilation_template_ids": [template_id]}
-
-        deleted += _delete({**base_condition, "knowledge_graph_kwd": ["graph"]})
-        deleted += _delete({**base_condition, "knowledge_graph_kwd": ["entity", "relation"]})
-        return get_result(data={"deleted": deleted}, message=f"deleted {deleted} structure graph rows")
-    except Exception as e:
         return server_error_response(e)
 
 

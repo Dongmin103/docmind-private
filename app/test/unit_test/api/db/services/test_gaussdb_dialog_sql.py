@@ -228,12 +228,6 @@ def _install_settings_import_stubs(monkeypatch):
         enrich_chunks_with_document_metadata=lambda chunks, *_args, **_kwargs: chunks,
         resolve_reference_metadata_preferences=lambda *_args, **_kwargs: {},
     )
-    install_module("rag.graphrag.general.mind_map_extractor", MindMapExtractor=_Dummy)
-    advanced_rag = install_module("rag.advanced_rag", DeepResearcher=_Dummy)
-    advanced_rag.__path__ = []
-    install_module("rag.advanced_rag.agentic_rag", RAGTools=_Dummy)
-    install_module("rag.advanced_rag.knowlege_compile")
-    install_module("rag.advanced_rag.knowlege_compile.mind_map_extractor", MindMapExtractor=_Dummy)
     install_module("rag.app.tag", label_question=lambda *_args, **_kwargs: None)
     install_module("rag.nlp.search", index_name=lambda tenant_id: f"ragflow_{tenant_id}")
     install_module(
@@ -250,6 +244,7 @@ def _install_settings_import_stubs(monkeypatch):
     )
     install_module("common.token_utils", num_tokens_from_string=lambda *_args, **_kwargs: 0)
     install_module("rag.utils.tavily_conn", Tavily=_Dummy)
+    install_module("rag.utils.web_search_conn", create_web_search_provider=_Dummy, has_web_search_provider=lambda *_args: False)
     install_module("rag.utils.tts_cache", synthesize_with_cache=lambda *_args, **_kwargs: None)
 
 

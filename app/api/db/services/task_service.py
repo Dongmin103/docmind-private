@@ -39,7 +39,6 @@ from rag.nlp import search
 from rag.utils.redis_conn import REDIS_CONN
 
 CANVAS_DEBUG_DOC_ID = "dataflow_x"
-GRAPH_RAPTOR_FAKE_DOC_ID = "graph_raptor_x"
 TASK_MAX_LOG_LENGTH = int(os.environ.get("TASK_MAX_LOG_LENGTH", 3000))  # TEXT MAX is 64 KiB bytes!
 DOC_CHUNKING_COUNTER_TTL_SECONDS = 7 * 24 * 3600
 
@@ -463,7 +462,7 @@ class TaskService(CommonService):
         if not task:
             logging.warning("Update_progress error: task not found")
             return
-        if task.doc_id not in (CANVAS_DEBUG_DOC_ID, GRAPH_RAPTOR_FAKE_DOC_ID):
+        if task.doc_id != CANVAS_DEBUG_DOC_ID:
             DocumentService.assert_docmind_evidence_mutable(
                 task.doc_id,
                 "UPDATE_DOCUMENT_TASK_PROGRESS",
@@ -671,7 +670,6 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
     parse_task_array = []
     from rag.parser_platform.config import ParserPlatformConfig
     from rag.parser_platform.dispatch import document_source_format
-    from rag.parser_platform.schemas import SourceFormat
 
     parser_platform_config = ParserPlatformConfig.from_env()
     source_format = document_source_format(doc)
@@ -701,7 +699,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
                 pass
         if is_mineru:
             logging.info("Document %s selected MinerU unsplit-task mode with page size %s", doc["id"], MAXIMUM_TASK_PAGE_NUMBER)
-        if doc["parser_id"] in ["one", "knowledge_graph"] or doc["parser_config"].get("toc_extraction", False) or is_mineru:
+        if doc["parser_id"] in ["one"] or doc["parser_config"].get("toc_extraction", False) or is_mineru:
             page_size = MAXIMUM_TASK_PAGE_NUMBER
         page_ranges = doc["parser_config"].get("pages") or [(1, MAXIMUM_PAGE_NUMBER)]
         for s, e in page_ranges:
@@ -731,10 +729,6 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
     for task in parse_task_array:
         hasher = xxhash.xxh64()
         for field in sorted(chunking_config.keys()):
-            if field == "parser_config":
-                for k in ["raptor", "graphrag"]:
-                    if k in chunking_config[field]:
-                        del chunking_config[field][k]
             hasher.update(str(chunking_config[field]).encode("utf-8"))
         for field in ["doc_id", "from_page", "to_page", "parse_run_id", "chunk_set_id"]:
             hasher.update(str(task.get(field, "")).encode("utf-8"))
@@ -842,7 +836,7 @@ def has_canceled(task_id):
 
 def queue_dataflow(tenant_id: str, flow_id: str, task_id: str, doc_id: str = CANVAS_DEBUG_DOC_ID, file: dict = None, priority: int = 0, rerun: bool = False) -> tuple[bool, str]:
 
-    if doc_id not in [CANVAS_DEBUG_DOC_ID, GRAPH_RAPTOR_FAKE_DOC_ID]:
+    if doc_id not in [CANVAS_DEBUG_DOC_ID]:
         DocumentService.assert_docmind_evidence_mutable(
             doc_id,
             "QUEUE_DATAFLOW_RERUN" if rerun else "QUEUE_DATAFLOW_PARSE",
@@ -858,7 +852,7 @@ def queue_dataflow(tenant_id: str, flow_id: str, task_id: str, doc_id: str = CAN
         priority=priority,
         begin_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
-    if doc_id not in [CANVAS_DEBUG_DOC_ID, GRAPH_RAPTOR_FAKE_DOC_ID]:
+    if doc_id not in [CANVAS_DEBUG_DOC_ID]:
         cancel_all_task_of(doc_id)
         kb_id = DocumentService.get_knowledgebase_id(doc_id)
         settings.docStoreConn.delete(

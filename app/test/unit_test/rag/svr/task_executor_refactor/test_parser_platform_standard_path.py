@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sys
-import types
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -17,16 +16,6 @@ if pdf_parser_stub is not None and not hasattr(pdf_parser_stub, "PlainParser"):
     pdf_parser_stub.PlainParser = pdf_parser_stub.RAGFlowPdfParser
     pdf_parser_stub.VisionParser = pdf_parser_stub.RAGFlowPdfParser
     pdf_parser_stub.MAXIMUM_PAGE_NUMBER = 1000000
-
-graphrag_index_stub = types.ModuleType("rag.graphrag.general.index")
-
-
-async def _unused_graphrag(*args, **kwargs):
-    raise AssertionError("GraphRAG must not run in parser-platform standard-path tests")
-
-
-graphrag_index_stub.run_graphrag_for_kb = _unused_graphrag
-sys.modules["rag.graphrag.general.index"] = graphrag_index_stub
 
 from rag.svr.task_executor_refactor.chunk_service import ChunkService, _sanitize_ephemeral_chunk
 from rag.svr.task_executor_refactor.embedding_service import EmbeddingService

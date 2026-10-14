@@ -27,7 +27,7 @@ from api.db.services.api_service import API4ConversationService
 from api.db.services.canvas_service import UserCanvasService
 from api.db.services.canvas_service import completion as agent_completion
 from api.db.services.conversation_service import async_iframe_completion as iframe_completion
-from api.db.services.dialog_service import DialogService, async_ask, gen_mindmap
+from api.db.services.dialog_service import DialogService, async_ask
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
@@ -347,7 +347,6 @@ async def retrieval_test_embedded(tenant_id=None):
     doc_ids = req.get("doc_ids", [])
     similarity_threshold = float(req.get("similarity_threshold", 0.0))
     vector_similarity_weight = float(req.get("vector_similarity_weight", 0.3))
-    use_kg = req.get("use_kg", False)
     top = int(req.get("top_k", 1024))
     rerank_candidates_count = int(req.get("rerank_candidates_count", 64))
     if top <= 0:
@@ -452,11 +451,6 @@ async def retrieval_test_embedded(tenant_id=None):
             rank_feature=labels,
             rerank_candidates_count=rerank_candidates_count,
         )
-        if use_kg:
-            default_chat_model = await thread_pool_exec(get_tenant_default_model_by_type, kb.tenant_id, LLMType.CHAT)
-            ck = await settings.kg_retriever.retrieval(_question, tenant_ids, kb_ids, embd_mdl, LLMBundle(kb.tenant_id, default_chat_model))
-            if ck["content_with_weight"]:
-                ranks["chunks"].insert(0, ck)
 
         for c in ranks["chunks"]:
             c.pop("vector", None)
@@ -540,22 +534,6 @@ async def detail_share_embedded(tenant_id=None):
         return get_json_result(data=search)
     except Exception as e:
         return server_error_response(e)
-
-
-@manager.route("/searchbots/mindmap", methods=["POST"])  # noqa: F821
-@login_required(auth_types=AUTH_BETA)
-@add_tenant_id_to_kwargs
-@validate_request("question", "kb_ids")
-async def mindmap(tenant_id=None):
-    req = await get_request_json()
-
-    search_id = req.get("search_id", "")
-    search_app = await thread_pool_exec(SearchService.get_detail, search_id) if search_id else {}
-
-    mind_map = await gen_mindmap(req["question"], req["kb_ids"], tenant_id, search_app.get("search_config", {}))
-    if "error" in mind_map:
-        return server_error_response(Exception(mind_map["error"]))
-    return get_json_result(data=mind_map)
 
 
 def _resolve_reference_metadata(req, search_config=None):

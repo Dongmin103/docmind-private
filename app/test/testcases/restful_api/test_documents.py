@@ -612,7 +612,7 @@ def test_documents_update_chunk_method_contract(rest_client, create_dataset, tmp
         ("presentation", 0, ""),
         ("picture", 0, ""),
         ("one", 0, ""),
-        ("knowledge_graph", 0, ""),
+        ( 0, ""),
         ("email", 0, ""),
         ("tag", 0, ""),
         ("", 102, "`chunk_method` (empty string) is not valid"),
@@ -752,21 +752,8 @@ def test_documents_update_parser_config_contract(rest_client, create_dataset, tm
         "auto_questions": 0,
         "html4excel": False,
         "topn_tags": 3,
-        "raptor": {
-            "use_raptor": True,
-            "prompt": "Summarize the paragraphs below without inventing facts or changing numbers.\nOutput exactly two parts in the same language as the source:\n1. First line: a concise title only.\n2. Following lines: a concise summary of the content.\nDo not output labels, Markdown headings, bullet points, or any other commentary.\n\nParagraphs:\n{cluster_content}",
-            "max_token": 512,
-            "clustering_threshold": 0.3,
-            "clustering_ratio": 0.5,
-            "max_cluster": 64,
-            "random_seed": 0,
-        },
-        "graphrag": {
-            "use_graphrag": True,
-            "entity_types": ["organization", "person", "geo", "event", "category"],
-            "method": "light",
-            "batch_chunk_token_size": 4096,
-        },
+
+
     }
 
     parser_cases = [
@@ -790,8 +777,8 @@ def test_documents_update_parser_config_contract(rest_client, create_dataset, tm
         ({"task_page_size": 100000000}, 0, ""),
         ({"task_page_size": 3.14}, 102, "Field: <parser_config.task_page_size> - Message: <Input should be a valid integer> - Value: <3.14>"),
         ({"task_page_size": "1024"}, 102, "Field: <parser_config.task_page_size> - Message: <Input should be a valid integer> - Value: <1024>"),
-        ({"raptor": {"use_raptor": {"a": "b"}}}, 102, "Field: <parser_config.raptor.use_raptor> - Message: <Input should be a valid boolean> - Value: <{'a': 'b'}>"),
-        ({"raptor": {"use_raptor": False}}, 0, ""),
+        ({}, 102, "Field: <parser_config.raptor.use_raptor> - Message: <Input should be a valid boolean> - Value: <{'a': 'b'}>"),
+        ({}, 0, ""),
         ({"invalid_key": "invalid_value"}, 102, "Field: <parser_config.invalid_key> - Message: <Extra inputs are not permitted> - Value: <invalid_value>"),
         ({"auto_keywords": -1}, 102, "Field: <parser_config.auto_keywords> - Message: <Input should be greater than or equal to 0> - Value: <-1>"),
         ({"auto_keywords": 32}, 0, ""),

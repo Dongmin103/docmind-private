@@ -80,51 +80,6 @@ from common.ssrf_guard import assert_url_is_safe
 from rag.nlp import search
 
 
-def _normalize_legacy_raptor_config(req: dict) -> None:
-    """Drop RAPTOR fields removed from the current parser-config schema."""
-    parser_config = req.get("parser_config")
-    if not isinstance(parser_config, dict):
-        return
-    raptor = parser_config.get("raptor")
-    if not isinstance(raptor, dict):
-        return
-
-    normalized_fields = []
-    legacy_ext = raptor.pop("ext", None)
-    if legacy_ext is not None:
-        normalized_fields.append("ext")
-        if isinstance(legacy_ext, dict) and "clustering_threshold" in legacy_ext and "clustering_threshold" not in raptor:
-            raptor["clustering_threshold"] = legacy_ext["clustering_threshold"]
-            normalized_fields.append("ext.clustering_threshold")
-    for field in ("threshold", "clustering_method", "tree_builder"):
-        if field in raptor:
-            raptor.pop(field)
-            normalized_fields.append(field)
-    max_token = raptor.get("max_token")
-    if isinstance(max_token, (int, float)) and not isinstance(max_token, bool) and max_token < 512:
-        raptor["max_token"] = 512
-        normalized_fields.append("max_token")
-    if normalized_fields:
-        logging.debug("Document RAPTOR config normalized legacy fields: %s", sorted(normalized_fields))
-
-
-def _normalize_parser_config_compilation_template_group_ids(parser_config) -> bool:
-    from rag.svr.task_executor_refactor.chunk_post_processor import (
-        _parser_config_compilation_template_group_ids,
-    )
-
-    if not isinstance(parser_config, dict):
-        return False
-    if "compilation_template_group_id" not in parser_config and not (isinstance(parser_config.get("ext"), dict) and "compilation_template_group_id" in parser_config["ext"]):
-        return False
-    group_ids = _parser_config_compilation_template_group_ids(parser_config)
-    parser_config["compilation_template_group_id"] = group_ids
-    ext = parser_config.get("ext")
-    if isinstance(ext, dict) and "compilation_template_group_id" in ext:
-        ext["compilation_template_group_id"] = group_ids
-    return True
-
-
 @manager.route("/documents/upload", methods=["POST"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
@@ -241,7 +196,6 @@ async def update_document(tenant_id, dataset_id, document_id):
           type: object
     """
     req = await get_request_json()
-    _normalize_legacy_raptor_config(req)
 
     # An explicit null name is a type error, not an unset field.
     if "name" in req and req["name"] is None:
@@ -300,7 +254,6 @@ async def update_document(tenant_id, dataset_id, document_id):
     # not remove the existing chunks.
     if update_doc_req.parser_config:
         req["parser_config"].update(update_doc_req.parser_config.ext)
-        _normalize_parser_config_compilation_template_group_ids(req["parser_config"])
         DocumentService.update_parser_config(doc.id, req["parser_config"])
 
     # A non-empty pipeline_id selects pipeline parsing; an explicitly empty
@@ -1577,9 +1530,7 @@ def _run_sync(user_id: str, req):
         DocumentService.update_by_id(doc_id, info)
         if req.get("delete", False) and not preserve_active_chunks:
             TaskService.filter_delete([Task.doc_id == doc_id])
-            from rag.advanced_rag.knowlege_compile.dataset_nav import remove_dataset_nav_doc_sync
 
-            remove_dataset_nav_doc_sync(doc_tenant_id, doc.kb_id, doc.id)
             if settings.docStoreConn.index_exist(search.index_name(doc_tenant_id), doc.kb_id):
                 settings.docStoreConn.delete({"doc_id": doc_id}, search.index_name(doc_tenant_id), doc.kb_id)
 
@@ -1704,9 +1655,7 @@ async def parse_documents(tenant_id, dataset_id):
                 DocumentService.update_by_id(doc_id, info)
                 if not preserve_active_chunks:
                     TaskService.filter_delete([Task.doc_id == doc_id])
-                    from rag.advanced_rag.knowlege_compile.dataset_nav import remove_dataset_nav_doc_sync
 
-                    remove_dataset_nav_doc_sync(tenant_id, doc.kb_id, doc.id)
                     if settings.docStoreConn.index_exist(search.index_name(tenant_id), doc.kb_id):
                         settings.docStoreConn.delete({"doc_id": doc_id}, search.index_name(tenant_id), doc.kb_id)
 

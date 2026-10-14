@@ -134,7 +134,6 @@ class ParserType(StrEnum):
     ONE = "one"
     AUDIO = "audio"
     EMAIL = "email"
-    KG = "knowledge_graph"
     TAG = "tag"
 
 
@@ -183,36 +182,11 @@ class FileSource(StrEnum):
 class PipelineTaskType(StrEnum):
     PARSE = "Parse"
     DOWNLOAD = "Download"
-    RAPTOR = "RAPTOR"
-    GRAPH_RAG = "GraphRAG"
-    MINDMAP = "Mindmap"
-    # Member name kept as ARTIFACT for back-compat; value is "Wiki" so the
-    # runtime task_type (``.lower()`` == "wiki") matches the wiki index/task type.
-    ARTIFACT = "Wiki"
-    SKILL = "Skill"
-    # KB-wide structure-graph merge tasks (rebuild_dataset_structure_graph_json).
-    STRUCTURE_GRAPH = "StructureGraph"
-    STRUCTURE_MINDMAP = "StructureMindmap"
-    TIMELINE = "Timeline"
-    SESSION_GRAPH = "SessionGraph"
-    SESSION_ESSENCE = "SessionEssence"
-    STRUCTURE = "Structure"
 
 
 VALID_PIPELINE_TASK_TYPES = {
     PipelineTaskType.PARSE,
     PipelineTaskType.DOWNLOAD,
-    PipelineTaskType.RAPTOR,
-    PipelineTaskType.GRAPH_RAG,
-    PipelineTaskType.MINDMAP,
-    PipelineTaskType.ARTIFACT,
-    PipelineTaskType.SKILL,
-    PipelineTaskType.STRUCTURE_GRAPH,
-    PipelineTaskType.STRUCTURE_MINDMAP,
-    PipelineTaskType.TIMELINE,
-    PipelineTaskType.SESSION_GRAPH,
-    PipelineTaskType.SESSION_ESSENCE,
-    PipelineTaskType.STRUCTURE,
 }
 
 
@@ -232,12 +206,6 @@ class Storage(Enum):
     OSS = 5
     OPENDAL = 6
     GCS = 7
-
-
-
-
-
-
 
 
 # environment

@@ -429,7 +429,6 @@ async def _lane_candidates(
         "knn_top_k": _DENSE_K,
         "knn_num_candidates": _DENSE_NUM_CANDIDATES,
         "similarity_threshold": _DENSE_SIMILARITY,
-        "use_kg": False,
         "keyword": False,
         "cross_languages": [],
     }

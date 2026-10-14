@@ -39,7 +39,7 @@ from api.db.joint_services.tenant_model_service import (
 )
 from api.db.services.chunk_feedback_service import ChunkFeedbackService
 from api.db.services.conversation_service import ConversationService, structure_answer
-from api.db.services.dialog_service import DialogService, gen_mindmap, rag_agent
+from api.db.services.dialog_service import DialogService, async_chat
 from api.db.services.knowledgebase_service import KnowledgebaseService, validate_dataset_embedding_models
 from api.db.services.llm_service import LLMBundle
 from api.db.services.search_service import SearchService
@@ -1174,24 +1174,6 @@ async def transcription():
     return Response(event_stream(), content_type="text/event-stream")
 
 
-@manager.route("/chat/mindmap", methods=["POST"])  # noqa: F821
-@login_required
-@validate_request("question", "kb_ids")
-async def mindmap():
-    req = await get_request_json()
-    search_id = req.get("search_id", "")
-    search_app = SearchService.get_detail(search_id) if search_id else {}
-    search_config = search_app.get("search_config", {}) if search_app else {}
-    kb_ids = search_config.get("kb_ids", [])
-    kb_ids.extend(req["kb_ids"])
-    kb_ids = list(set(kb_ids))
-
-    mind_map = await gen_mindmap(req["question"], kb_ids, search_app.get("tenant_id", current_user.id), search_config)
-    if "error" in mind_map:
-        return server_error_response(Exception(mind_map["error"]))
-    return get_json_result(data=mind_map)
-
-
 @manager.route("/chat/recommendation", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("question")
@@ -1341,7 +1323,7 @@ async def session_completion(chat_id_in_arg=""):
                     # start_to_think/end_to_think events.
                     legacy_answer = ""
                     final_answer = None
-                    async for ans in rag_agent(dia, msg, True, session_id=session_id, **req):
+                    async for ans in async_chat(dia, msg, True, session_id=session_id, **req):
                         ans = _format_answer(ans)
                         if ans.get("final"):
                             final_answer = ans
@@ -1378,7 +1360,7 @@ async def session_completion(chat_id_in_arg=""):
                         payload = _sanitize_json_floats({"code": 0, "message": "", "data": final_chunk})
                         yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
                 else:
-                    async for ans in rag_agent(dia, msg, True, session_id=session_id, **req):
+                    async for ans in async_chat(dia, msg, True, session_id=session_id, **req):
                         ans = _format_answer(ans)
                         payload = _sanitize_json_floats({"code": 0, "message": "", "data": ans})
                         yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
@@ -1398,7 +1380,7 @@ async def session_completion(chat_id_in_arg=""):
             return resp
 
         answer = None
-        async for ans in rag_agent(dia, msg, False, session_id=session_id, **req):
+        async for ans in async_chat(dia, msg, False, session_id=session_id, **req):
             answer = _format_answer(ans)
             if conv is not None and store_history_messages:
                 await thread_pool_exec(ConversationService.update_by_id, conv.id, conv.to_dict())

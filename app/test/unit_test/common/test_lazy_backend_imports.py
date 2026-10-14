@@ -82,7 +82,6 @@ def backend_sandbox(monkeypatch):
     stub("common.config_utils", get_base_config=lambda _name, default=None: default or {}, decrypt_database_config=lambda **_: {})
     stub("rag.utils.redis_conn", REDIS_CONN=types.SimpleNamespace())
     stub("rag.nlp", search=types.SimpleNamespace(Dealer=lambda conn: conn))
-    stub("rag.graphrag", search=types.SimpleNamespace(KGSearch=lambda conn: conn))
     stub("requests")
     stub("api.db.db_models", DB=types.SimpleNamespace())
     stub("common.doc_store.gaussdb_conn_base", mask_gaussdb_text=str)

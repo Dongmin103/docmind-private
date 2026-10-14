@@ -21,12 +21,11 @@ from operator import or_
 from uuid import uuid4
 from agent.canvas import Canvas
 from api.db import CanvasCategory, TenantPermission
-from api.db.db_models import DB, CanvasTemplate, CompilationTemplateGroup, User, UserCanvas, API4Conversation, UserCanvasVersion
+from api.db.db_models import DB, CanvasTemplate, User, UserCanvas, API4Conversation, UserCanvasVersion
 from api.db.services.api_service import API4ConversationService
 from api.db.services.common_service import CommonService
 from api.db.services.user_canvas_version import UserCanvasVersionService
 from common.misc_utils import get_uuid, thread_pool_exec
-from common.constants import StatusEnum
 from api.utils.api_utils import get_data_openai
 import tiktoken
 from peewee import fn
@@ -213,21 +212,6 @@ class UserCanvasService(CommonService):
             .group_by(cls.model.user_id, User.nickname)
         )
         owner_list = list(owners.dicts())
-        group_count = (
-            CompilationTemplateGroup.select()
-            .where(
-                CompilationTemplateGroup.tenant_id == user_id,
-                CompilationTemplateGroup.status == StatusEnum.VALID.value,
-            )
-            .count()
-        )
-        if group_count:
-            current_owner = next((owner for owner in owner_list if owner["id"] == user_id), None)
-            if current_owner:
-                current_owner["count"] += group_count
-            else:
-                nickname = User.select(User.nickname).where(User.id == user_id).scalar()
-                owner_list.append({"id": user_id, "label": nickname or "", "count": group_count})
         return owner_list
 
     @classmethod
@@ -243,16 +227,6 @@ class UserCanvasService(CommonService):
             .group_by(cls.model.canvas_category)
         )
         category_list = list(categories.dicts())
-        group_count = (
-            CompilationTemplateGroup.select()
-            .where(
-                CompilationTemplateGroup.tenant_id == user_id,
-                CompilationTemplateGroup.status == StatusEnum.VALID.value,
-            )
-            .count()
-        )
-        if group_count:
-            category_list.append({"id": "compilation_template_group", "count": group_count})
         return category_list
 
     @classmethod

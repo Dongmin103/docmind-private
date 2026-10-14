@@ -47,7 +47,6 @@ class TestTaskContextInit:
         minio_limiter = MagicMock()
         chunk_limiter = MagicMock()
         embed_limiter = MagicMock()
-        kg_limiter = MagicMock()
         write_interceptor = MagicMock()
         progress_callback = MagicMock()
         has_canceled_func = MagicMock()
@@ -59,7 +58,6 @@ class TestTaskContextInit:
                 minio=minio_limiter,
                 chunk=chunk_limiter,
                 embed=embed_limiter,
-                kg=kg_limiter,
             ),
             callbacks=TaskCallbacks(
                 progress=progress_callback,
@@ -72,7 +70,6 @@ class TestTaskContextInit:
         assert ctx.minio_limiter is minio_limiter
         assert ctx.chunk_limiter is chunk_limiter
         assert ctx.embed_limiter is embed_limiter
-        assert ctx.kg_limiter is kg_limiter
         assert ctx.write_interceptor is write_interceptor
         assert ctx.callbacks.progress is progress_callback
         assert ctx.has_canceled_func is has_canceled_func
@@ -335,8 +332,6 @@ class TestTaskContextAdditionalProperties:
         task = {"id": "task_1", "tenant_id": "tenant_1", "file": file_obj}
         ctx = _make_ctx(task=task)
         assert ctx.file is file_obj
-
-
 
 
 class TestTaskContextRawTask:

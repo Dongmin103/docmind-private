@@ -27,7 +27,7 @@ from api.db.services.document_service import DocumentService
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
-from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, resolve_model_config
+from api.db.joint_services.tenant_model_service import resolve_model_config
 from common.metadata_utils import meta_filter, convert_conditions
 from api.apps import login_required
 from api.utils.api_utils import add_tenant_id_to_kwargs, build_error_result, get_request_json, get_json_result
@@ -49,7 +49,6 @@ async def _read_retrieval_request():
         retrieval_setting = {}
         knowledge_id = query_args.get("knowledge_id")
         query = query_args.get("query")
-        use_kg = str(query_args.get("use_kg", "")).lower() in {"1", "true", "yes", "on"}
         top_k = query_args.get("top_k")
         score_threshold = query_args.get("score_threshold")
         try:
@@ -61,10 +60,9 @@ async def _read_retrieval_request():
             raise ValueError("top_k must be integer and score_threshold must be numeric")
         safe_query = f"len={len(query)}" if isinstance(query, str) else "len=0"
         logger.debug(
-            "Dify retrieval GET normalization: knowledge_id=%s query=%s use_kg=%s top_k=%s score_threshold=%s",
+            "Dify retrieval GET normalization: knowledge_id=%s query=%s top_k=%s score_threshold=%s",
             knowledge_id,
             safe_query,
-            use_kg,
             retrieval_setting.get("top_k"),
             retrieval_setting.get("score_threshold"),
         )
@@ -72,23 +70,20 @@ async def _read_retrieval_request():
         req = {
             "knowledge_id": knowledge_id,
             "query": query,
-            "use_kg": use_kg,
             "retrieval_setting": retrieval_setting,
         }
         return req
     req = await get_request_json()
     knowledge_id = req.get("knowledge_id") if isinstance(req, dict) else None
     query = req.get("query") if isinstance(req, dict) else None
-    use_kg = req.get("use_kg", False) if isinstance(req, dict) else False
     retrieval_setting = req.get("retrieval_setting", {}) if isinstance(req, dict) else {}
     if not isinstance(retrieval_setting, dict):
         retrieval_setting = {}
     safe_query = f"len={len(query)}" if isinstance(query, str) else "len=0"
     logger.debug(
-        "Dify retrieval GET normalization: knowledge_id=%s query=%s use_kg=%s top_k=%s score_threshold=%s",
+        "Dify retrieval GET normalization: knowledge_id=%s query=%s top_k=%s score_threshold=%s",
         knowledge_id,
         safe_query,
-        use_kg,
         retrieval_setting.get("top_k"),
         retrieval_setting.get("score_threshold"),
     )
@@ -131,11 +126,6 @@ async def retrieval(tenant_id):
         type: string
         description: Query text (for GET requests)
       - in: query
-        name: use_kg
-        required: false
-        type: boolean
-        description: Whether to use knowledge graph (for GET requests)
-      - in: query
         name: top_k
         required: false
         type: integer
@@ -160,10 +150,6 @@ async def retrieval(tenant_id):
             query:
               type: string
               description: Query text
-            use_kg:
-              type: boolean
-              description: Whether to use knowledge graph
-              default: false
             retrieval_setting:
               type: object
               description: Retrieval configuration
@@ -238,7 +224,6 @@ async def retrieval(tenant_id):
         )
     question = req["query"]
     kb_id = req["knowledge_id"]
-    use_kg = req.get("use_kg", False)
     try:
         _, similarity_threshold, top = _parse_retrieval_options(req.get("retrieval_setting", {}))
     except ValueError as e:
@@ -282,11 +267,6 @@ async def retrieval(tenant_id):
         )
         ranks["chunks"] = settings.retriever.retrieval_by_children(ranks["chunks"], [tenant_id])
 
-        if use_kg:
-            model_config = get_tenant_default_model_by_type(kb.tenant_id, LLMType.CHAT)
-            ck = await settings.kg_retriever.retrieval(question, [tenant_id], [kb_id], embd_mdl, LLMBundle(kb.tenant_id, model_config))
-            if ck["content_with_weight"]:
-                ranks["chunks"].insert(0, ck)
 
         doc_ids = list(set([c["doc_id"] for c in ranks["chunks"]]))
         docs = DocumentService.get_by_ids(doc_ids)

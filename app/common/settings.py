@@ -159,7 +159,6 @@ DOC_ENGINE_SERENEDB = DOC_ENGINE.lower() == "serenedb"
 docStoreConn = None
 
 retriever = None
-kg_retriever = None
 
 # user registration switch
 REGISTER_ENABLED = 1
@@ -230,7 +229,7 @@ def get_svr_queue_name(priority: int, suffix: str = "common") -> str:
 
     Args:
         priority: Task priority (0=low, 1=high)
-        suffix: Task type suffix (common/resume/graphrag/raptor/mindmap)
+        suffix: Task type suffix (common/resume)
                Currently only "common" is used, other suffixes are reserved.
 
     Returns:
@@ -477,11 +476,9 @@ def init_settings():
 
         STORAGE_IMPL = StorageAttemptAudit(STORAGE_IMPL, audit_root)
 
-    global retriever, kg_retriever
+    global retriever
     retriever = search.Dealer(docStoreConn)
-    from rag.graphrag import search as kg_search
 
-    kg_retriever = kg_search.KGSearch(docStoreConn)
 
     global SANDBOX_HOST
     if int(os.environ.get("SANDBOX_ENABLED", "0")):

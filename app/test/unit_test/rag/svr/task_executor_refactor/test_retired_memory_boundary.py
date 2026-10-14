@@ -1,7 +1,6 @@
 import ast
 import asyncio
 import pathlib
-import sys
 import types
 import unittest
 import unittest.mock
@@ -24,18 +23,12 @@ class RetiredMemoryBoundary(unittest.TestCase):
         namespace = dict(
             RecordingContext=type("RecordingContext", (), {}),
             CANVAS_DEBUG_DOC_ID="debug",
-            GRAPH_RAPTOR_FAKE_DOC_ID="fake",
             Optional=__import__("typing").Optional,
             BillingHook=object,
             TaskContext=object,
             abort_doc_chunking_counter=abort,
         )
         exec(compile(ast.Module(body=[owner], type_ignores=[]), str(SOURCE), "exec"), namespace)
-        stub = types.ModuleType("rag.svr.task_executor_refactor.dataset_structure_merger")
-        stub.STRUCTURE_MERGE_TASK_TYPES = {"structure"}
-        stub.is_structure_merge_task = lambda task_type: task_type in stub.STRUCTURE_MERGE_TASK_TYPES
-        self.addCleanup(lambda: sys.modules.pop(stub.__name__, None))
-        sys.modules[stub.__name__] = stub
         return namespace["TaskHandler"], abort
 
     def test_retired_memory_rejected_before_any_context_work(self):
@@ -66,7 +59,7 @@ class RetiredMemoryBoundary(unittest.TestCase):
     def test_cold_web_initialization_has_only_retained_actions(self):
         tree = ast.parse((ROOT / "api/db/init_data.py").read_text(encoding="utf-8"))
         function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "init_web_data")
-        retained = ["init_table", "init_docmind_shared_user", "update_document_number_in_init", "add_graph_templates", "add_compilation_templates"]
+        retained = ["init_table", "init_docmind_shared_user", "update_document_number_in_init", "add_graph_templates"]
         calls = unittest.mock.Mock()
         namespace = {name: getattr(calls, name) for name in retained}
         namespace.update(time=types.SimpleNamespace(time=lambda: 0), logging=unittest.mock.Mock())

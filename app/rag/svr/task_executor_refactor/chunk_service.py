@@ -43,7 +43,6 @@ from api.db.services.document_service import DocumentService
 from api.db.services.task_service import TaskService
 from rag.nlp import search
 from rag.parser_platform.ephemeral_metadata import sanitize_ephemeral_chunk as _sanitize_ephemeral_chunk
-from rag.svr.task_executor_refactor.constants import GRAPH_RAPTOR_FAKE_DOC_ID
 from rag.svr.task_executor_refactor.task_context import TaskContext
 from rag.utils.base64_image import image2id
 from rag.utils.chunk_id import make_chunk_id
@@ -92,7 +91,7 @@ def apply_source_chunks_document_availability(chunks: List[Dict[str, Any]]) -> N
         if ck.get("raptor_kwd"):
             continue
         doc_id = ck.get("doc_id")
-        if not doc_id or doc_id == GRAPH_RAPTOR_FAKE_DOC_ID:
+        if not doc_id:
             continue
         source_chunks_by_doc_id.setdefault(doc_id, []).append(ck)
 
@@ -469,7 +468,7 @@ class ChunkService:
         default to available_int=1 and remain retrievable.
         """
         doc_id = self._task_context.doc_id
-        if not doc_id or doc_id == GRAPH_RAPTOR_FAKE_DOC_ID:
+        if not doc_id:
             return
         ok, doc = DocumentService.get_by_id(doc_id)
         if not ok or doc is None:
@@ -576,8 +575,6 @@ class ChunkService:
 
     async def _intercept_doc_store_insert(self, chunks: list, index_name: str, task_dataset_id: str, refresh: str | bool = "wait_for") -> Any:
         if self._task_context.write_interceptor:
-            if self._task_context.doc_id == GRAPH_RAPTOR_FAKE_DOC_ID:  # raptor - non-determinisic
-                return self._task_context.write_interceptor.intercept("docStoreConn.insert", [])
             return self._task_context.write_interceptor.intercept("docStoreConn.insert")
         else:
             return await thread_pool_exec(settings.docStoreConn.insert, chunks, index_name, task_dataset_id, refresh)
@@ -600,8 +597,6 @@ class ChunkService:
             doc_store_result = await self._intercept_doc_store_insert(chunks[b : b + doc_bulk_size], search.index_name(task_tenant_id), task_dataset_id, refresh=False)
 
             if self._task_context.has_canceled_func(task_id):
-                # Roll back partial RAPTOR summary inserts
-                await self._rollback_raptor_chunks(task_id, task_tenant_id, task_dataset_id, chunks, b, doc_bulk_size)
                 self._task_context.progress_cb(-1, msg="Task has been canceled.")
                 return False
 
@@ -630,31 +625,6 @@ class ChunkService:
 
         return True
 
-    async def _rollback_raptor_chunks(
-        self,
-        task_id: str,
-        task_tenant_id: str,
-        task_dataset_id: str,
-        chunks: List[Dict],
-        up_to_batch: int,
-        doc_bulk_size: int,
-    ):
-        """Roll back partial RAPTOR summary inserts after cancellation."""
-        raptor_ids = [c["id"] for c in chunks[: up_to_batch + doc_bulk_size] if c.get("raptor_kwd") == "raptor"]
-
-        if raptor_ids:
-            try:
-                await self._intercept_doc_store_delete({"id": raptor_ids}, search.index_name(task_tenant_id), task_dataset_id)
-                logging.info(
-                    "insert_chunks: rolled back %d partial RAPTOR chunks after cancellation (task=%s)",
-                    len(raptor_ids),
-                    task_id,
-                )
-            except Exception:
-                logging.exception(
-                    "insert_chunks: failed to roll back partial RAPTOR chunks after cancellation (task=%s)",
-                    task_id,
-                )
 
     async def _update_task_chunk_ids(self, task_id: str, chunk_ids: List[str]) -> bool:
         """Update chunk IDs in the task record."""
@@ -662,10 +632,7 @@ class ChunkService:
 
         try:
             if self._task_context.write_interceptor:
-                if self._task_context.doc_id == GRAPH_RAPTOR_FAKE_DOC_ID:
-                    self._task_context.write_interceptor.intercept("TaskService.update_chunk_ids", True)
-                else:
-                    self._task_context.write_interceptor.intercept("TaskService.update_chunk_ids")
+                self._task_context.write_interceptor.intercept("TaskService.update_chunk_ids")
             else:
                 TaskService.update_chunk_ids(task_id, " ".join(chunk_ids))
             return True
