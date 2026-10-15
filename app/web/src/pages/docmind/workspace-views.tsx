@@ -5,4 +5,3 @@ export const ChunkInspection = lazy(
   () =>
     import('@/components/chunk-inspector'),
 );
-export const WorkspaceSettings = lazy(() => import('./workspace-settings'));

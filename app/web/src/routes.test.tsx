@@ -40,13 +40,6 @@ it('stores an OAuth callback token before redirecting to DocMind', async () => {
 });
 
 it.each([
-  '/user-setting/data-source',
-  '/user-setting/data-source/data-source-detail-page',
-])('does not expose the removed external connector route %s', (path) => {
-  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
-});
-
-it.each([
   '/admin',
   '/admin/users',
   '/admin/users/example',
@@ -55,18 +48,14 @@ it.each([
   '/admin/roles',
   '/admin/whitelist',
   '/admin/monitoring',
-  '/user-setting/chat-channel',
 ])('rejects the retired administration or messaging route %s', (path) => {
   expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
 });
 
-it.each(['/docmind', '/user-setting/model', '/user-setting/profile'])(
-  'preserves the supported route %s',
-  (path) => {
-    const matches = matchRoutes(routers.routes, path);
-    expect(matches?.at(-1)?.route.path).toBe(path);
-  },
-);
+it.each(['/docmind'])('preserves the supported route %s', (path) => {
+  const matches = matchRoutes(routers.routes, path);
+  expect(matches?.at(-1)?.route.path).toBe(path);
+});
 
 it.each([
   '/chats/share?shared_id=example',
@@ -89,15 +78,62 @@ it.each([
 });
 
 it.each([
-  '/agent/share', '/agent-list', '/agents', '/agent-templates', '/agent/example',
-  '/agent/example/explore', '/agent-log-page/example', '/dataflow-result',
-  '/memories', '/memory', '/memory/memory-message/example', '/memory/memory-setting/example',
-  '/memory//memory-message/example', '/memory//memory-setting/example',
-  '/datasets', '/dataset', '/dataset/files/example', '/dataset/retrieval/example',
-  '/dataset/logs/example', '/dataset/configuration/example', '/dataset/knowledge-graph/example',
-  '/dataset/compilation/example', '/compilation-templates/edit-next',
-  '/compilation-templates/edit-next/example', '/user-setting/mcp', '/files/skills',
-  '/chunk', '/chunk/chunk/example', '/chunk/result/example',
+  '/agent/share',
+  '/agent-list',
+  '/agents',
+  '/agent-templates',
+  '/agent/example',
+  '/agent/example/explore',
+  '/agent-log-page/example',
+  '/dataflow-result',
+  '/memories',
+  '/memory',
+  '/memory/memory-message/example',
+  '/memory/memory-setting/example',
+  '/memory//memory-message/example',
+  '/memory//memory-setting/example',
+  '/datasets',
+  '/dataset',
+  '/dataset/files/example',
+  '/dataset/retrieval/example',
+  '/dataset/logs/example',
+  '/dataset/configuration/example',
+  '/dataset/knowledge-graph/example',
+  '/dataset/compilation/example',
+  '/compilation-templates/edit-next',
+  '/compilation-templates/edit-next/example',
+  '/files/skills',
+  '/chunk',
+  '/chunk/chunk/example',
+  '/chunk/result/example',
 ])('rejects retired feature %s', (path) => {
   expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
+});
+
+it.each([
+  '/user-setting',
+  '/user-setting/model',
+  '/user-setting/profile',
+  '/user-setting/team',
+  '/user-setting/api',
+  '/user-setting/data-source',
+  '/user-setting/data-source/data-source-detail-page',
+  '/user-setting/chat-channel',
+  '/user-setting/mcp',
+  '/user-setting/unknown/deep',
+  '/profile-setting',
+  '/profile-setting/model',
+  '/profile-setting/unknown/deep',
+])('redirects hidden user settings %s to search', async (path) => {
+  const route = matchRoutes(routers.routes, path)?.at(-1)?.route;
+  expect(typeof route?.loader).toBe('function');
+  if (typeof route?.loader !== 'function')
+    throw new Error('Missing settings redirect');
+  const result = (await route.loader({
+    request: { url: `http://localhost${path}` } as Request,
+    params: {},
+    context: {},
+  } as Parameters<typeof route.loader>[0])) as Response;
+  expect(result.status).toBe(302);
+  expect(result.headers.get('Location')).toBe('/docmind');
 });

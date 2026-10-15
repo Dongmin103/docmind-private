@@ -68,8 +68,8 @@ describe('WorkspaceShell mobile navigation', () => {
       'page',
     );
     expect(
-      within(menu).getByRole('link', { name: '설정' }),
-    ).toHaveAttribute('href', '/docmind?view=settings');
+      within(menu).queryByRole('link', { name: '설정' }),
+    ).not.toBeInTheDocument();
   });
 
   it('closes on Escape and returns focus from a menu link to its toggle', () => {
@@ -140,7 +140,7 @@ describe('WorkspaceShell mobile navigation', () => {
       '/docmind?view=search',
     );
     expect(
-      within(menu).getByRole('link', { name: '설정' }),
-    ).toHaveAttribute('href', '/docmind?view=settings');
+      within(menu).queryByRole('link', { name: '설정' }),
+    ).not.toBeInTheDocument();
   });
 });

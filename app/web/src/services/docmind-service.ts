@@ -171,6 +171,16 @@ export interface DocMindHierarchyNode {
   index_image_ocr_not_run?: boolean;
   index_pdf_ocr_option?: 'zero_text' | 'partial_images' | null;
   index_pdf_ocr_version_id?: string | null;
+  index_pdf_ocr_requested?: boolean;
+  index_pdf_ocr_job_state?: string | null;
+  index_pdf_ocr_runs?: {
+    version_id: string;
+    state: string | null;
+    cleanup_state: 'PENDING' | 'FAILED' | 'COMPLETE' | null;
+    error_code: string | null;
+    completed: boolean;
+    previous_version: boolean;
+  }[];
   searchable?: boolean;
   semantic_folder_id?: string;
   mutation_capabilities?: {

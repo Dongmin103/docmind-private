@@ -30,11 +30,6 @@ const Sections: {
     icon: 'M3 7V5a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z',
     admin: true,
   },
-  {
-    id: 'settings',
-    label: '설정',
-    icon: 'M4 7h16M4 17h16M8 4v6M16 14v6',
-  },
 ];
 
 function ShellIcon({ path }: { path: string }) {

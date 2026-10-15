@@ -15,12 +15,7 @@
  */
 
 import { lazy, memo, Suspense } from 'react';
-import {
-  createBrowserRouter,
-  Navigate,
-  redirect,
-  type RouteObject,
-} from 'react-router';
+import { createBrowserRouter, redirect, type RouteObject } from 'react-router';
 import FallbackComponent from './components/fallback-component';
 import DocMindWorkspaceError from './pages/docmind/workspace-error';
 import authorizationUtil from './utils/authorization-util';
@@ -110,38 +105,15 @@ const routeConfigOptions: LazyRouteConfig[] = [
     path: '/chunk/parsed/chunks',
     Component: () => import('@/components/chunk-inspector'),
   },
-  {
-    path: Routes.Root,
-    Component: () => import('@/layouts/root-layout'),
-    children: [
-      {
-        path: Routes.UserSetting,
-        Component: () => import('@/pages/user-setting'),
-        children: [
-          {
-            path: Routes.UserSetting,
-            element: <Navigate to="/user-setting/model" replace />,
-          },
-          {
-            path: '/user-setting/profile',
-            Component: () => import('@/pages/user-setting/profile'),
-          },
-          {
-            path: '/user-setting/model',
-            Component: () => import('@/pages/user-setting/setting-model'),
-          },
-          {
-            path: '/user-setting/team',
-            Component: () => import('@/pages/user-setting/setting-team'),
-          },
-          {
-            path: '/user-setting/api',
-            Component: () => import('@/pages/user-setting/setting-api'),
-          },
-        ],
-      },
-    ],
-  },
+  ...[
+    Routes.UserSetting,
+    `${Routes.UserSetting}/*`,
+    Routes.ProfileSetting,
+    `${Routes.ProfileSetting}/*`,
+  ].map((path) => ({
+    path,
+    loader: () => redirect(Routes.DocMind),
+  })),
   { path: '/*', Component: () => import('@/pages/404') },
 ];
 

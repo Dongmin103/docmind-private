@@ -29,7 +29,6 @@ it.each([
   'pages/docmind/index.tsx',
   'pages/docmind/workspace-views.tsx',
   'components/chunk-inspector/index.tsx',
-  'pages/docmind/workspace-settings.tsx',
   'components/message-item/index.tsx',
 ])(
   'keeps the actual retained import graph for %s free of retired owners',

@@ -263,6 +263,7 @@ describe('DocMind search scopes', () => {
       {
         ...scan,
         file_id: 'slides',
+        document_id: 'slides-document',
         name: 'slides.pptx',
         index_state: 'INDEXED',
         index_pdf_ocr_option: null,
@@ -271,12 +272,14 @@ describe('DocMind search scopes', () => {
       {
         ...scan,
         file_id: 'running',
+        document_id: 'running-document',
         name: 'running.pdf',
         index_state: 'PROCESSING',
       },
       {
         ...scan,
         file_id: 'deleted',
+        document_id: 'deleted-document',
         name: 'deleted.pdf',
         document_exists: false,
       },
@@ -309,7 +312,7 @@ describe('DocMind search scopes', () => {
       }),
     );
     fireEvent.click(panel.getByRole('button', { name: 'OCR 검토 2건' }));
-    expect(panel.queryByText('scan.pdf')).not.toBeInTheDocument();
+    expect(within(panel.getByRole('region', { name: 'OCR 진행 및 결과' })).getByText('scan.pdf')).toBeVisible();
     expect(panel.getAllByRole('button', { name: 'OCR 선택' })).toHaveLength(1);
     expect(
       panel.getByText('이 형식은 현재 화면에서 OCR을 실행할 수 없습니다.'),
@@ -321,7 +324,7 @@ describe('DocMind search scopes', () => {
     expect(
       panel.queryByRole('button', { name: 'OCR 선택' }),
     ).not.toBeInTheDocument();
-    fireEvent.click(panel.getByRole('button', { name: 'OCR 대상 전체 3건' }));
+    fireEvent.click(panel.getByRole('button', { name: 'OCR 대상 전체 2건' }));
     mockExtraHierarchyNodes = [];
     rerender(
       <MemoryRouter initialEntries={['/docmind?view=library']}>

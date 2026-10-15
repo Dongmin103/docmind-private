@@ -43,7 +43,7 @@ import {
   SourceHierarchyKeys,
 } from './source-document-status';
 import { useFolderSelection } from './use-folder-selection';
-import { ChunkInspection, WorkspaceSettings } from './workspace-views';
+import { ChunkInspection } from './workspace-views';
 import WorkspaceShell from './workspace-shell';
 import SearchPreview from './search-preview';
 import ScopeFolderPicker from './scope-folder-picker';
@@ -782,27 +782,6 @@ export default function DocMind() {
                 </p>
               )}
             </div>
-          )}
-          {workspaceView === 'settings' && (
-            <ErrorBoundary
-              FallbackComponent={WorkspaceViewError}
-              resetKeys={[workspaceView]}
-            >
-              <React.Suspense
-                fallback={
-                  <p role="status" className="p-6">
-                    설정을 불러오는 중입니다.
-                  </p>
-                }
-              >
-                <WorkspaceSettings
-                  canAdminister={canAdminister}
-                  sharedWorkspace={
-                    folderCatalog.data?.workspace_mode === 'shared'
-                  }
-                />
-              </React.Suspense>
-            </ErrorBoundary>
           )}
           {workspaceView === 'search' && (
             <div

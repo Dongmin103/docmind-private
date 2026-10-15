@@ -2,6 +2,13 @@ import type { DocMindHierarchyNode } from '@/services/docmind-service';
 import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { PdfOcrChoice } from './pdf-ocr-choice';
 import { SourceIndexStatus } from './source-index-status';
+import {
+  OcrAcknowledgementKey,
+  OcrProgress,
+  ocrComplete,
+  ocrIdentity,
+  readOcrAcknowledgements,
+} from './ocr-progress';
 
 type Category = 'required' | 'review' | 'other';
 type Filter = 'ocr' | Category;
@@ -56,13 +63,80 @@ function categoryOf(node: DocMindHierarchyNode): Category | null {
 
 export function OcrReviewPanel({ nodes, onConfirm, renderInspection }: Props) {
   const [filter, setFilter] = useState<Filter>('ocr');
+  const [acknowledged, setAcknowledged] = useState(readOcrAcknowledgements);
+  const [accepted, setAccepted] = useState<Record<string, string>>({});
+  const [storageFailed, setStorageFailed] = useState(false);
+  const progressNodes = nodes.flatMap((node) => {
+    if (node.type !== 'file' || !node.document_exists) return [];
+    const history = (node.index_pdf_ocr_runs ?? []).map((run) => ({
+      ...node,
+      index_state: undefined,
+      index_pdf_ocr_version_id: run.version_id,
+      index_pdf_ocr_job_state: run.state,
+      index_cleanup_state: run.cleanup_state,
+      index_error_code: run.error_code,
+      ocr_completed: run.completed,
+      ocr_previous_version: run.previous_version,
+    }));
+    if (
+      node.index_pdf_ocr_version_id &&
+      !history.some(
+        (item) =>
+          item.index_pdf_ocr_version_id === node.index_pdf_ocr_version_id,
+      ) &&
+      (node.index_pdf_ocr_requested ||
+        accepted[node.document_id ?? ''] === node.index_pdf_ocr_version_id)
+    ) {
+      return [
+        ...history,
+        node.index_pdf_ocr_requested
+          ? node
+          : {
+              ...node,
+              index_state: 'PENDING' as const,
+              index_pdf_ocr_job_state: null,
+              index_error_code: null,
+            },
+      ];
+    }
+    return history;
+  });
+  const pendingResults = progressNodes.filter(
+    (node) => !ocrComplete(node) || !acknowledged.includes(ocrIdentity(node)),
+  );
+  const confirm = async (
+    documentId: string,
+    versionId: string,
+    key: string,
+  ) => {
+    await onConfirm(documentId, versionId, key);
+    setAccepted((previous) => ({ ...previous, [documentId]: versionId }));
+  };
+  const acknowledge = (event: MouseEvent<HTMLButtonElement>) => {
+    const key = event.currentTarget.value;
+    const next = [
+      ...new Set([...readOcrAcknowledgements(), ...acknowledged, key]),
+    ];
+    setAcknowledged(next);
+    try {
+      localStorage.setItem(OcrAcknowledgementKey, JSON.stringify(next));
+      setStorageFailed(false);
+    } catch {
+      setStorageFailed(true);
+    }
+  };
   const entries = useMemo(
     () =>
       nodes.flatMap((node) => {
-        const category = categoryOf(node);
+        const category =
+          node.index_pdf_ocr_requested ||
+          (node.index_pdf_ocr_version_id &&
+            accepted[node.document_id ?? ''] === node.index_pdf_ocr_version_id)
+            ? null
+            : categoryOf(node);
         return category ? [{ node, category }] : [];
       }),
-    [nodes],
+    [nodes, accepted],
   );
   const counts = { required: 0, review: 0, other: 0 };
   for (const entry of entries) counts[entry.category]++;
@@ -81,8 +155,19 @@ export function OcrReviewPanel({ nodes, onConfirm, renderInspection }: Props) {
       <h3 className="text-lg font-semibold text-text-primary">OCR 확인 필요</h3>
       <p className="mt-1 text-sm text-text-secondary">
         글자가 추출되지 않았거나 이미지 속 글자 확인이 필요한 자료를 모았습니다.
-        처리 중인 자료는 제외됩니다.
+        요청한 OCR의 진행 상황과 완료 결과도 확인할 수 있습니다.
       </p>
+      <OcrProgress
+        nodes={pendingResults}
+        onAcknowledge={acknowledge}
+        renderInspection={renderInspection}
+      />
+      {storageFailed && (
+        <p role="alert" className="mt-2 text-sm text-state-warning">
+          완료 확인 내역을 저장하지 못했습니다. 새로고침하면 완료 항목이 다시
+          표시될 수 있습니다.
+        </p>
+      )}
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         {Categories.map(({ id, label, description }) => (
           <button
@@ -191,7 +276,7 @@ export function OcrReviewPanel({ nodes, onConfirm, renderInspection }: Props) {
                 <div className="flex shrink-0 items-center gap-2">
                   {renderInspection(node)}
                   {category !== 'other' && canRequest && (
-                    <PdfOcrChoice node={node} onConfirm={onConfirm} />
+                    <PdfOcrChoice node={node} onConfirm={confirm} />
                   )}
                 </div>
               </li>

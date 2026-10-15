@@ -135,7 +135,12 @@ def _index_status(job, *, searchable: bool, run=None, pdf_ocr_option=None, pdf_o
         "index_partial_coverage": "PPTX_NATIVE_PARTIAL_COVERAGE" in native_warnings,
         "index_image_ocr_not_run": "IMAGE_OCR_NOT_RUN" in native_warnings or "PDF_IMAGE_OCR_NOT_RUN" in pdf_warnings,
         "index_pdf_ocr_option": pdf_ocr_option,
-        "index_pdf_ocr_version_id": pdf_ocr_version_id,
+        "index_pdf_ocr_requested": bool(job is not None and getattr(job, "pdf_ocr_requested", False)),
+        "index_pdf_ocr_job_state": state if job is not None and getattr(job, "pdf_ocr_requested", False) and state in {
+            "DISCOVERED", "WAITING_SOURCE_STABLE", "DECRYPTING", "PARSING", "INDEXING",
+            "CLEANUP", "COMPLETE", "FAILED", "RETRY_WAIT", "ACTION_REQUIRED", "CLEANUP_FAILED", "SUPERSEDED",
+        } else None,
+        "index_pdf_ocr_version_id": job.version_id if job is not None and getattr(job, "pdf_ocr_requested", False) else pdf_ocr_version_id,
     }
 
 
@@ -193,6 +198,7 @@ def load(tenant_id: str) -> SourceProjection | None:
     )
     documents = _records_by_id(Document, {row.document_id for row in mappings})
     latest_jobs: dict[str, DocmindIngestionJob] = {}
+    ocr_jobs: dict[str, dict[str, DocmindIngestionJob]] = {}
     mappings_by_id = {row.id: row for row in mappings}
     mapping_ids = sorted(mappings_by_id)
     for offset in range(0, len(mapping_ids), 500):
@@ -202,6 +208,7 @@ def load(tenant_id: str) -> SourceProjection | None:
             DocmindIngestionJob.lifecycle_state, DocmindIngestionJob.cleanup_state,
             DocmindIngestionJob.host_cleanup_state, DocmindIngestionJob.error_code,
             DocmindIngestionJob.version_id, DocmindIngestionJob.pdf_ocr_requested,
+            DocmindIngestionJob.parser_run_id, DocmindIngestionJob.chunk_set_id,
         ).where(
             (DocmindIngestionJob.project_id == project.id)
             & (DocmindIngestionJob.source_document_id.in_(mapping_ids[offset : offset + 500]))
@@ -210,8 +217,11 @@ def load(tenant_id: str) -> SourceProjection | None:
             mapping = mappings_by_id[candidate.source_document_id]
             if candidate.source_id == mapping.source_id and candidate.document_id == mapping.document_id:
                 latest_jobs.setdefault(mapping.id, candidate)
+                if candidate.pdf_ocr_requested:
+                    ocr_jobs.setdefault(mapping.id, {}).setdefault(candidate.version_id, candidate)
     latest_versions = _records_by_id(
         DocmindSourceVersion, {job.version_id for job in latest_jobs.values()}
+        | {version_id for history in ocr_jobs.values() for version_id in history}
     )
 
     root_id = _id("docmind-source-root", project.id)
@@ -334,6 +344,26 @@ def load(tenant_id: str) -> SourceProjection | None:
             parent_id = folder_id
 
         display_path = _display_path(source.display_name, path)
+        ocr_history = []
+        for ocr_job in ocr_jobs.get(mapping.id, {}).values():
+            ocr_version = latest_versions.get(ocr_job.version_id)
+            if ocr_version is None or ocr_version.source_document_id != mapping.id or ocr_version.document_id != mapping.document_id:
+                continue
+            current = latest_job is not None and latest_job.version_id == ocr_job.version_id
+            status = _index_status(ocr_job, searchable=eligible if current else False)
+            complete = bool(
+                ocr_job.lifecycle_state == "COMPLETE" and status["index_cleanup_state"] == "COMPLETE"
+                and ocr_version.parser_run_id and ocr_version.chunk_set_id
+                and ocr_version.search_cleanup_complete
+                and ocr_job.parser_run_id == ocr_version.parser_run_id
+                and ocr_job.chunk_set_id == ocr_version.chunk_set_id
+                and (not current or (eligible and mapping.active_source_version_id == ocr_version.id))
+            )
+            ocr_history.append({
+                "version_id": ocr_job.version_id, "state": status["index_pdf_ocr_job_state"],
+                "cleanup_state": status["index_cleanup_state"], "error_code": status["index_error_code"],
+                "completed": complete, "previous_version": not current,
+            })
         nodes[_id("docmind-source-document-node", mapping.id)] = {
             "file_id": _id("docmind-source-document-node", mapping.id),
             "parent_file_id": parent_id,
@@ -343,6 +373,7 @@ def load(tenant_id: str) -> SourceProjection | None:
             "type": "file",
             "document_id": mapping.document_id,
             "document_exists": document is not None,
+            "index_pdf_ocr_runs": ocr_history,
             **_index_status(latest_job, searchable=eligible, run=run,
                             pdf_ocr_option=pdf_ocr_option,
                             pdf_ocr_version_id=latest_version.id if pdf_ocr_option else None),
