@@ -11,14 +11,12 @@ import { sanitizeHtmlWithImagesAsText } from '@/utils/dom-util';
 import { getSourceLocations } from '@/utils/source-location';
 import classNames from 'classnames';
 import { useTranslation } from 'react-i18next';
-import { ChunkTextMode } from '../../constant';
 import styles from './index.module.less';
 
 interface IProps {
   item: IChunk;
   selected: boolean;
   clickChunkCard: (chunkId: string) => void;
-  textMode: ChunkTextMode;
   t?: string | number; // Cache-busting key for images
 }
 
@@ -26,7 +24,6 @@ const ChunkCard = ({
   item,
   selected,
   clickChunkCard,
-  textMode,
   t: imageCacheKey,
 }: IProps) => {
   const { t } = useTranslation();
@@ -107,10 +104,7 @@ const ChunkCard = ({
                 item.display_html || item.content_with_weight,
               ),
             }}
-            className={classNames(
-              'whitespace-pre-wrap break-words',
-              textMode === ChunkTextMode.Ellipse && 'line-clamp-3',
-            )}
+            className="whitespace-pre-wrap break-words"
           />
         </section>
       </div>

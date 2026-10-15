@@ -3,7 +3,6 @@ import { IChunk } from '@/interfaces/database/chunk';
 import { buildChunkHighlights } from '@/utils/document-util';
 import { useCallback, useMemo, useState } from 'react';
 import { IHighlight } from 'react-pdf-highlighter';
-import { ChunkTextMode } from './constant';
 
 export const useHandleChunkCardClick = () => {
   const [selectedChunkId, setSelectedChunkId] = useState<string>('');
@@ -40,15 +39,4 @@ export const useGetChunkHighlights = (selectedChunkId: string) => {
   }, []);
 
   return { highlights, setWidthAndHeight };
-};
-
-// Switch chunk text to be fully displayed or ellipse
-export const useChangeChunkTextMode = () => {
-  const [textMode, setTextMode] = useState<ChunkTextMode>(ChunkTextMode.Full);
-
-  const changeChunkTextMode = useCallback((mode: ChunkTextMode) => {
-    setTextMode(mode);
-  }, []);
-
-  return { textMode, changeChunkTextMode };
 };

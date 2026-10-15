@@ -41,6 +41,7 @@ const mockBack = jest.fn();
 let mockChunks: any[] = [];
 let mockInspectionError: Error | null = null;
 const mockRetryInspection = jest.fn();
+const mockSearchChange = jest.fn();
 
 jest.mock('react-router', () => ({
   useLocation: () => ({ pathname: '/chunk/parsed/chunks' }),
@@ -63,7 +64,7 @@ jest.mock('@/hooks/use-chunk-request', () => ({
       pagination: { current: 1, onChange: jest.fn(), pageSize: 10 },
       loading: false,
       searchString: '',
-      handleInputChange: jest.fn(),
+      handleInputChange: mockSearchChange,
       available: undefined,
       handleSetAvailable: jest.fn(),
       dataUpdatedAt: 0,
@@ -141,6 +142,7 @@ beforeEach(() => {
   mockChunks = [];
   mockInspectionError = null;
   mockRetryInspection.mockClear();
+  mockSearchChange.mockClear();
 });
 
 describe('RAGFlow chunk inspection source', () => {
@@ -182,7 +184,7 @@ describe('embedded read-only chunk viewer', () => {
     expect(mockBack).not.toHaveBeenCalled();
   });
 
-  it('keeps inspection controls but removes every chunk mutation control', () => {
+  it('shows Korean document content with search and without legacy controls', () => {
     mockChunks = [
       {
         chunk_id: 'chunk-1',
@@ -195,6 +197,15 @@ describe('embedded read-only chunk viewer', () => {
     render(<Chunk embedded onBack={jest.fn()} />);
 
     expect(screen.getByRole('textbox')).toBeVisible();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Selected' } });
+    expect(mockSearchChange).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('toolbar').querySelector('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'ellipse' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'full' })).toBeNull();
+    expect(screen.getByRole('heading', { name: '문서 내용' })).toBeVisible();
+    expect(screen.getAllByText('문서 내용')).toHaveLength(2);
+    expect(screen.getByText('검색과 AI 답변에 사용되는 문서 내용입니다.')).toBeVisible();
+    expect(screen.queryByText('chunk.chunkResult')).toBeNull();
     expect(screen.getByText('Selected chunk text')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'add chunk' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'edit chunk' })).toBeNull();
@@ -331,7 +342,7 @@ test('selects actual chunk text/image positions and refreshes preview dimensions
   expect(screen.queryByRole('switch')).toBeNull();
   fireEvent.doubleClick(screen.getByText('Positioned text'));
   expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'full' }));
+  expect(screen.getByText('Positioned text')).not.toHaveClass('line-clamp-3');
   expect(screen.getByText('Positioned text')).toBeVisible();
 });
 

@@ -42,3 +42,14 @@ leaves the dashboard only after the user acknowledges it. Failures remain visibl
 Local logs: `.local/docmind-feature-integration/*followup*`, `*ocr-progress*`,
 `*ocr-projection*`, and `settings-hidden-*`. Production rollout is recorded below
 after artifact and live verification.
+
+## Previously approved document inspector UI
+
+The October 8 chat and commits `7ae6095` / `9123dcf` confirm removal of
+Artifact, Full text/Ellipse and availability filter controls, Korean title
+`문서 내용` and description `검색과 AI 답변에 사용되는 문서 내용입니다.`.
+The user reaffirmed that exact scope on October 15: retain detail Search,
+original preview and full content. The extracted inspector had missed these
+changes; they are restored without changing main search or preview behavior.
+Focused inspector/DocMind/OCR UI verification: 35 passed; focused lint and
+`git diff --check` passed. No remaining text-mode component references.

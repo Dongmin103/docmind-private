@@ -3,18 +3,17 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChunkCard from './components/chunk-card';
 import {
-  useChangeChunkTextMode,
   useGetChunkHighlights,
   useHandleChunkCardClick,
 } from './hooks';
 
-import ChunkResultBar from './components/chunk-result-bar';
 import DocumentViewSwitch from './components/document-view-switch';
 
 import { useGetDocumentUrl } from '@/components/document-preview/hooks';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { ResizableHandle, ResizablePanel } from '@/components/ui/resizable';
@@ -46,11 +45,9 @@ function Chunk({ embedded = false, onBack }: ChunkProps) {
   const {
     data: { documentInfo, data = [], total },
     pagination,
-    loading,
     searchString,
     handleInputChange,
-    available,
-    handleSetAvailable,
+    loading,
     dataUpdatedAt,
     error: inspectionError,
     retry: retryChunkList,
@@ -62,7 +59,6 @@ function Chunk({ embedded = false, onBack }: ChunkProps) {
   const { handleChunkCardClick, selectedChunkId } = useHandleChunkCardClick();
 
   const { t } = useTranslation();
-  const { changeChunkTextMode, textMode } = useChangeChunkTextMode();
   const [chunkList, setChunkList] = useState(data);
   const inspectionSource = useInspectionSource();
   const fileUrl = useGetDocumentUrl();
@@ -108,7 +104,7 @@ function Chunk({ embedded = false, onBack }: ChunkProps) {
               {documentInfo?.name}
             </div>
             <div className="text-xs text-text-secondary">
-              {t('chunk.chunkResult')}
+              문서 내용
             </div>
           </div>
           <Badge variant="secondary" className="ml-auto shrink-0">
@@ -197,32 +193,22 @@ function Chunk({ embedded = false, onBack }: ChunkProps) {
               <ResizablePanel defaultSize={narrowLayout ? 30 : 60} minSize={30}>
                 <article className="h-full flex flex-col">
                   <header className="flex-0 p-5 pb-2.5 border-b-0.5 border-b-border-button">
-                    <h2 className="text-[24px]">{t('chunk.chunkResult')}</h2>
+                    <h2 className="text-[24px]">문서 내용</h2>
                     <div className="text-[14px] text-text-secondary">
-                      {t('chunk.chunkResultTip')}
+                      검색과 AI 답변에 사용되는 문서 내용입니다.
                     </div>
                   </header>
 
                   <Spin spinning={loading} className="flex-1 h-0" size="large">
-                    <div className="relative @container h-full px-5 pb-5 overflow-hidden flex flex-col">
-                      <div
-                        className="
-                        sticky top-0 z-[1] bg-bg-base space-y-4 py-5
-                        @4xl:flex @4xl:justify-between @4xl:items-center
-                        @4xl:space-y-0 @4xl:gap-4
-                      "
-                        role="toolbar"
-                      >
-                        <ChunkResultBar
-                          className="@4xl:order-2"
-                          handleInputChange={handleInputChange}
-                          searchString={searchString}
-                          changeChunkTextMode={changeChunkTextMode}
-                          available={available}
-                          handleSetAvailable={handleSetAvailable}
+                    <div className="relative @container h-full p-5 overflow-hidden flex flex-col">
+                      <div className="flex justify-end pb-5" role="toolbar">
+                        <SearchInput
+                          className="w-28"
+                          placeholder={t('common.search')}
+                          onChange={handleInputChange}
+                          value={searchString}
                         />
                       </div>
-
                       <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
                         {chunkList.map((item) => (
                           <ChunkCard
@@ -230,7 +216,6 @@ function Chunk({ embedded = false, onBack }: ChunkProps) {
                             key={item.chunk_id}
                             clickChunkCard={handleChunkCardClick}
                             selected={item.chunk_id === selectedChunkId}
-                            textMode={textMode}
                             t={dataUpdatedAt}
                           />
                         ))}
