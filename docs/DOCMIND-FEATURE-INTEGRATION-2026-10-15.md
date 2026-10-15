@@ -1,7 +1,7 @@
 # DocMind answer and OCR workspace integration
 
 This change integrates the missing DocMind UI and answer API into the optimized
-feature-diet branch. It is a source/build candidate, not a production deployment.
+feature-diet branch. It is a built release candidate, not a production deployment.
 
 ## Integration sources
 
@@ -54,17 +54,41 @@ by a test-only 50-second limit; the final probe used the unchanged service limit
 The model's two slots were both busy, with 49,294 and 48,015 input tokens reported
 in metadata. Queueing is a likely explanation, not a confirmed causal trace.
 No existing model job was interrupted and no timeout/model setting was changed.
-Successful real answer generation therefore remains unverified and is a release
-limitation separate from the restored UI and route.
+Successful real answer generation therefore remains unverified. The user
+explicitly directed that model-server load be treated separately and not block
+our restoration/release preparation. No timeout increase is included.
 
 No production containers, Vercel deployment, operational documents or indexes were
-modified. A duplicate database/search-engine stack was not started because host
-free memory was about 1.3 GiB. Actual source synchronization, OCR inference,
-decryption and live database-to-model end-to-end behavior were not rerun.
+modified. The initial UI harness was chosen while host free memory was about
+1.3 GiB. A later WSL check showed about 6.9 GiB available within the VM, so after
+the build stopped an isolated, resource-limited runtime with disposable databases
+was started. It has no operational data mounts or external model access. Actual
+source synchronization, OCR inference, decryption and operational
+database-to-model end-to-end behavior were not rerun.
 
-Before rollout, build the committed source as one release, verify the answer
-route and actual DocMind screens together, preserve the existing optimized
-runtime settings, then perform a bounded real-service smoke check. File hashes
+## Built release candidate
+
+- Source: `f4f8efbc7a31648c43a4bb4f49970d4c8f3ea882`.
+- Image: `docmind-ragflow:diet-f4f8efbc-722826b3`.
+- Digest: `sha256:b1bfcd0c565027129a0431b277c79cb7a163f3d19aa72abea517429e889e5e26`.
+- Built the committed `app/Dockerfile` from a Git archive; no working-tree overlay.
+- Build succeeded; its frontend build took 45.17 seconds. BuildKit was stopped
+  before the independent runtime check.
+- All 394 frontend assets exactly match the browser-tested build. Answer route,
+  answer service, ingestion, preview, embedding and dependency file hashes match
+  the committed source. Python sources parsed successfully inside the image.
+- Independent runtime checks: 35 passed, zero failed, against disposable MySQL,
+  Elasticsearch, Redis and MinIO. The real restored answer route rejects anonymous
+  callers and client tenant overrides, and returns insufficient evidence for an
+  authenticated empty catalog. Retained profile/model/chunk/history endpoints and
+  removed endpoint boundaries passed as well.
+- Browser verification against that actual image confirmed AI submission to the
+  real answer route, the OCR dashboard and model/provider settings. A unique
+  `.localhost` hostname was used after session interference on bare `127.0.0.1`;
+  the isolated-host flow passed without an authentication code change.
+
+For rollout, use this single release and preserve the existing optimized runtime
+settings, then perform a bounded real-service smoke check. File hashes
 or a generic search check alone do not prove that AI answers and OCR are present.
 
 Local evidence is in `.local/docmind-feature-integration/`: build/test logs,

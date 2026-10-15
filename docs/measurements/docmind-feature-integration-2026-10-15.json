@@ -1,5 +1,5 @@
 {
-  "status": "source_and_frontend_build_candidate; not deployed",
+  "status": "release_candidate_built_and_isolated_runtime_verified; not deployed",
   "baseline_commit": "ecb9e75607923b6516480c93fd759abd7cd38069",
   "ui_source": "feat/ocr-review-panel@82f2462",
   "answer_source": "feat/local-llm-context@e5af52e",
@@ -48,6 +48,12 @@
       "real source decryption",
       "live database-to-answer E2E",
       "provider-management operations"
+    ],
+    "actual_image_verified": [
+      "AI request reaches actual authenticated answer route and displays insufficient evidence for empty catalog",
+      "OCR review dashboard appears",
+      "unique .localhost hostname separates test session cookies from other local apps",
+      "model/provider settings populated without an error"
     ]
   },
   "model_health": {
@@ -120,5 +126,175 @@
   ],
   "production_mutations": false,
   "vercel_deployed": false,
-  "throughput_remeasured": false
+  "throughput_remeasured": false,
+  "candidate_image": {
+    "source_commit": "f4f8efbc7a31648c43a4bb4f49970d4c8f3ea882",
+    "image_id": "sha256:b1bfcd0c565027129a0431b277c79cb7a163f3d19aa72abea517429e889e5e26",
+    "image_tag": "docmind-ragflow:diet-f4f8efbc-722826b3",
+    "version": "v0.27.1-docmind-diet-f4f8efbc",
+    "source_hashes_match_committed_source": true,
+    "source_hashes": {
+      "api/apps/restful_apis/docmind_api.py": "18f35184d9489624055424122ca805682e76232acec74ffcf64fe6f57299fc10",
+      "api/apps/services/docmind_answer_service.py": "8d3ad67a052e883ed4749f698ba756fecb6811f7a9e2cd2281712787f167f011",
+      "api/apps/services/docmind_ingestion_service.py": "00a43beb9749dcdbcef27848a1c526e8e81052d4c346f60f6ae9e46a7cea3161",
+      "api/apps/services/docmind_preview_service.py": "adab771efd40dc0c7de6711b2c10ea95f5d28516235c9ce2ceddbd6b31e8c436",
+      "rag/llm/embedding_model.py": "eac315e913043264d4e083f4b517e0812d21973eb391958d8b73b3ac673276bc",
+      "pyproject.toml": "b5cd65f33fcdf4c8c1fc756304025078f019b6374bfeb7cf3292948b9b9f6b3b",
+      "uv.lock": "a80547a006519e08f372844ac3257a1502ca4ccbb34024f830f1bb4093f9b683"
+    },
+    "browser_tested_frontend_all_assets_match": true,
+    "asset_count": 394
+  },
+  "isolated_runtime": {
+    "passed": 35,
+    "failed": 0,
+    "image_id": "sha256:b1bfcd0c565027129a0431b277c79cb7a163f3d19aa72abea517429e889e5e26",
+    "real_mysql_es_redis_minio": true,
+    "assertions": [
+      {
+        "label": "retained health alias",
+        "passed": true
+      },
+      {
+        "label": "anonymous profile denied",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/shared-session",
+        "passed": true
+      },
+      {
+        "label": "shared session ready",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/users/me",
+        "passed": true
+      },
+      {
+        "label": "actual shared profile",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/models",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/users/me/models",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/bootstrap",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/folders",
+        "passed": true
+      },
+      {
+        "label": "empty source catalog retained",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/search",
+        "passed": true
+      },
+      {
+        "label": "empty retained search",
+        "passed": true
+      },
+      {
+        "label": "restored answer denies anonymous callers",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/answer",
+        "passed": true
+      },
+      {
+        "label": "real restored answer route handles empty authorized catalog",
+        "passed": true
+      },
+      {
+        "label": "restored answer rejects client identity override",
+        "passed": true
+      },
+      {
+        "label": "chunk unauthorized/missing document boundary",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/datasets/266559d52d29c53e315624d52c09f913/documents/99999999999999999999999999999999/chunks?id=88888888888888888888888888888888",
+        "passed": true
+      },
+      {
+        "label": "actual retained chunk read",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/chats/33333333333333333333333333333333/sessions",
+        "passed": true
+      },
+      {
+        "label": "retained ordinary history listed",
+        "passed": true
+      },
+      {
+        "label": "other tenant history denied",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/chats/33333333333333333333333333333333/sessions/55555555555555555555555555555555",
+        "passed": true
+      },
+      {
+        "label": "ordinary history synthetic message",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/canvas/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/memory/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /api/v1/agents",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/mcp_server/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/plugin/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/chat_channel/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /api/v1/search",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/graph/knowledge_graph",
+        "passed": true
+      },
+      {
+        "label": "no admin9381 listener",
+        "passed": true
+      },
+      {
+        "label": "no retired runtime workers",
+        "passed": true
+      }
+    ],
+    "production_mounts": false,
+    "model_access": false,
+    "cleanup": "Owned containers, anonymous volumes, and internal network removed"
+  },
+  "real_model_delay_policy": "User directed on 2026-10-15 to proceed with our work independently of model-server load; no timeout setting changed."
 }
