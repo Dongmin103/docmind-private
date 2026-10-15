@@ -35,7 +35,6 @@ test('shows parser identity and Office locator without inventing a PDF page', ()
       }
       selected={false}
       clickChunkCard={jest.fn()}
-      textMode={'full' as any}
     />,
   );
 
@@ -66,7 +65,6 @@ test('renders HWP table display HTML without replacing searchable text', () => {
       }
       selected={false}
       clickChunkCard={jest.fn()}
-      textMode={'full' as any}
     />,
   );
 
@@ -94,7 +92,6 @@ test('read-only cards keep selection highlights without edit or mutation control
       }
       selected={false}
       clickChunkCard={clickChunkCard}
-      textMode={'full' as any}
     />,
   );
 

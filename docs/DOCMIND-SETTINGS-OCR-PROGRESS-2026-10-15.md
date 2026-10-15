@@ -53,3 +53,42 @@ original preview and full content. The extracted inspector had missed these
 changes; they are restored without changing main search or preview behavior.
 Focused inspector/DocMind/OCR UI verification: 35 passed; focused lint and
 `git diff --check` passed. No remaining text-mode component references.
+
+## Rollout and browser verification
+
+- Deployed committed runtime `9b1711f4e0dacd8352da98c034afe3684d37a196`
+  (includes settings/OCR commit `ac56b26`) from a clean archive build.
+  Image: `docmind-ragflow:diet-9b1711f4-1dac837c`.
+  ID: `sha256:ad64097258deae460afcbdf16b4bfcd1a56eb6b155fa0f280daf2949fbd1e621`.
+- Vercel deployment: `dpl_6mH5inuLwCwAMT8X5Y7t3EvW3M2d` at
+  https://temporary-speedy-tuba-bfs78eb.vercel.app/docmind.
+  Local and public HTML hashes match the frontend extracted from that image.
+  Existing API rewrite retained.
+- Waited for the ongoing user OCR job and cleanup to finish. Before/after rollout:
+  228 indexed documents, 12,489 chunks, identical lifecycle state counts, zero
+  pending cleanup. This release did not request production OCR or reindexing.
+- API health (DB, document engine, Redis, storage), auth keys/settings hashes,
+  configured environment/resource limits and source hashes passed. All three
+  Windows worker/watcher tasks resumed. Admin server remains absent.
+- The first verification saw a transient HTTP 401 after shared-session creation;
+  a fresh endpoint check and the complete verification rerun both passed without
+  code/config changes. Exact cause was not established. Actual public UI access
+  also passed.
+- Isolated synthetic browser check against exact image assets: OCR request stays
+  visible as waiting, then parsing, then completion. Completion survives reload;
+  acknowledging hides it across reload. Original HWP preview, detail Search,
+  Korean document title and absence of retired toolbar controls verified.
+  Direct `/user-setting/model` redirects to search.
+- Public browser: five pre-existing OCR completions remain with acknowledgement
+  buttons; no real acknowledgement was clicked. The user's PDF detail shows
+  Korean title/description, Search and original-preview button, without
+  Artifact/Full text/Ellipse/filter controls. Settings navigation is absent.
+- Additional inspector/import/query tests: 11 passed. Removed obsolete test-only
+  textMode props after the runtime build; card tests rerun: 3 passed. No runtime
+  change follows the deployed commit. Independent review found no actionable
+  issue in the final Search-preserving commit.
+
+Deployment receipts, rollback configurations (private), and browser screenshots
+are in `.local/docmind-settings-ocr-deploy-20261015/` outside Git. Full-suite
+baseline limitations above remain; real OCR inference was not rerun for this UI
+release.
