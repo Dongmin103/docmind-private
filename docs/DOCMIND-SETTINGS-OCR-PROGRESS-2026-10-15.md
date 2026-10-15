@@ -108,3 +108,20 @@ the updated page suite passed all 17 tests (132 distinct focused tests overall).
 Focused lint/diff checks passed; TypeScript has the same 26 normalized existing
 diagnostics and introduces none. Independent reviewer found no actionable issue.
 Deployment and browser evidence follow below when complete.
+
+### Required-only rollout completed
+
+- Runtime source: `8c400b05b05f4e0e4e9a66d791e03f37e945bea3`.
+  Image `docmind-ragflow:diet-8c400b05-032f0d72`,
+  ID `sha256:24f0fffeb1e599f0a832115ec17411920fd33cbc3ee95ea0ab5c0cff5439b89b`. Builder stopped after clean build.
+- Vercel: `dpl_4zxZxYDupsZUVkAJXx7KVWQz7ayZ`. Local/public HTML hashes match exact image assets;
+  existing API rewrites retained. Health/auth/configuration/source checks passed.
+- Existing 228 indexed documents / 12,489 chunks and lifecycle counts preserved;
+  cleanup pending zero. All three scheduled workers/watchers running after rollout.
+- Synthetic browser verified mixed PDF/PPTX library and direct detail have no
+  image OCR hints or actions, while zero-text PDF consent and requested progress
+  still work. Public UI shows OCR required 13, no OCR review/image OCR hints/other
+  OCR category, and five unacknowledged prior completions. No production OCR or
+  completion acknowledgement was requested during validation.
+- Logs, private rollback files and screenshots:
+  `.local/docmind-required-ocr-deploy-20261015/`. Owned synthetic container removed.
