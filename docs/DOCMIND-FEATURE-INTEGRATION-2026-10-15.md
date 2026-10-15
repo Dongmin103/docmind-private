@@ -95,3 +95,31 @@ Local evidence is in `.local/docmind-feature-integration/`: build/test logs,
 typecheck comparison, protected-file hashes, synthetic browser request log,
 screenshots and actual configured-model probe results. The accompanying JSON
 records the final model probe outcome separately from synthetic UI checks.
+
+## Production rollout — 2026-10-15
+
+After explicit deployment approval, the candidate above replaced the production
+API and the existing Vercel production frontend. Earlier statements about no
+production changes describe the preparation phase, before this rollout.
+
+- Vercel deployment: `dpl_EFUhWg9DoUqCy47UEesLucxpw2ee`, READY and aliased to
+  https://temporary-speedy-tuba-bfs78eb.vercel.app/docmind.
+- API image digest matches the tested candidate. Database, search engine, Redis
+  and storage health checks all returned `ok`.
+- Existing authentication keys, system settings, configured environment and
+  resource limits were preserved. The administrator service remains absent.
+- No active ingestion/preview or pending cleanup was present at cutover. Ingest,
+  preview and source watcher scheduled workers were stopped briefly and resumed.
+- Before/after document states match: 223 indexed documents and 12,460 chunks;
+  18 no-text PDF failures, two type mismatches, one retry-wait job. No reset,
+  reindex or OCR request was issued.
+- Local and public index hashes match the browser-tested candidate. Public API
+  forwarding responds successfully. Authenticated answer validation rejects an
+  empty question and a client-supplied tenant identifier on both origins.
+- Live public browser checks confirmed document search, AI question controls,
+  model settings and the OCR dashboard (18 required, 36 review, two other issues).
+  These checks do not establish successful live model answer generation; that
+  external-load limitation remains as documented above.
+- Rollback compose, prior deployment identity, verification JSON and screenshots
+  are retained privately under `.local/docmind-feature-restore-deploy-20261015/`
+  in the primary checkout. No private configuration is committed.
