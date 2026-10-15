@@ -45,6 +45,11 @@ const getAvailableParam = (available?: number) => {
 };
 
 const chunkEndpoints = registerNextServer({
+  detail: {
+    url: ({ datasetId, documentId, chunkId }: { datasetId: string; documentId: string; chunkId: string }) =>
+      api.chunkDetail(datasetId, documentId, chunkId),
+    method: 'get',
+  },
   list: {
     url: ({
       datasetId,
@@ -58,6 +63,17 @@ const chunkEndpoints = registerNextServer({
 });
 
 const chunkService = {
+  getChunk: async (params: Record<string, any>) => {
+    const response = await chunkEndpoints.detail({
+      datasetId: getDatasetId(params),
+      documentId: getDocumentId(params),
+      chunkId: params.chunk_id || params.id,
+    }, true);
+    if (response.data?.code === 0 && response.data.data) {
+      response.data.data = mapChunkForInspection(response.data.data);
+    }
+    return response;
+  },
   chunkList: async (params: Record<string, any>) => {
     const response = await chunkEndpoints.list(
       {

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 
 const mockSearchMutate = jest.fn();
@@ -11,6 +17,9 @@ let mockSearchResult: any;
 let mockSearchVariables: any;
 let mockDocumentOptions: any[];
 let mockHierarchyDocumentId = 'document-1';
+let mockExtraHierarchyNodes: import('@/services/docmind-service').DocMindHierarchyNode[] =
+  [];
+const mockOcrRequest = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('@tanstack/react-query', () => ({
   useMutation: (options: { mutationKey?: string[] }) => ({
@@ -25,6 +34,8 @@ jest.mock('@tanstack/react-query', () => ({
     error: undefined,
     isError: false,
     isPending: false,
+    reset: jest.fn(),
+    mutateAsync: mockOcrRequest,
     mutate:
       options.mutationKey?.[0] === 'docmind-search'
         ? mockSearchMutate
@@ -54,6 +65,7 @@ jest.mock('@tanstack/react-query', () => ({
         data: {
           dataset_id: 'dataset-1',
           nodes: [
+            ...mockExtraHierarchyNodes,
             {
               file_id: 'file-1',
               document_id: mockHierarchyDocumentId,
@@ -117,7 +129,6 @@ jest.mock('lucide-react', () => ({
 }));
 jest.mock('./workspace-views', () => ({
   ChunkInspection: () => null,
-  WorkspaceSettings: () => null,
 }));
 
 import DocMind from './index';
@@ -145,6 +156,8 @@ describe('DocMind search scopes', () => {
     mockHierarchyError = false;
     mockRegistrationError = false;
     mockHierarchyDocumentId = 'document-1';
+    mockExtraHierarchyNodes = [];
+    mockOcrRequest.mockClear();
     mockSearchResult = undefined;
     mockSearchVariables = undefined;
     mockDocumentOptions = [
@@ -222,10 +235,122 @@ describe('DocMind search scopes', () => {
     expect(screen.getByText(/문서 추가·수정은 All-in-One/)).toBeInTheDocument();
   });
 
+  it('separates OCR needs from unrelated failures and filters without opening folders', async () => {
+    mockCanAdminister = true;
+    const scan: import('@/services/docmind-service').DocMindHierarchyNode = {
+      file_id: 'scan',
+      document_id: 'scan-document',
+      name: 'scan.pdf',
+      relative_path: '품질/검토/scan.pdf',
+      depth: 2,
+      type: 'file',
+      document_exists: true,
+      index_state: 'FAILED',
+      index_pdf_ocr_option: 'zero_text',
+      index_pdf_ocr_version_id: 'scan-version',
+    };
+    mockExtraHierarchyNodes = [
+      scan,
+      {
+        ...scan,
+        file_id: 'mixed',
+        document_id: 'mixed-document',
+        name: 'mixed.pdf',
+        index_state: 'INDEXED',
+        searchable: true,
+        index_pdf_ocr_option: 'partial_images',
+      },
+      {
+        ...scan,
+        file_id: 'slides',
+        name: 'slides.pptx',
+        index_state: 'INDEXED',
+        index_pdf_ocr_option: null,
+        index_image_ocr_not_run: true,
+      },
+      {
+        ...scan,
+        file_id: 'running',
+        name: 'running.pdf',
+        index_state: 'PROCESSING',
+      },
+      {
+        ...scan,
+        file_id: 'deleted',
+        name: 'deleted.pdf',
+        document_exists: false,
+      },
+      { ...scan, file_id: 'folder', name: 'folder', type: 'folder' },
+    ];
+    const { rerender } = renderDocMind('/docmind?view=library');
+    const panel = within(screen.getByRole('region', { name: 'OCR 확인 필요' }));
+    expect(
+      panel.getByRole('button', { name: 'OCR 필요 1건' }),
+    ).toBeInTheDocument();
+    expect(
+      panel.getByRole('button', { name: 'OCR 검토 2건' }),
+    ).toBeInTheDocument();
+    expect(
+      panel.getByRole('button', { name: '기타 인덱싱 확인 1건' }),
+    ).toBeInTheDocument();
+    expect(panel.getAllByText('품질/검토').length).toBeGreaterThan(0);
+    expect(panel.queryByText('protocol.pdf')).not.toBeInTheDocument();
+    expect(panel.queryByText('running.pdf')).not.toBeInTheDocument();
+    expect(panel.queryByText('deleted.pdf')).not.toBeInTheDocument();
+    fireEvent.click(panel.getByRole('button', { name: 'OCR 필요 1건' }));
+    expect(panel.queryByText('mixed.pdf')).not.toBeInTheDocument();
+    fireEvent.click(panel.getByRole('button', { name: 'OCR 선택' }));
+    fireEvent.click(panel.getByRole('button', { name: 'OCR로 인덱싱' }));
+    await waitFor(() =>
+      expect(mockOcrRequest).toHaveBeenCalledWith({
+        documentId: 'scan-document',
+        versionId: 'scan-version',
+        key: expect.any(String),
+      }),
+    );
+    fireEvent.click(panel.getByRole('button', { name: 'OCR 검토 2건' }));
+    expect(panel.queryByText('scan.pdf')).not.toBeInTheDocument();
+    expect(panel.getAllByRole('button', { name: 'OCR 선택' })).toHaveLength(1);
+    expect(
+      panel.getByText('이 형식은 현재 화면에서 OCR을 실행할 수 없습니다.'),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      panel.getByRole('button', { name: '기타 인덱싱 확인 1건' }),
+    );
+    expect(panel.getByText('protocol.pdf')).toBeInTheDocument();
+    expect(
+      panel.queryByRole('button', { name: 'OCR 선택' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(panel.getByRole('button', { name: 'OCR 대상 전체 3건' }));
+    mockExtraHierarchyNodes = [];
+    rerender(
+      <MemoryRouter initialEntries={['/docmind?view=library']}>
+        <DocMind />
+      </MemoryRouter>,
+    );
+    expect(
+      panel.getByRole('button', { name: 'OCR 대상 전체 0건' }),
+    ).toBeInTheDocument();
+    expect(
+      panel.getByText('현재 OCR 확인이 필요한 자료가 없습니다.'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not show stale OCR counts when the hierarchy cannot be refreshed', () => {
+    mockCanAdminister = true;
+    mockHierarchyError = true;
+    renderDocMind('/docmind?view=library');
+    expect(
+      screen.queryByRole('button', { name: /OCR 필요.*건/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows actual ingestion failure on the document detail view', () => {
     mockCanAdminister = true;
     mockHierarchyDocumentId = 'b'.repeat(32);
-    renderDocMind(`/docmind?view=document&id=${'a'.repeat(32)}&doc_id=${mockHierarchyDocumentId}&source=docmind`);
+    renderDocMind(
+      `/docmind?view=document&id=${'a'.repeat(32)}&doc_id=${mockHierarchyDocumentId}&source=docmind`,
+    );
     expect(screen.getByRole('status')).toHaveTextContent(
       '인덱싱 실패 · 임시 파일 정리 대기 (HOST_WORKER_ERROR)',
     );
@@ -235,8 +360,12 @@ describe('DocMind search scopes', () => {
     mockCanAdminister = true;
     mockHierarchyError = true;
     mockHierarchyDocumentId = 'b'.repeat(32);
-    renderDocMind(`/docmind?view=document&id=${'a'.repeat(32)}&doc_id=${mockHierarchyDocumentId}&source=docmind`);
-    expect(screen.getByRole('status')).toHaveTextContent('문서 상태를 확인하지 못했습니다.');
+    renderDocMind(
+      `/docmind?view=document&id=${'a'.repeat(32)}&doc_id=${mockHierarchyDocumentId}&source=docmind`,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '문서 상태를 확인하지 못했습니다.',
+    );
   });
 
   it('blocks search on a failed scope load and allows scope recovery', () => {
@@ -275,16 +404,65 @@ describe('DocMind search scopes', () => {
     mockSearchResult = {
       dataset_id: 'dataset-1',
       candidate_count: 1,
-      ranked_chunks: [{ doc_id: 'document-1', doc_name: 'protocol.pdf', content_with_weight: 'saved result' }],
+      ranked_chunks: [
+        {
+          doc_id: 'document-1',
+          doc_name: 'protocol.pdf',
+          content_with_weight: 'saved result',
+        },
+      ],
     };
     renderDocMind();
-    expect(screen.getByText('결과 1개 · 후보 1개')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '검색 결과' })).toHaveTextContent(
+      '결과 1개 · 검색 후보 1개',
+    );
 
     fireEvent.click(screen.getByText('전체 문서'));
     fireEvent.click(screen.getByLabelText('선택 문서'));
 
     expect(screen.queryByText('saved result')).not.toBeInTheDocument();
-    expect(screen.getByText('검색 범위가 변경되었습니다. 다시 검색해 주세요.')).toBeInTheDocument();
+    expect(
+      screen.getByText('검색 범위가 변경되었습니다. 다시 검색해 주세요.'),
+    ).toBeInTheDocument();
+  });
+
+  it('never attaches answer generation to existing search results', () => {
+    mockSearchVariables = {
+      question: '시험 질문',
+      projectId: 'project-1',
+      scope: { mode: 'all' },
+    };
+    mockSearchResult = {
+      dataset_id: 'dataset-1',
+      candidate_count: 1,
+      ranked_chunks: [
+        {
+          doc_id: 'document-1',
+          chunk_id: 'chunk-1',
+          content_with_weight: 'synthetic',
+        },
+      ],
+    };
+    renderDocMind();
+    enterQuestion();
+    expect(
+      screen.queryByRole('region', { name: '문서 근거 답변' }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('문서 검색 질문'), {
+      target: { value: '다른 질문' },
+    });
+    expect(
+      screen.queryByRole('region', { name: '문서 근거 답변' }),
+    ).not.toBeInTheDocument();
+    enterQuestion();
+    expect(
+      screen.queryByRole('region', { name: '문서 근거 답변' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('전체 문서'));
+    fireEvent.click(screen.getByLabelText('선택 문서'));
+    expect(
+      screen.queryByRole('region', { name: '문서 근거 답변' }),
+    ).not.toBeInTheDocument();
   });
 
   it('hides a cached result when its document leaves the live catalog', () => {
@@ -295,10 +473,18 @@ describe('DocMind search scopes', () => {
     mockSearchResult = {
       dataset_id: 'dataset-1',
       candidate_count: 1,
-      ranked_chunks: [{ doc_id: 'document-1', doc_name: 'protocol.pdf', content_with_weight: 'saved result' }],
+      ranked_chunks: [
+        {
+          doc_id: 'document-1',
+          doc_name: 'protocol.pdf',
+          content_with_weight: 'saved result',
+        },
+      ],
     };
     const view = renderDocMind();
-    expect(screen.getByText('결과 1개 · 후보 1개')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '검색 결과' })).toHaveTextContent(
+      '결과 1개 · 검색 후보 1개',
+    );
 
     mockDocumentOptions = [];
     view.rerender(
@@ -308,6 +494,8 @@ describe('DocMind search scopes', () => {
     );
 
     expect(screen.queryByText('saved result')).not.toBeInTheDocument();
-    expect(screen.getByText('검색 범위가 변경되었습니다. 다시 검색해 주세요.')).toBeInTheDocument();
+    expect(
+      screen.getByText('검색 범위가 변경되었습니다. 다시 검색해 주세요.'),
+    ).toBeInTheDocument();
   });
 });

@@ -73,7 +73,21 @@ it('preserves chunk positions, images, references and version fencing while adap
     source_version_id: 'v1',
     chunk_set_id: 's1',
   });
-  expect(Object.keys(chunkService)).toEqual(['chunkList']);
+  expect(Object.keys(chunkService).sort()).toEqual(['chunkList', 'getChunk']);
+});
+
+it('loads the cited chunk through the tenant-scoped detail endpoint without losing its version or display HTML', async () => {
+  const chunk = {
+    id: 'citation-1', document_id: 'document-1', content: 'Cited text',
+    display_html: '<table><tr><td>Cited text</td></tr></table>',
+    source_version_id: 'v1', chunk_set_id: 's1',
+  };
+  (request as unknown as jest.Mock).mockResolvedValue({ data: { code: 0, data: chunk } });
+  const response = await chunkService.getChunk({ kb_id: 'dataset-1', doc_id: 'document-1', chunk_id: 'citation-1' });
+  expect(request).toHaveBeenLastCalledWith(expect.objectContaining({
+    url: '/api/v1/datasets/dataset-1/documents/document-1/chunks/citation-1', method: 'get',
+  }));
+  expect(response.data.data).toMatchObject({ ...chunk, chunk_id: 'citation-1', doc_id: 'document-1', content_with_weight: 'Cited text' });
 });
 
 it('keeps the ordinary document thumbnail GET contract in the neutral service', async () => {
