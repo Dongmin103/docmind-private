@@ -1,5 +1,5 @@
 import type { DocMindHierarchyNode } from '@/services/docmind-service';
-import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { PdfOcrChoice } from './pdf-ocr-choice';
 import { SourceIndexStatus } from './source-index-status';
 import {
@@ -10,8 +10,6 @@ import {
   readOcrAcknowledgements,
 } from './ocr-progress';
 
-type Category = 'required' | 'review' | 'other';
-type Filter = 'ocr' | Category;
 type Props = {
   nodes: DocMindHierarchyNode[];
   onConfirm: (
@@ -22,15 +20,6 @@ type Props = {
   renderInspection: (node: DocMindHierarchyNode) => ReactNode;
 };
 
-const Categories: { id: Category; label: string; description: string }[] = [
-  { id: 'required', label: 'OCR 필요', description: '검색 가능한 글자 없음' },
-  { id: 'review', label: 'OCR 검토', description: '이미지 속 글자 확인 필요' },
-  {
-    id: 'other',
-    label: '기타 인덱싱 확인',
-    description: '실패·일부 내용 미추출',
-  },
-];
 const ActiveStates = new Set([
   'PENDING',
   'PROCESSING',
@@ -38,31 +27,7 @@ const ActiveStates = new Set([
   'CLEANUP',
 ]);
 
-function categoryOf(node: DocMindHierarchyNode): Category | null {
-  if (
-    node.type !== 'file' ||
-    !node.document_exists ||
-    ActiveStates.has(node.index_state ?? '')
-  )
-    return null;
-  if (node.index_pdf_ocr_option === 'zero_text') return 'required';
-  if (
-    node.index_pdf_ocr_option === 'partial_images' ||
-    node.index_image_ocr_not_run
-  )
-    return 'review';
-  if (
-    node.index_partial_coverage ||
-    ['FAILED', 'ACTION_REQUIRED', 'CLEANUP_FAILED'].includes(
-      node.index_state ?? '',
-    )
-  )
-    return 'other';
-  return null;
-}
-
 export function OcrReviewPanel({ nodes, onConfirm, renderInspection }: Props) {
-  const [filter, setFilter] = useState<Filter>('ocr');
   const [acknowledged, setAcknowledged] = useState(readOcrAcknowledgements);
   const [accepted, setAccepted] = useState<Record<string, string>>({});
   const [storageFailed, setStorageFailed] = useState(false);
@@ -125,37 +90,28 @@ export function OcrReviewPanel({ nodes, onConfirm, renderInspection }: Props) {
       setStorageFailed(true);
     }
   };
-  const entries = useMemo(
-    () =>
-      nodes.flatMap((node) => {
-        const category =
-          node.index_pdf_ocr_requested ||
-          (node.index_pdf_ocr_version_id &&
-            accepted[node.document_id ?? ''] === node.index_pdf_ocr_version_id)
-            ? null
-            : categoryOf(node);
-        return category ? [{ node, category }] : [];
-      }),
-    [nodes, accepted],
+  const entries = nodes.filter(
+    (node) =>
+      node.type === 'file' &&
+      node.document_exists &&
+      !ActiveStates.has(node.index_state ?? '') &&
+      node.index_pdf_ocr_option === 'zero_text' &&
+      !node.index_pdf_ocr_requested &&
+      !(
+        node.index_pdf_ocr_version_id &&
+        accepted[node.document_id ?? ''] === node.index_pdf_ocr_version_id
+      ),
   );
-  const counts = { required: 0, review: 0, other: 0 };
-  for (const entry of entries) counts[entry.category]++;
-  const visible = entries.filter(({ category }) =>
-    filter === 'ocr' ? category !== 'other' : category === filter,
-  );
-  const selectFilter = (event: MouseEvent<HTMLButtonElement>) => {
-    setFilter(event.currentTarget.value as Filter);
-  };
 
   return (
     <section
-      aria-label="OCR 확인 필요"
+      aria-label="OCR 필요"
       className="mt-6 rounded-xl border border-border-button bg-bg-card p-5"
     >
-      <h3 className="text-lg font-semibold text-text-primary">OCR 확인 필요</h3>
+      <h3 className="text-lg font-semibold text-text-primary">OCR 필요</h3>
       <p className="mt-1 text-sm text-text-secondary">
-        글자가 추출되지 않았거나 이미지 속 글자 확인이 필요한 자료를 모았습니다.
-        요청한 OCR의 진행 상황과 완료 결과도 확인할 수 있습니다.
+        검색 가능한 글자가 추출되지 않아 OCR이 필요한 자료입니다. 요청한 OCR의
+        진행 상황과 완료 결과도 확인할 수 있습니다.
       </p>
       <OcrProgress
         nodes={pendingResults}
@@ -168,63 +124,16 @@ export function OcrReviewPanel({ nodes, onConfirm, renderInspection }: Props) {
           표시될 수 있습니다.
         </p>
       )}
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        {Categories.map(({ id, label, description }) => (
-          <button
-            key={id}
-            type="button"
-            value={id}
-            onClick={selectFilter}
-            aria-label={`${label} ${counts[id]}건`}
-            aria-pressed={filter === id}
-            className={`rounded-lg border p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary ${filter === id ? 'border-accent-primary bg-bg-base' : 'border-border-button'}`}
-          >
-            <span className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium text-text-primary">
-                {label}
-              </span>
-              <span
-                className={`text-2xl font-semibold ${id === 'required' && counts[id] ? 'text-state-warning' : 'text-text-primary'}`}
-              >
-                {counts[id]}
-                <span className="ml-1 text-xs font-normal">건</span>
-              </span>
-            </span>
-            <span className="mt-1 block text-xs text-text-secondary">
-              {description}
-            </span>
-          </button>
-        ))}
-      </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          value="ocr"
-          onClick={selectFilter}
-          aria-pressed={filter === 'ocr'}
-          className={`rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-accent-primary ${filter === 'ocr' ? 'border-accent-primary text-accent-primary' : 'border-border-button text-text-secondary'}`}
-        >
-          OCR 대상 전체 {counts.required + counts.review}건
-        </button>
-        <p className="text-xs text-text-secondary" aria-live="polite">
-          현재 목록 {visible.length}건
-        </p>
-      </div>
-      {filter === 'other' && (
-        <p className="mt-3 text-sm text-text-secondary">
-          OCR 필요 여부가 확인되지 않은 인덱싱 문제입니다. 문서 상태와 추출
-          내용을 확인하세요.
-        </p>
-      )}
-      {visible.length === 0 ? (
+      <p className="mt-4 text-sm text-text-primary" aria-live="polite">
+        OCR 필요 {entries.length}건
+      </p>
+      {entries.length === 0 ? (
         <p className="py-8 text-center text-sm text-text-secondary">
-          {filter === 'ocr'
-            ? '현재 OCR 확인이 필요한 자료가 없습니다.'
-            : '이 분류에 해당하는 자료가 없습니다.'}
+          현재 OCR이 필요한 자료가 없습니다.
         </p>
       ) : (
         <ul className="mt-3 max-h-[32rem] divide-y divide-border-button overflow-y-auto">
-          {visible.map(({ node, category }) => {
+          {entries.map((node) => {
             const folder =
               node.relative_path
                 .replace(/\\/g, '/')
@@ -244,7 +153,7 @@ export function OcrReviewPanel({ nodes, onConfirm, renderInspection }: Props) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded border border-border-button px-2 py-0.5 text-xs text-text-secondary">
-                      {Categories.find(({ id }) => id === category)?.label}
+                      OCR 필요
                     </span>
                     <span className="break-all text-sm font-medium text-text-primary">
                       {node.name}
@@ -254,28 +163,21 @@ export function OcrReviewPanel({ nodes, onConfirm, renderInspection }: Props) {
                     {folder}
                   </p>
                   <p className="mt-2 text-sm text-text-primary">
-                    {category === 'required'
-                      ? '검색 가능한 글자가 추출되지 않았습니다.'
-                      : category === 'review'
-                        ? '이미지 속 글자를 인식하지 않아 검색에서 빠진 내용이 있을 수 있습니다.'
-                        : node.index_partial_coverage
-                          ? '일부 내용이 추출되지 않았습니다.'
-                          : '인덱싱 처리 상태를 확인해야 합니다.'}
+                    검색 가능한 글자가 추출되지 않았습니다.
                   </p>
                   <div className="mt-1 break-words text-xs">
                     <SourceIndexStatus node={node} />
                   </div>
-                  {category !== 'other' && !canRequest && (
+                  {!canRequest && (
                     <p className="mt-1 text-xs text-text-secondary">
-                      {node.index_pdf_ocr_option
-                        ? 'OCR 실행 정보를 확인할 수 없습니다. 자료 목록을 새로고침하세요.'
-                        : '이 형식은 현재 화면에서 OCR을 실행할 수 없습니다.'}
+                      OCR 실행 정보를 확인할 수 없습니다. 자료 목록을
+                      새로고침하세요.
                     </p>
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {renderInspection(node)}
-                  {category !== 'other' && canRequest && (
+                  {canRequest && (
                     <PdfOcrChoice node={node} onConfirm={confirm} />
                   )}
                 </div>

@@ -107,7 +107,7 @@ it('keeps an OCR request through progress and completion until acknowledged, inc
   expect(screen.getByText('OCR 대기')).toBeVisible();
 });
 
-it('keeps failures visible across filters and does not report an old searchable index as OCR completion', () => {
+it('keeps requested OCR failures visible and does not report an old searchable index as OCR completion', () => {
   const view = render(
     <OcrReviewPanel
       {...props}
@@ -122,7 +122,7 @@ it('keeps failures visible across filters and does not report an old searchable 
       ]}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'OCR 검토 0건' }));
+  expect(screen.queryByText(/OCR 검토/)).toBeNull();
   expect(screen.getByText('OCR 실패')).toBeVisible();
   expect(screen.getByText(/PARSER_PDF_OCR_NO_TEXT/)).toBeVisible();
   expect(

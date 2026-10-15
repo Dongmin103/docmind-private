@@ -25,9 +25,6 @@ export function SourceIndexStatus({ node }: { node: DocMindHierarchyNode }) {
       {node.searchable && node.index_partial_coverage
         ? ' · 일부 내용 미추출'
         : null}
-      {node.searchable && node.index_image_ocr_not_run
-        ? ' · 이미지 속 글자 미인식'
-        : null}
       {node.index_pdf_ocr_option === 'zero_text'
         ? ' · 검색 가능한 글자 없음'
         : null}

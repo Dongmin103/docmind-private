@@ -38,7 +38,7 @@ const setup = (
 };
 
 describe('minimal registration history', () => {
-  it('shows native partial coverage and skipped image OCR in indexed history', () => {
+  it('shows actual partial coverage without skipped image OCR hints', () => {
     setup([row('partial', {
       parser_run: {
         parse_run_id: 'run-partial', parser_name: 'pptx-native', parser_version: '1.1.0',
@@ -47,7 +47,7 @@ describe('minimal registration history', () => {
     })]);
     fireEvent.click(screen.getByRole('button', { name: '등록 기록 1건' }));
     expect(screen.getByText('일부 내용 미추출')).toBeVisible();
-    expect(screen.getByText('이미지 속 글자 미인식')).toBeVisible();
+    expect(screen.queryByText('이미지 속 글자 미인식')).toBeNull();
   });
   it('uses the document parent from the source tree when folder IDs have different representations', () => {
     setup(

@@ -92,3 +92,19 @@ Deployment receipts, rollback configurations (private), and browser screenshots
 are in `.local/docmind-settings-ocr-deploy-20261015/` outside Git. Full-suite
 baseline limitations above remain; real OCR inference was not rerun for this UI
 release.
+
+## Follow-up: only required OCR is exposed
+
+User approved hiding all image-presence/skipped-OCR suggestions from UI.
+Dashboard now lists only `zero_text` PDFs, with no review/other filters or counts.
+Shared document statuses and registration history no longer show skipped image
+OCR warnings; the shared OCR choice component rejects `partial_images` everywhere.
+Actual failure/partial-coverage status and all previously requested OCR progress,
+results and browser acknowledgement are retained. Parser diagnostics/API unchanged.
+
+Validation: behavior tests failed in six places before implementation; focused
+8-suite run passed 130 tests. Two direct-document PDF/PPTX cases were then added;
+the updated page suite passed all 17 tests (132 distinct focused tests overall).
+Focused lint/diff checks passed; TypeScript has the same 26 normalized existing
+diagnostics and introduces none. Independent reviewer found no actionable issue.
+Deployment and browser evidence follow below when complete.

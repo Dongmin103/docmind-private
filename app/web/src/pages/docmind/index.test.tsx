@@ -235,7 +235,7 @@ describe('DocMind search scopes', () => {
     expect(screen.getByText(/문서 추가·수정은 All-in-One/)).toBeInTheDocument();
   });
 
-  it('separates OCR needs from unrelated failures and filters without opening folders', async () => {
+  it('only offers zero-text OCR while keeping requested progress visible', async () => {
     mockCanAdminister = true;
     const scan: import('@/services/docmind-service').DocMindHierarchyNode = {
       file_id: 'scan',
@@ -286,21 +286,17 @@ describe('DocMind search scopes', () => {
       { ...scan, file_id: 'folder', name: 'folder', type: 'folder' },
     ];
     const { rerender } = renderDocMind('/docmind?view=library');
-    const panel = within(screen.getByRole('region', { name: 'OCR 확인 필요' }));
-    expect(
-      panel.getByRole('button', { name: 'OCR 필요 1건' }),
-    ).toBeInTheDocument();
-    expect(
-      panel.getByRole('button', { name: 'OCR 검토 2건' }),
-    ).toBeInTheDocument();
-    expect(
-      panel.getByRole('button', { name: '기타 인덱싱 확인 1건' }),
-    ).toBeInTheDocument();
+    const panel = within(screen.getByRole('region', { name: 'OCR 필요' }));
+    expect(panel.getByText('OCR 필요 1건')).toBeVisible();
+    expect(screen.queryByText(/OCR 검토/)).toBeNull();
+    expect(screen.queryByText(/이미지 속 글자/)).toBeNull();
+    expect(panel.queryByText(/기타 인덱싱 확인/)).toBeNull();
+    expect(panel.queryByText('mixed.pdf')).toBeNull();
+    expect(panel.queryByText('slides.pptx')).toBeNull();
     expect(panel.getAllByText('품질/검토').length).toBeGreaterThan(0);
     expect(panel.queryByText('protocol.pdf')).not.toBeInTheDocument();
     expect(panel.queryByText('running.pdf')).not.toBeInTheDocument();
     expect(panel.queryByText('deleted.pdf')).not.toBeInTheDocument();
-    fireEvent.click(panel.getByRole('button', { name: 'OCR 필요 1건' }));
     expect(panel.queryByText('mixed.pdf')).not.toBeInTheDocument();
     fireEvent.click(panel.getByRole('button', { name: 'OCR 선택' }));
     fireEvent.click(panel.getByRole('button', { name: 'OCR로 인덱싱' }));
@@ -311,20 +307,9 @@ describe('DocMind search scopes', () => {
         key: expect.any(String),
       }),
     );
-    fireEvent.click(panel.getByRole('button', { name: 'OCR 검토 2건' }));
-    expect(within(panel.getByRole('region', { name: 'OCR 진행 및 결과' })).getByText('scan.pdf')).toBeVisible();
-    expect(panel.getAllByRole('button', { name: 'OCR 선택' })).toHaveLength(1);
-    expect(
-      panel.getByText('이 형식은 현재 화면에서 OCR을 실행할 수 없습니다.'),
-    ).toBeInTheDocument();
-    fireEvent.click(
-      panel.getByRole('button', { name: '기타 인덱싱 확인 1건' }),
-    );
-    expect(panel.getByText('protocol.pdf')).toBeInTheDocument();
-    expect(
-      panel.queryByRole('button', { name: 'OCR 선택' }),
-    ).not.toBeInTheDocument();
-    fireEvent.click(panel.getByRole('button', { name: 'OCR 대상 전체 2건' }));
+    expect(within(await panel.findByRole('region', { name: 'OCR 진행 및 결과' })).getByText('scan.pdf')).toBeVisible();
+    expect(panel.queryByRole('button', { name: 'OCR 선택' })).toBeNull();
+    expect(panel.queryByText('protocol.pdf')).toBeNull();
     mockExtraHierarchyNodes = [];
     rerender(
       <MemoryRouter initialEntries={['/docmind?view=library']}>
@@ -332,10 +317,10 @@ describe('DocMind search scopes', () => {
       </MemoryRouter>,
     );
     expect(
-      panel.getByRole('button', { name: 'OCR 대상 전체 0건' }),
+      panel.getByText('OCR 필요 0건'),
     ).toBeInTheDocument();
     expect(
-      panel.getByText('현재 OCR 확인이 필요한 자료가 없습니다.'),
+      panel.getByText('현재 OCR이 필요한 자료가 없습니다.'),
     ).toBeInTheDocument();
   });
 
@@ -344,7 +329,7 @@ describe('DocMind search scopes', () => {
     mockHierarchyError = true;
     renderDocMind('/docmind?view=library');
     expect(
-      screen.queryByRole('button', { name: /OCR 필요.*건/ }),
+      screen.queryByRole('region', { name: 'OCR 필요' }),
     ).not.toBeInTheDocument();
   });
 
@@ -357,6 +342,22 @@ describe('DocMind search scopes', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       '인덱싱 실패 · 임시 파일 정리 대기 (HOST_WORKER_ERROR)',
     );
+  });
+
+  it.each(['pdf', 'pptx'])('hides image OCR review hints on direct %s detail', (format) => {
+    mockCanAdminister = true;
+    const documentId = 'c'.repeat(32);
+    mockExtraHierarchyNodes = [{
+      file_id: 'mixed', document_id: documentId, name: `mixed.${format}`,
+      relative_path: `mixed.${format}`, depth: 1, type: 'file', document_exists: true,
+      index_state: 'INDEXED', searchable: true, index_image_ocr_not_run: true,
+      index_pdf_ocr_option: format === 'pdf' ? 'partial_images' : null,
+      index_pdf_ocr_version_id: 'mixed-version',
+    }];
+    renderDocMind(`/docmind?view=document&id=${'a'.repeat(32)}&doc_id=${documentId}&source=docmind`);
+    expect(screen.getByRole('status')).toHaveTextContent('인덱싱 완료');
+    expect(screen.queryByText(/이미지 속 글자|OCR 검토/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'OCR 선택' })).toBeNull();
   });
 
   it('does not show stale success when detail status refresh fails', () => {
