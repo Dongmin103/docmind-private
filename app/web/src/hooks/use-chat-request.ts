@@ -22,20 +22,16 @@ import {
   IClientConversation,
   IConversation,
   IDialog,
-  IExternalChatInfo,
 } from '@/interfaces/database/chat';
 import {
-  IAskRequestBody,
   IFeedbackRequestBody,
 } from '@/interfaces/request/chat';
 import i18n from '@/locales/config';
-import { useGetSharedChatSearchParams } from '@/pages/next-chats/hooks/use-send-shared-message';
 import chatService from '@/services/next-chat-service';
 import api from '@/utils/api';
 import { buildMessageListWithUuid } from '@/utils/chat';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
-import { has } from 'lodash';
 import { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useSearchParams } from 'react-router';
@@ -59,10 +55,8 @@ export const enum ChatApiAction {
   UpdateSession = 'updateSession',
   RemoveSession = 'removeSession',
   DeleteMessage = 'deleteMessage',
-  FetchMindMap = 'fetchMindMap',
   FetchRelatedQuestions = 'fetchRelatedQuestions',
   UploadAndParse = 'upload_and_parse',
-  FetchExternalChatInfo = 'fetchExternalChatInfo',
   Feedback = 'feedback',
   CreateSharedConversation = 'createSharedConversation',
 }
@@ -559,57 +553,10 @@ export function useUploadAndParseFile() {
   return { data, loading, uploadAndParseFile: mutateAsync, cancel };
 }
 
-export const useFetchExternalChatInfo = () => {
-  const { sharedId: id } = useGetSharedChatSearchParams();
-
-  const {
-    data,
-    isFetching: loading,
-    refetch,
-  } = useQuery<IExternalChatInfo>({
-    queryKey: [ChatApiAction.FetchExternalChatInfo, id],
-    gcTime: 0,
-    initialData: {} as IExternalChatInfo,
-    enabled: !!id,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      const { data } = await chatService.fetchExternalChatInfo(id!);
-
-      return data?.data;
-    },
-  });
-
-  return { data, loading, refetch };
-};
 
 //#endregion Session
 
 //#region search page
-
-export const useFetchMindMap = () => {
-  const {
-    data,
-    isPending: loading,
-    mutateAsync,
-  } = useMutation({
-    mutationKey: [ChatApiAction.FetchMindMap],
-    gcTime: 0,
-    mutationFn: async (params: IAskRequestBody) => {
-      try {
-        const ret = await chatService.chatsMindmap(params);
-        return ret?.data?.data ?? {};
-      } catch (error: any) {
-        if (has(error, 'message')) {
-          message.error(error.message);
-        }
-
-        return [];
-      }
-    },
-  });
-
-  return { data, loading, fetchMindMap: mutateAsync };
-};
 
 export const useFetchRelatedQuestions = () => {
   const {

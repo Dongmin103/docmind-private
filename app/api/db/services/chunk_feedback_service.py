@@ -221,8 +221,7 @@ class ChunkFeedbackService:
             new_weight = max(float(MIN_PAGERANK_WEIGHT), min(float(MAX_PAGERANK_WEIGHT), new_weight))
 
             condition = {"id": chunk_id}
-            doc_engine = settings.DOC_ENGINE.lower()
-            if new_weight <= 0.0 and doc_engine in ("elasticsearch", "opensearch"):
+            if new_weight <= 0.0:
                 new_value = {"remove": PAGERANK_FLD}
             else:
                 new_value = {PAGERANK_FLD: new_weight}

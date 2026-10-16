@@ -16,37 +16,20 @@
 
 'use client';
 
-import {
-  FileUpload,
-  FileUploadDropzone,
-  FileUploadItem,
-  FileUploadItemDelete,
-  FileUploadItemMetadata,
-  FileUploadItemPreview,
-  FileUploadItemProgress,
-  FileUploadList,
-  FileUploadTrigger,
-  type FileUploadProps,
-} from '@/components/file-upload';
+import { FileUpload, FileUploadDropzone, FileUploadItem, FileUploadItemDelete, FileUploadItemMetadata, FileUploadItemPreview, FileUploadItemProgress, FileUploadList, FileUploadTrigger, type FileUploadProps } from '@/components/file-upload';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { CircleStop, Globe, Paperclip, Send, Upload, X } from 'lucide-react';
+
+import { CircleStop, Paperclip, Send, Upload, X } from 'lucide-react';
 import * as React from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import storage from '@/utils/authorization-util';
 import { SelectWithSearch } from '../originui/select-with-search';
-import { AudioButton } from '../ui/audio-button';
 
 export type NextMessageInputOnPressEnterParameter = {
   enableThinking?: string;
-  enableInternet?: boolean;
   storeHistoryMessages?: boolean;
   omitSessionId?: boolean;
 };
@@ -63,7 +46,6 @@ interface NextMessageInputProps {
   isUploading?: boolean;
   onPressEnter({
     enableThinking,
-    enableInternet,
   }: NextMessageInputOnPressEnterParameter): void;
   onInputChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   createConversationBeforeUploadDocument?(message: string): Promise<any>;
@@ -71,7 +53,6 @@ interface NextMessageInputProps {
   onUpload?: NonNullable<FileUploadProps['onUpload']>;
   removeFile?(file: File): void;
   showReasoning?: boolean;
-  showInternet?: boolean;
   resize?: 'none' | 'vertical' | 'horizontal' | 'both';
 }
 
@@ -89,18 +70,13 @@ export function NextMessageInput({
   onPressEnter,
   removeFile,
   showReasoning = false,
-  showInternet = false,
 }: NextMessageInputProps) {
   const { t } = useTranslation();
   const [files, setFiles] = React.useState<File[]>([]);
-  const [audioInputValue, setAudioInputValue] = React.useState<string | null>(
-    null,
-  );
 
   const [enableThinking, setEnableThinking] = useState(() =>
     storage.getThinkingLevel(),
   );
-  const [enableInternet, setEnableInternet] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isManualMode, setIsManualMode] = useState(false);
@@ -181,37 +157,11 @@ export function NextMessageInput({
     storage.setThinkingLevel(value);
   }, []);
 
-  const handleInternetToggle = useCallback(() => {
-    setEnableInternet((prev) => !prev);
-  }, []);
-
   const pressEnter = useCallback(() => {
     onPressEnter({
       enableThinking,
-      enableInternet: showInternet ? enableInternet : false,
     });
-  }, [onPressEnter, enableThinking, enableInternet, showInternet]);
-
-  useEffect(() => {
-    if (audioInputValue !== null) {
-      onInputChange({
-        target: { value: audioInputValue },
-      } as React.ChangeEvent<HTMLTextAreaElement>);
-
-      setTimeout(() => {
-        pressEnter();
-        setAudioInputValue(null);
-      }, 0);
-    }
-  }, [
-    audioInputValue,
-    onInputChange,
-    onPressEnter,
-    enableThinking,
-    enableInternet,
-    showInternet,
-    pressEnter,
-  ]);
+  }, [onPressEnter, enableThinking,]);
 
   const onFileReject = React.useCallback((file: File, message: string) => {
     toast(message, {
@@ -361,26 +311,7 @@ export function NextMessageInput({
               />
             )}
 
-            {showInternet && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant={enableInternet ? 'accent' : 'transparent'}
-                    size="icon-xs"
-                    className="border-0"
-                    onClick={handleInternetToggle}
-                    data-testid="chat-detail-internet-toggle"
-                  >
-                    <Globe />
-                    <span className="sr-only">{t('chat.webSearch')}</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t('chat.webSearch')}</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
+
           </div>
 
           {sendLoading ? (
@@ -393,12 +324,7 @@ export function NextMessageInput({
             </Button>
           ) : (
             <div className="flex items-center gap-3">
-              <AudioButton
-                onOk={(value) => {
-                  setAudioInputValue(value);
-                }}
-                testId="chat-detail-audio-toggle"
-              />
+
 
               <Button
                 size="icon-xs"

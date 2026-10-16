@@ -1,0 +1,300 @@
+{
+  "status": "release_candidate_built_and_isolated_runtime_verified; not deployed",
+  "baseline_commit": "ecb9e75607923b6516480c93fd759abd7cd38069",
+  "ui_source": "feat/ocr-review-panel@82f2462",
+  "answer_source": "feat/local-llm-context@e5af52e",
+  "frontend_tests": {
+    "suites": 16,
+    "passed": 176,
+    "focused_type_import_fix_recheck": 36
+  },
+  "backend_answer_tests": {
+    "passed": 220,
+    "storage_and_auth_boundaries": "isolated"
+  },
+  "frontend_build": {
+    "exit_code": 0,
+    "post_build_product_changes": 0,
+    "index_sha256": "ed9e03d23a730249f6adde36333871ccf3b16e9d58b01d3bdfad177350f91273"
+  },
+  "typecheck": {
+    "baseline_count": 29,
+    "candidate_count": 29,
+    "introduced": [],
+    "resolved": []
+  },
+  "retired_runtime_check": "passed",
+  "focused_frontend_lint_exit": 0,
+  "production_base_answer_service_import": "passed in network-isolated 192MiB disposable container",
+  "review": {
+    "finding": "stale test-only IChunk import",
+    "resolution": "corrected to database/chunk; final typecheck and 36 tests passed"
+  },
+  "browser": {
+    "data": "synthetic HTTP boundary; real built frontend",
+    "verified": [
+      "AI question and answer",
+      "citation body and authenticated-detail URL construction",
+      "general document search",
+      "temporary HWP page viewer",
+      "OCR dashboard",
+      "OCR cancel sends zero requests",
+      "explicit OCR consent sends expected version and idempotency header",
+      "processing state removes item from OCR review list",
+      "settings navigation"
+    ],
+    "not_verified": [
+      "real OCR model execution",
+      "real source decryption",
+      "live database-to-answer E2E",
+      "provider-management operations"
+    ],
+    "actual_image_verified": [
+      "AI request reaches actual authenticated answer route and displays insufficient evidence for empty catalog",
+      "OCR review dashboard appears",
+      "unique .localhost hostname separates test session cookies from other local apps",
+      "model/provider settings populated without an error"
+    ]
+  },
+  "model_health": {
+    "models": {
+      "http_status": 200,
+      "elapsed_seconds": 0.278,
+      "configured_model_listed": true
+    }
+  },
+  "real_model_generation": {
+    "mode": "real configured model, synthetic evidence, restored deadline",
+    "passed": false,
+    "public_error_code": "DOCMIND_LLM_TIMEOUT",
+    "elapsed_seconds": 85.304
+  },
+  "model_slots_metadata": {
+    "http_status": 200,
+    "slot_count": 2,
+    "slots": [
+      {
+        "id": 0,
+        "is_processing": true,
+        "n_ctx": 172032,
+        "n_prompt_tokens": 49294
+      },
+      {
+        "id": 1,
+        "is_processing": true,
+        "n_ctx": 172032,
+        "n_prompt_tokens": 48015
+      }
+    ]
+  },
+  "protected_files": [
+    {
+      "path": "app/api/apps/services/docmind_ingestion_service.py",
+      "unchanged_from_head": true,
+      "normalized_sha256": "00a43beb9749dcdbcef27848a1c526e8e81052d4c346f60f6ae9e46a7cea3161"
+    },
+    {
+      "path": "app/api/apps/services/docmind_preview_service.py",
+      "unchanged_from_head": true,
+      "normalized_sha256": "adab771efd40dc0c7de6711b2c10ea95f5d28516235c9ce2ceddbd6b31e8c436"
+    },
+    {
+      "path": "app/rag/llm/embedding_model.py",
+      "unchanged_from_head": true,
+      "normalized_sha256": "eac315e913043264d4e083f4b517e0812d21973eb391958d8b73b3ac673276bc"
+    },
+    {
+      "path": "app/web/src/pages/docmind/workspace-settings.tsx",
+      "unchanged_from_head": true,
+      "normalized_sha256": "f51588bbde543bba3dc9c000964f89e5bd96bcc4e800f2c2145a1c39c64ff8f8"
+    },
+    {
+      "path": "app/web/src/pages/docmind/workspace-views.tsx",
+      "unchanged_from_head": true,
+      "normalized_sha256": "2f1dec81883d28d0566409db20dfdd70cc740c50e8fc156e97949a60c6a295f8"
+    },
+    {
+      "path": "app/web/package.json",
+      "unchanged_from_head": true,
+      "normalized_sha256": "8a4f2a64e1ff238cfffcb150f2022c5eefc56e06d6b00367de2285d034fd72dc"
+    },
+    {
+      "path": "app/web/package-lock.json",
+      "unchanged_from_head": true,
+      "normalized_sha256": "0ef27d2de87f2f59fbd404640697fb5ed03bdac0c980f1eaff546693bee9242e"
+    }
+  ],
+  "production_mutations": false,
+  "vercel_deployed": false,
+  "throughput_remeasured": false,
+  "candidate_image": {
+    "source_commit": "f4f8efbc7a31648c43a4bb4f49970d4c8f3ea882",
+    "image_id": "sha256:b1bfcd0c565027129a0431b277c79cb7a163f3d19aa72abea517429e889e5e26",
+    "image_tag": "docmind-ragflow:diet-f4f8efbc-722826b3",
+    "version": "v0.27.1-docmind-diet-f4f8efbc",
+    "source_hashes_match_committed_source": true,
+    "source_hashes": {
+      "api/apps/restful_apis/docmind_api.py": "18f35184d9489624055424122ca805682e76232acec74ffcf64fe6f57299fc10",
+      "api/apps/services/docmind_answer_service.py": "8d3ad67a052e883ed4749f698ba756fecb6811f7a9e2cd2281712787f167f011",
+      "api/apps/services/docmind_ingestion_service.py": "00a43beb9749dcdbcef27848a1c526e8e81052d4c346f60f6ae9e46a7cea3161",
+      "api/apps/services/docmind_preview_service.py": "adab771efd40dc0c7de6711b2c10ea95f5d28516235c9ce2ceddbd6b31e8c436",
+      "rag/llm/embedding_model.py": "eac315e913043264d4e083f4b517e0812d21973eb391958d8b73b3ac673276bc",
+      "pyproject.toml": "b5cd65f33fcdf4c8c1fc756304025078f019b6374bfeb7cf3292948b9b9f6b3b",
+      "uv.lock": "a80547a006519e08f372844ac3257a1502ca4ccbb34024f830f1bb4093f9b683"
+    },
+    "browser_tested_frontend_all_assets_match": true,
+    "asset_count": 394
+  },
+  "isolated_runtime": {
+    "passed": 35,
+    "failed": 0,
+    "image_id": "sha256:b1bfcd0c565027129a0431b277c79cb7a163f3d19aa72abea517429e889e5e26",
+    "real_mysql_es_redis_minio": true,
+    "assertions": [
+      {
+        "label": "retained health alias",
+        "passed": true
+      },
+      {
+        "label": "anonymous profile denied",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/shared-session",
+        "passed": true
+      },
+      {
+        "label": "shared session ready",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/users/me",
+        "passed": true
+      },
+      {
+        "label": "actual shared profile",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/models",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/users/me/models",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/bootstrap",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/folders",
+        "passed": true
+      },
+      {
+        "label": "empty source catalog retained",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/search",
+        "passed": true
+      },
+      {
+        "label": "empty retained search",
+        "passed": true
+      },
+      {
+        "label": "restored answer denies anonymous callers",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/docmind/answer",
+        "passed": true
+      },
+      {
+        "label": "real restored answer route handles empty authorized catalog",
+        "passed": true
+      },
+      {
+        "label": "restored answer rejects client identity override",
+        "passed": true
+      },
+      {
+        "label": "chunk unauthorized/missing document boundary",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/datasets/266559d52d29c53e315624d52c09f913/documents/99999999999999999999999999999999/chunks?id=88888888888888888888888888888888",
+        "passed": true
+      },
+      {
+        "label": "actual retained chunk read",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/chats/33333333333333333333333333333333/sessions",
+        "passed": true
+      },
+      {
+        "label": "retained ordinary history listed",
+        "passed": true
+      },
+      {
+        "label": "other tenant history denied",
+        "passed": true
+      },
+      {
+        "label": "success /api/v1/chats/33333333333333333333333333333333/sessions/55555555555555555555555555555555",
+        "passed": true
+      },
+      {
+        "label": "ordinary history synthetic message",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/canvas/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/memory/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /api/v1/agents",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/mcp_server/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/plugin/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/chat_channel/list",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /api/v1/search",
+        "passed": true
+      },
+      {
+        "label": "removed 404 /v1/graph/knowledge_graph",
+        "passed": true
+      },
+      {
+        "label": "no admin9381 listener",
+        "passed": true
+      },
+      {
+        "label": "no retired runtime workers",
+        "passed": true
+      }
+    ],
+    "production_mounts": false,
+    "model_access": false,
+    "cleanup": "Owned containers, anonymous volumes, and internal network removed"
+  },
+  "real_model_delay_policy": "User directed on 2026-10-15 to proceed with our work independently of model-server load; no timeout setting changed."
+}

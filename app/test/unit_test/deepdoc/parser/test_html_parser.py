@@ -186,7 +186,7 @@ def test_parser_txt_keeps_loose_text_between_and_after_blocks():
 # the file to sit inside the package directory tree; the Python mirror reads
 # the same file by absolute repo-root path.
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-_UNIFIED_HTML_FIXTURE = _REPO_ROOT / "internal/parser/parser/testdata/unified_html_cases.json"
+_UNIFIED_HTML_FIXTURE = _REPO_ROOT / "test/unit_test/deepdoc/parser/fixtures/unified_html_cases.json"
 _UNIFIED_HTML_CASES = [(c["name"], c["html"], c["want"]) for c in json.loads(_UNIFIED_HTML_FIXTURE.read_text())]
 
 

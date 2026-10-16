@@ -39,8 +39,8 @@ class TestAllowedMethodNames:
     """Tests for ALLOWED_METHOD_NAMES constant."""
 
     def test_allowed_method_names_count(self):
-        """Test that ALLOWED_METHOD_NAMES contains exactly 8 methods."""
-        assert len(ALLOWED_METHOD_NAMES) == 10
+        """Test that ALLOWED_METHOD_NAMES contains exactly 9 methods."""
+        assert len(ALLOWED_METHOD_NAMES) == 9
 
     def test_allowed_method_names_contains_expected_methods(self):
         """Test that ALLOWED_METHOD_NAMES contains all expected methods."""
@@ -50,7 +50,7 @@ class TestAllowedMethodNames:
             "DocumentService.increment_chunk_num",
             "DocMetadataService.update_document_metadata",
             "PipelineOperationLogService.record_pipeline_operation",
-            "handle_save_to_memory_task",
+            "KnowledgebaseService.update_by_id",
             "PipelineOperationLogService.create",
             "delete_raptor_chunks",
             "docStoreConn.insert",
@@ -70,7 +70,7 @@ class TestWriteOperationInterceptorInit:
     def test_init_with_valid_values(self, valid_recorded_values):
         """Test initialization with valid recorded values."""
         valid_recorded_values["KnowledgebaseService.update_by_id"] = [1, 0]
-        valid_recorded_values["handle_save_to_memory_task"] = [None]
+        valid_recorded_values["KnowledgebaseService.update_by_id"] = [None]
         interceptor = WriteOperationInterceptor(valid_recorded_values)
         assert interceptor is not None
 
@@ -124,9 +124,9 @@ class TestWriteOperationInterceptorIntercept:
 
     def test_intercept_with_none_value(self, valid_recorded_values):
         """Test that intercept can return None values."""
-        valid_recorded_values["handle_save_to_memory_task"] = [None]
+        valid_recorded_values["KnowledgebaseService.update_by_id"] = [None]
         interceptor = WriteOperationInterceptor(valid_recorded_values)
-        result = interceptor.intercept("handle_save_to_memory_task")
+        result = interceptor.intercept("KnowledgebaseService.update_by_id")
         assert result is None
 
     def test_intercept_with_default_value_when_empty(self, valid_recorded_values):

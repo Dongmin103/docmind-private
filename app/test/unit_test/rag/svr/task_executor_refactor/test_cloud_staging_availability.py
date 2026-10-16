@@ -17,7 +17,6 @@ def test_deferred_cloud_staging_preserves_chunk_availability(deferred_cloud):
     method = next(n for n in service.body if isinstance(n, ast.FunctionDef) and n.name == "_apply_document_availability")
     namespace = {
         "List": List, "Dict": Dict, "Any": Any, "logging": logging,
-        "GRAPH_RAPTOR_FAKE_DOC_ID": "fake-raptor",
         "DocumentService": SimpleNamespace(get_by_id=lambda _: (True, SimpleNamespace(status="0", source_type="docmind_cloud"))),
     }
     exec(compile(ast.Module(body=[helper, method], type_ignores=[]), str(path), "exec"), namespace)

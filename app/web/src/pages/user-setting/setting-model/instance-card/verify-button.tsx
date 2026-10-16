@@ -17,7 +17,7 @@
 import { Button } from '@/components/ui/button';
 import { useTranslate } from '@/hooks/common-hooks';
 import { cn } from '@/lib/utils';
-import { replaceText } from '@/pages/dataset/process-log-modal';
+import { replaceText } from '@/components/model-verification-log';
 import { ApiKeyPostBody } from '@/pages/user-setting/interface';
 import { RefreshCcw } from 'lucide-react';
 import { memo, useCallback, useState } from 'react';

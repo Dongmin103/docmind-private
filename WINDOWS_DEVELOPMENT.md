@@ -52,7 +52,6 @@ python tools/windows/initialize_auth_keys.py --check
 
 - 백엔드: 실제 변경 부위의 pytest/ruff. 전체 환경이 갖춰지지 않은 상태에서 AST 검사를 서비스 기동 성공으로 보고하지 않는다.
 - 프런트: app/web에서 npm ci, npm run type-check, npm run build와 관련 테스트. Linux 개발 컨테이너 실행을 우선한다.
-- Go: 변경이 필요한 경우 app/AGENTS.md에 따라 build.sh --test를 사용한다.
 - 합성 fixture는 코드 테스트용으로 남아 있지만 PDF/Office 원본 파일을 읽는 기존 테스트 일부는 별도 fixture가 필요하다. 사용자 원문을 받아 이 부족분을 채우지 말고 합성 fixture를 생성한다.
 - Windows 개발 전용 MySQL·Elasticsearch·Valkey·MinIO 인프라는 이 서버에서 정상 기동을 확인했다. 현재 소스에서 `docmind-ragflow:windows-dev` 이미지 빌드와 이미지 내부 retired-runtime 검사도 통과했다. 전체 애플리케이션 기동은 실제 Jina/답변 모델 자격증명을 넣은 뒤 수행한다.
 - 현재 로그인 세션에서 승인된 암호문/평문 한 쌍의 uEncryptor2 복호화를 3회 연속 검증했고 결과 해시 일치와 매회 임시 작업 폴더 정리를 확인했다. 실제 Jina v3.5 API의 연결·응답 구조도 확인했다. 서비스 계정·로그아웃/로그인·재부팅 조건, 대표 한국어 검색 품질과 성능 검증은 후속 작업이다. 원본 루트는 읽기 전용으로 유지한다.

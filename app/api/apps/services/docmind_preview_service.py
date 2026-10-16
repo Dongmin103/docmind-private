@@ -504,7 +504,9 @@ def claim(worker_id: str, lease_seconds: int = 300) -> dict | None:
                     or candidate.source_format in HWP_FORMATS and any(row.source_format in HWP_FORMATS for row in live)):
                 continue
             _, mapping, version, _ = _source_matches_session(candidate, check_access=False)
-            expires = _now() + timedelta(seconds=lease_seconds)
+            # MySQL DATETIME has second precision; claim and later validation
+            # must describe exactly the same stored instant.
+            expires = _now().replace(microsecond=0) + timedelta(seconds=lease_seconds)
             fence = candidate.fencing_token + 1
             changed = DocmindPreviewSession.update(
                 lifecycle_state="DECRYPTING", fencing_token=fence, reserved_bytes=reservation,
@@ -541,6 +543,16 @@ def _leased(session_id: str, worker_id: str, version_id: str, fencing_token: int
         raise PreviewError("PREVIEW_STALE_WORKER_RESULT")
     _source(session.document_id, session.owner_id)
     return session
+
+
+def validate_worker_lease(session_id: str, *, worker_id: str, version_id: str, fencing_token: int) -> dict:
+    """Check current decrypt authority without renewing or changing the session."""
+    _require_enabled()
+    session = _leased(session_id, worker_id, version_id, fencing_token)
+    if session.lifecycle_state != "DECRYPTING" or session.expires_at <= _now():
+        raise PreviewError("PREVIEW_STALE_WORKER_RESULT")
+    _source_matches_session(session, check_access=True)
+    return {"valid": True, "lease_expires_at": session.lease_expires_at.replace(tzinfo=UTC).isoformat()}
 
 
 def _processor(endpoint: str, payload: dict, timeout: int) -> dict:

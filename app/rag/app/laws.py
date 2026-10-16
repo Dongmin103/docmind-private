@@ -22,13 +22,13 @@ from docx import Document
 from docx.table import Table as DocxTable
 from docx.text.paragraph import Paragraph
 
-from common.constants import ParserType, MAXIMUM_PAGE_NUMBER
+from common.constants import MAXIMUM_PAGE_NUMBER
 from deepdoc.parser.utils import get_text
 from rag.nlp import bullets_category, remove_contents_table, make_colon_as_title, tokenize_chunks, docx_question_level, tree_merge
 from rag.nlp import rag_tokenizer, Node
-from deepdoc.parser import PdfParser, DocxParser, HtmlParser
+from deepdoc.parser import DocxParser, HtmlParser
 from api.db.joint_services.tenant_model_service import get_composite_model_name_by_id
-from rag.app.naive import by_plaintext, PARSERS
+from rag.app.naive import PARSERS
 from common.parser_config_utils import normalize_layout_recognizer
 
 
@@ -141,30 +141,6 @@ class Docx(DocxParser):
         """
 
 
-class Pdf(PdfParser):
-    def __init__(self):
-        self.model_species = ParserType.LAWS.value
-        super().__init__()
-
-    def __call__(self, filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, zoomin=3, callback=None):
-        from timeit import default_timer as timer
-
-        start = timer()
-        callback(msg="OCR started")
-        self.__images__(filename if not binary else binary, zoomin, from_page, to_page, callback)
-        callback(msg="OCR finished ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._layouts_rec(zoomin)
-        callback(0.67, "Layout analysis ({:.2f}s)".format(timer() - start))
-        logging.debug("layouts: {}".format((timer() - start)))
-        self._naive_vertical_merge()
-
-        callback(0.8, "Text extraction ({:.2f}s)".format(timer() - start))
-
-        return [(b["text"], self._line_tag(b, zoomin)) for b in self.boxes], None
-
-
 def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang="Chinese", callback=None, **kwargs):
     """
     Supported file formats are docx, pdf, txt.
@@ -197,7 +173,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
         name = layout_recognizer.strip().lower()
-        parser = PARSERS.get(name, by_plaintext)
+        parser = PARSERS[name]
         callback(0.1, "Start to parse.")
 
         raw_sections, tables, pdf_parser = parser(
@@ -207,7 +183,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             to_page=to_page,
             lang=lang,
             callback=callback,
-            pdf_cls=Pdf,
+
             layout_recognizer=layout_recognizer,
             mineru_llm_name=parser_model_name,
             mistral_ocr_llm_name=parser_model_name,

@@ -28,7 +28,7 @@ from common import (
     delete_all_datasets,
     delete_all_sessions,
 )
-from configs import HOST_ADDRESS, IS_GO_PROXY, VERSION
+from configs import HOST_ADDRESS, VERSION
 from pytest import FixtureRequest
 from ragflow_sdk import Chat, Chunk, DataSet, Document, RAGFlow
 from utils import wait_for
@@ -79,8 +79,7 @@ GO_ONLY_PATH_SKIPS = {
 
 
 def pytest_collection_modifyitems(items):
-    if not IS_GO_PROXY:
-        return
+    return
     for item in items:
         for test_path, reason in GO_ONLY_PATH_SKIPS.items():
             matched_at = item.nodeid.find(test_path)

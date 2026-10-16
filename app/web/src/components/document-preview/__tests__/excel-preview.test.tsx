@@ -21,9 +21,6 @@ jest.mock('ahooks', () => ({
 jest.mock('@/hooks/route-hook', () => ({
   useGetKnowledgeSearchParams: () => ({}),
 }));
-jest.mock('@/pages/dataflow-result/hooks', () => ({
-  useGetPipelineResultSearchParams: () => ({}),
-}));
 jest.mock('@/utils/authorization-util', () => ({
   getAuthorization: () => 'test',
 }));

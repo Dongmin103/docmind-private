@@ -32,11 +32,8 @@ const {
   removeSessions,
   deleteMessage,
   thumbup,
-  chatsTts,
-  chatsMindmap,
   chatsRelatedQuestions,
   documentInfoUpload,
-  fetchExternalChatInfo,
 } = api;
 
 const methods = {
@@ -96,14 +93,6 @@ const methods = {
     url: thumbup,
     method: 'put',
   },
-  chatsTts: {
-    url: chatsTts,
-    method: 'post',
-  },
-  chatsMindmap: {
-    url: chatsMindmap,
-    method: 'post',
-  },
   chatsRelatedQuestions: {
     url: chatsRelatedQuestions,
     method: 'post',
@@ -111,10 +100,6 @@ const methods = {
   documentInfoUpload: {
     method: 'post',
     url: documentInfoUpload,
-  },
-  fetchExternalChatInfo: {
-    url: fetchExternalChatInfo,
-    method: 'get',
   },
 } as const;
 

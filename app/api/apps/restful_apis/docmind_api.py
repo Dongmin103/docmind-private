@@ -10,6 +10,7 @@ from quart import Response, request
 
 from api.apps import current_user, login_required, login_user
 from api.apps.services import (
+    docmind_answer_service,
     docmind_api_service,
     docmind_bootstrap_service,
     docmind_catalog_admin_service,
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 def _claim_cloud_sync_job_in_thread(
     worker_id: str, lease_seconds: int, allowed_formats: list[str] | None, skip_retries: bool,
     claim_source_id: str | None, claim_job_id: str | None,
+    ingestion_pool_size: int | None = None,
 ):
     with DocmindIngestionJob._meta.database.connection_context():
         docmind_ingestion_service.maintain_parser_workspaces()
@@ -37,12 +39,18 @@ def _claim_cloud_sync_job_in_thread(
             worker_id, lease_seconds=lease_seconds, allowed_formats=allowed_formats,
             skip_retries=skip_retries, claim_source_id=claim_source_id,
             claim_job_id=claim_job_id,
+            ingestion_pool_size=ingestion_pool_size,
         )
 
 
 def _worker_path_and_query() -> str:
     query = request.query_string.decode("ascii")
     return request.path + (f"?{query}" if query else "")
+
+
+def _validate_cloud_sync_worker_lease_in_thread(job_id: str, **identity):
+    with DocmindIngestionJob._meta.database.connection_context():
+        return docmind_ingestion_service.validate_worker_lease(job_id, **identity)
 
 
 def _artifact_page_cap(args) -> int | None:
@@ -57,9 +65,19 @@ def _artifact_page_cap(args) -> int | None:
     return cap
 
 
+def _verify_worker_in_thread(**signed_request) -> None:
+    # Open lazily inside verify, after header/HMAC checks, and release in the
+    # same worker thread. Invalid requests must not acquire a DB connection.
+    try:
+        docmind_worker_auth.verify(**signed_request)
+    finally:
+        DocmindIngestionJob._meta.database.close()
+
+
 async def _authenticate_worker(body: bytes) -> str:
     key_id = str(request.headers.get("X-DocMind-Key-Id") or "")
-    docmind_worker_auth.verify(
+    await asyncio.to_thread(
+        _verify_worker_in_thread,
         method=request.method,
         path_and_query=_worker_path_and_query(),
         body=body,
@@ -217,7 +235,7 @@ async def claim_cloud_sync_job():
         req = await request.get_json(silent=True)
         if (
             not isinstance(req, dict)
-            or set(req) - {"worker_id", "protocol_version", "lease_seconds", "allowed_formats", "skip_retries", "claim_source_id", "claim_job_id", "single_claim"}
+            or set(req) - {"worker_id", "protocol_version", "lease_seconds", "allowed_formats", "skip_retries", "claim_source_id", "claim_job_id", "single_claim", "ingestion_pool_size"}
             or req.get("protocol_version") != 1
         ):
             raise docmind_ingestion_service.DocmindIngestionError("DOCMIND_INGESTION_REQUEST_INVALID")
@@ -235,9 +253,15 @@ async def claim_cloud_sync_job():
             raise docmind_ingestion_service.DocmindIngestionError("DOCMIND_INGESTION_LEASE_INVALID")
         if not isinstance(skip_retries, bool):
             raise docmind_ingestion_service.DocmindIngestionError("DOCMIND_INGESTION_REQUEST_INVALID")
+        pool_args = ()
+        if 'ingestion_pool_size' in req:
+            size = req['ingestion_pool_size']
+            if type(size) is not int or size not in (1, 2, 3, 4):
+                raise docmind_ingestion_service.DocmindIngestionError('DOCMIND_INGESTION_REQUEST_INVALID')
+            pool_args = (size,)
         job = await asyncio.to_thread(
             _claim_cloud_sync_job_in_thread, worker_id, lease_seconds, allowed_formats, skip_retries,
-            claim_source_id, claim_job_id,
+            claim_source_id, claim_job_id, *pool_args,
         )
         return _signed_worker_response({"job": job.to_dict() if job else None}, key_id)
     except docmind_worker_auth.WorkerAuthenticationError:
@@ -246,6 +270,37 @@ async def claim_cloud_sync_job():
         return _signed_worker_response({"error": error.code}, key_id, 409)
     except Exception:
         logger.exception("DocMind host worker claim failed")
+        if key_id:
+            return _signed_worker_response({"error": "DOCMIND_INGESTION_INTERNAL_ERROR"}, key_id, 500)
+        return Response(b'{"error":"WORKER_AUTH_FAILED"}', status=401, content_type="application/json")
+
+
+@manager.route("/cloud-sync/host-worker/jobs/<job_id>/validate", methods=["POST"])  # noqa: F821
+async def validate_cloud_sync_worker_lease(job_id: str):
+    body = await request.get_data()
+    key_id = ""
+    try:
+        key_id = await _authenticate_worker(body)
+        req = await request.get_json(silent=True)
+        if (
+            not isinstance(req, dict)
+            or set(req) != {"worker_id", "version_id", "fencing_token"}
+            or not isinstance(req["worker_id"], str) or not req["worker_id"]
+            or not isinstance(req["version_id"], str) or not req["version_id"]
+            or type(req["fencing_token"]) is not int or req["fencing_token"] < 1
+        ):
+            raise docmind_ingestion_service.DocmindIngestionError("DOCMIND_INGESTION_REQUEST_INVALID")
+        result = await asyncio.to_thread(
+            _validate_cloud_sync_worker_lease_in_thread, job_id,
+            worker_id=req["worker_id"], version_id=req["version_id"], fencing_token=req["fencing_token"],
+        )
+        return _signed_worker_response(result, key_id)
+    except docmind_worker_auth.WorkerAuthenticationError:
+        return Response(b'{"error":"WORKER_AUTH_FAILED"}', status=401, content_type="application/json")
+    except docmind_ingestion_service.DocmindIngestionError as error:
+        return _signed_worker_response({"error": error.code}, key_id, 409)
+    except Exception:
+        logger.exception("DocMind ingestion lease validation failed")
         if key_id:
             return _signed_worker_response({"error": "DOCMIND_INGESTION_INTERNAL_ERROR"}, key_id, 500)
         return Response(b'{"error":"WORKER_AUTH_FAILED"}', status=401, content_type="application/json")
@@ -426,6 +481,35 @@ async def upload_preview_artifact(preview_id: str):
         return _signed_worker_response({"error": error.code}, key_id, error.status)
     except Exception:
         logger.exception("DocMind preview artifact failed")
+        return _signed_worker_response({"error": "PREVIEW_INTERNAL_ERROR"}, key_id, 500) if key_id else _preview_json({"error": "WORKER_AUTH_FAILED"}, 401)
+
+
+@manager.route("/cloud-sync/host-worker/previews/<preview_id>/validate", methods=["POST"])  # noqa: F821
+async def validate_preview_worker_lease(preview_id: str):
+    body = await request.get_data()
+    key_id = ""
+    try:
+        key_id = await _authenticate_worker(body)
+        req = await request.get_json(silent=True)
+        if (
+            not isinstance(req, dict)
+            or set(req) != {"worker_id", "version_id", "fencing_token"}
+            or not isinstance(req["worker_id"], str) or not req["worker_id"]
+            or not isinstance(req["version_id"], str) or not req["version_id"]
+            or type(req["fencing_token"]) is not int or req["fencing_token"] < 1
+        ):
+            raise docmind_preview_service.PreviewError("PREVIEW_REQUEST_INVALID", 400)
+        result = await asyncio.to_thread(
+            _preview_db, docmind_preview_service.validate_worker_lease, preview_id,
+            worker_id=req["worker_id"], version_id=req["version_id"], fencing_token=req["fencing_token"],
+        )
+        return _signed_worker_response(result, key_id)
+    except docmind_worker_auth.WorkerAuthenticationError:
+        return _preview_json({"error": "WORKER_AUTH_FAILED"}, 401)
+    except docmind_preview_service.PreviewError as error:
+        return _signed_worker_response({"error": error.code}, key_id, error.status)
+    except Exception:
+        logger.exception("DocMind preview lease validation failed")
         return _signed_worker_response({"error": "PREVIEW_INTERNAL_ERROR"}, key_id, 500) if key_id else _preview_json({"error": "WORKER_AUTH_FAILED"}, 401)
 
 
@@ -696,6 +780,35 @@ async def folders(tenant_id: str):
     except Exception as error:
         logger.exception("DocMind folder list failed")
         return get_error_data_result(message=str(error))
+
+
+@manager.route("/docmind/answer", methods=["POST"])  # noqa: F821
+@login_required
+@add_tenant_id_to_kwargs
+async def answer(tenant_id: str):
+    req = await request.get_json(silent=True)
+    if not isinstance(req, dict) or set(req) - {"question", "project_id", "scope", "neighbor_window"}:
+        return get_error_argument_result("invalid answer request")
+    try:
+        question = req.get("question")
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError("question is required")
+        project_id = req.get("project_id")
+        if "project_id" in req and (not isinstance(project_id, str) or not project_id.strip()):
+            raise ValueError("project_id must be a non-empty string")
+        result = await docmind_answer_service.answer(
+            tenant_id, question.strip(), project_id=project_id.strip() if project_id else None,
+            scope=_parse_search_scope(req.get("scope")), neighbor_window=req.get("neighbor_window", 2),
+        )
+        return get_result(data=result)
+    except (docmind_answer_service.AnswerError, docmind_api_service.DocmindCatalogNotInitializedError) as error:
+        return get_error_data_result(message=str(error))
+    except ValueError as error:
+        return get_error_argument_result(str(error))
+    except Exception:  # noqa: BLE001 -- sanitize all failures at the public boundary
+        # Do not expose exception bodies that may contain source text/provider data.
+        logger.warning("DocMind answer failed")
+        return get_error_data_result(message="DOCMIND_ANSWER_FAILED")
 
 
 @manager.route("/docmind/search", methods=["POST"])  # noqa: F821

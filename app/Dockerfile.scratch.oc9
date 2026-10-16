@@ -13,10 +13,10 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -
 
 ENV PATH /root/miniconda3/bin:$PATH
 
-RUN conda create -y --name py11 python=3.11
+RUN conda create -y --name py13 python=3.13
 
-ENV CONDA_DEFAULT_ENV py11
-ENV CONDA_PREFIX /root/miniconda3/envs/py11
+ENV CONDA_DEFAULT_ENV py13
+ENV CONDA_PREFIX /root/miniconda3/envs/py13
 ENV PATH $CONDA_PREFIX/bin:$PATH
 
 # RUN curl -sL https://rpm.nodesource.com/setup_14.x | bash -
@@ -30,27 +30,27 @@ ADD ./docs ./docs
 ADD ./conf ./conf
 ADD ./deepdoc ./deepdoc
 ADD ./rag ./rag
-ADD ./requirements.txt ./requirements.txt
-ADD ./agent ./agent
-ADD ./graphrag ./graphrag
-ADD ./plugin ./plugin
+ADD ./common ./common
+ADD ./tools/scripts ./tools/scripts
+ADD ./pyproject.toml ./uv.lock ./
 
 RUN dnf install -y openmpi openmpi-devel python3-openmpi
 ENV C_INCLUDE_PATH /usr/include/openmpi-x86_64:$C_INCLUDE_PATH
 ENV LD_LIBRARY_PATH /usr/lib64/openmpi/lib:$LD_LIBRARY_PATH
-RUN rm /root/miniconda3/envs/py11/compiler_compat/ld
+RUN rm /root/miniconda3/envs/py13/compiler_compat/ld
 RUN cd ./web && npm i && npm run build
-RUN conda run -n py11 pip install $(grep -ivE "mpi4py" ./requirements.txt) # without mpi4py==3.1.5
-RUN conda run -n py11 pip install redis
+RUN pip install uv && uv sync --python 3.13 --frozen --no-dev
+RUN conda run -n py13 pip install redis
 
 RUN dnf update -y && \
     dnf install -y glib2 mesa-libGL && \
     dnf clean all
 
-RUN conda run -n py11 pip install ollama
-RUN conda run -n py11 python -m nltk.downloader punkt
-RUN conda run -n py11 python -m nltk.downloader wordnet
+RUN conda run -n py13 pip install ollama
+RUN conda run -n py13 python -m nltk.downloader punkt
+RUN conda run -n py13 python -m nltk.downloader wordnet
 
+ENV PATH=/ragflow/.venv/bin:$PATH
 ENV PYTHONPATH=/ragflow/
 ENV HF_ENDPOINT=https://hf-mirror.com
 

@@ -14,11 +14,6 @@
  *  limitations under the License.
  */
 
-import {
-  KnowledgeRouteKey,
-  KnowledgeSearchParams,
-} from '@/constants/knowledge';
-import { Routes } from '@/routes';
 import { useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 
@@ -62,16 +57,10 @@ export const useThirdPathName = () => {
 
 export const useGetKnowledgeSearchParams = () => {
   const [currentQueryParameters] = useSearchParams();
-  const { pathname } = useLocation();
-  const isDataflowResultPage = pathname === Routes.DataflowResult;
-
   return {
-    type: currentQueryParameters.get(KnowledgeSearchParams.Type) || '',
-    documentId:
-      currentQueryParameters.get(KnowledgeSearchParams.DocumentId) || '',
-    knowledgeId: isDataflowResultPage
-      ? currentQueryParameters.get('knowledgeId') || ''
-      : currentQueryParameters.get(KnowledgeSearchParams.KnowledgeId) || '',
+    type: currentQueryParameters.get('type') || '',
+    documentId: currentQueryParameters.get('doc_id') || '',
+    knowledgeId: currentQueryParameters.get('id') || '',
   };
 };
 
@@ -83,15 +72,6 @@ export const useNavigateWithFromState = () => {
     },
     [navigate],
   );
-};
-
-export const useNavigateToDataset = () => {
-  const navigate = useNavigate();
-  const { knowledgeId } = useGetKnowledgeSearchParams();
-
-  return useCallback(() => {
-    navigate(`/knowledge/${KnowledgeRouteKey.Dataset}?id=${knowledgeId}`);
-  }, [knowledgeId, navigate]);
 };
 
 export const useGetPaginationParams = () => {

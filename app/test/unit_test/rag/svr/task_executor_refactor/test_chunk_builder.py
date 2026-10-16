@@ -55,13 +55,6 @@ class TestGetParser:
         parser = get_parser(parser_id)
         assert parser is not None
 
-    def test_get_parser_kg(self):
-        """Test getting kg parser (maps to naive)."""
-        from common.constants import ParserType
-
-        parser = get_parser(ParserType.KG.value)
-        assert parser is not None
-
 
 class TestRunChunking:
     """Tests for run_chunking function."""

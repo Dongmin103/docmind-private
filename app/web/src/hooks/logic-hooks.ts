@@ -14,34 +14,22 @@
  *  limitations under the License.
  */
 
-import message from '@/components/ui/message';
+
 import { Authorization } from '@/constants/authorization';
 import { MessageType } from '@/constants/chat';
 import { FormInstance } from '@/interfaces/antd-compat';
 import { Pagination } from '@/interfaces/common';
 import { ResponseType } from '@/interfaces/database/base';
-import {
-  IAnswer,
-  IClientConversation,
-  IMessage,
-  Message,
-} from '@/interfaces/database/chat';
-import { IKnowledgeFile } from '@/interfaces/database/dataset';
+import { IAnswer, IClientConversation, IMessage, Message } from '@/interfaces/database/chat';
+import { IKnowledgeFile } from '@/interfaces/database/document';
 import { changeLanguageAsync } from '@/locales/config';
-import api from '@/utils/api';
+
 import { getAuthorization } from '@/utils/authorization-util';
 import { buildMessageUuid } from '@/utils/chat';
 import axios from 'axios';
 import { EventSourceParserStream } from 'eventsource-parser/stream';
 import { has, isEmpty, omit } from 'lodash';
-import {
-  ChangeEventHandler,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { ChangeEventHandler, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslate } from './common-hooks';
 import { useSetPaginationParams } from './route-hook';
 import { useSaveSetting } from './use-user-setting-request';
@@ -385,33 +373,6 @@ export const useSendMessageWithSse = () => {
   };
 };
 
-export const useSpeechWithSse = (url: string = api.chatsTts) => {
-  const read = useCallback(
-    async (body: any) => {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          [Authorization]: getAuthorization(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-      try {
-        const res = await response.clone().json();
-        if (res?.code !== 0) {
-          message.error(res?.message);
-        }
-      } catch {
-        // Swallow errors silently
-      }
-      return response;
-    },
-    [url],
-  );
-
-  return { read };
-};
-
 //#region chat hooks
 
 // Firefox reports a fractional `scrollTop`, while `scrollHeight` / `clientHeight`
@@ -614,7 +575,6 @@ export const useSelectDerivedMessages = () => {
             role: MessageType.Assistant,
           }),
           prompt: answer.prompt,
-          audio_binary: answer.audio_binary,
           ...omit(answer, 'reference'),
         },
       ];
@@ -646,7 +606,6 @@ export const useSelectDerivedMessages = () => {
             role: MessageType.Assistant,
           }),
           prompt: answer.prompt,
-          audio_binary: answer.audio_binary,
           ...omit(answer, 'reference'),
         },
       ];
@@ -859,28 +818,6 @@ export const useSelectItem = (defaultId?: string) => {
   }, [defaultId]);
 
   return { selectedId, handleItemClick };
-};
-
-const ChunkTokenNumMap = {
-  naive: 128,
-  knowledge_graph: 8192,
-};
-
-export const useHandleChunkMethodSelectChange = (form: FormInstance) => {
-  // const form = Form.useFormInstance();
-  const handleChange = useCallback(
-    (value: string) => {
-      if (value in ChunkTokenNumMap) {
-        form.setFieldValue(
-          ['parser_config', 'chunk_token_num'],
-          ChunkTokenNumMap[value as keyof typeof ChunkTokenNumMap],
-        );
-      }
-    },
-    [form],
-  );
-
-  return handleChange;
 };
 
 // reset form fields when modal is form, closed

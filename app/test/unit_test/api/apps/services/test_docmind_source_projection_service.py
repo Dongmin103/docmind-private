@@ -212,6 +212,15 @@ def test_pdf_ocr_options_are_exposed_only_for_verified_current_source_version(so
     node = next(row for row in projection.load("tenant-1").hierarchy_nodes if row.get("document_id") == "doc-a")
     assert node["index_pdf_ocr_option"] is None
     assert node["index_image_ocr_not_run"] is True
+    assert node["index_pdf_ocr_requested"] is True
+    assert node["index_pdf_ocr_job_state"] == "COMPLETE"
+    assert node["index_pdf_ocr_version_id"] == "version-doc-a"
+    for state in ["DISCOVERED", "DECRYPTING", "PARSING", "INDEXING", "CLEANUP", "FAILED"]:
+        DocmindIngestionJob.update(lifecycle_state=state).execute()
+        node = next(row for row in projection.load("tenant-1").hierarchy_nodes if row.get("document_id") == "doc-a")
+        assert node["index_pdf_ocr_requested"] is True
+        assert node["index_pdf_ocr_job_state"] == state
+        assert node["index_pdf_ocr_version_id"] == "version-doc-a"
     DocmindIngestionJob.update(pdf_ocr_requested=False).execute()
     DocmindIngestionJob.update(lifecycle_state="DISCOVERED").execute()
     node = next(row for row in projection.load("tenant-1").hierarchy_nodes if row.get("document_id") == "doc-a")
@@ -224,6 +233,31 @@ def test_pdf_ocr_options_are_exposed_only_for_verified_current_source_version(so
     DocmindIngestionJob.update(error_code="DOCMIND_INGESTION_PIPELINE_FAILED").execute()
     node = next(row for row in projection.load("tenant-1").hierarchy_nodes if row.get("document_id") == "doc-a")
     assert node["index_pdf_ocr_option"] is None
+
+
+def test_ocr_result_survives_a_new_non_ocr_source_version(source_db):
+    _mapping("home", "doc-a", "Manuals/scan.pdf", complete=True)
+    DocmindIngestionJob.update(pdf_ocr_requested=True, create_time=1).execute()
+    DocmindSourceVersion.create(
+        id="new-version", source_document_id="map-doc-a", document_id="doc-a",
+        ciphertext_sha256="d" * 64, ciphertext_size=42, source_mtime_ns=2,
+        lifecycle_state="DISCOVERED",
+    )
+    DocmindIngestionJob.create(
+        id="new-job", project_id="project-1", source_id="home",
+        source_document_id="map-doc-a", document_id="doc-a", version_id="new-version",
+        idempotency_key="new-key", lifecycle_state="DISCOVERED", create_time=2,
+    )
+    node = next(row for row in projection.load("tenant-1").hierarchy_nodes if row.get("document_id") == "doc-a")
+    assert node["index_pdf_ocr_requested"] is False
+    assert node["index_state"] == "PENDING"
+    assert node["index_pdf_ocr_runs"] == [{
+        "version_id": "version-doc-a", "state": "COMPLETE", "cleanup_state": "COMPLETE",
+        "error_code": None, "completed": True, "previous_version": True,
+    }]
+    DocmindSourceVersion.update(search_cleanup_complete=False).where(DocmindSourceVersion.id == "version-doc-a").execute()
+    node = next(row for row in projection.load("tenant-1").hierarchy_nodes if row.get("document_id") == "doc-a")
+    assert node["index_pdf_ocr_runs"][0]["completed"] is False
 
 
 def test_tombstone_disabled_source_and_failed_cleanup_are_excluded(source_db):

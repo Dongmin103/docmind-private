@@ -20,7 +20,6 @@ from rag.svr.task_executor_refactor.chunk_service import (
     apply_document_availability,
     apply_source_chunks_document_availability,
 )
-from rag.svr.task_executor_refactor.constants import GRAPH_RAPTOR_FAKE_DOC_ID
 
 
 def test_apply_document_availability_disabled_hides_source_chunks():
@@ -46,13 +45,12 @@ def test_apply_document_availability_enabled_keeps_default():
     assert "available_int" not in chunks[0]
 
 
-def test_apply_source_chunks_skips_raptor_and_stamps_per_doc():
+def test_source_availability_preserves_historical_derived_rows():
     """Mixed RAPTOR batches must not inherit status from the first document only."""
     chunks = [
         {"id": "raptor-1", "doc_id": "disabled-doc", "raptor_kwd": "raptor"},
         {"id": "src-disabled", "doc_id": "disabled-doc", "content_with_weight": "from disabled"},
         {"id": "src-enabled", "doc_id": "enabled-doc", "content_with_weight": "from enabled"},
-        {"id": "fake", "doc_id": GRAPH_RAPTOR_FAKE_DOC_ID, "content_with_weight": "fake raptor doc"},
     ]
 
     def _get_by_id(doc_id):
@@ -68,4 +66,3 @@ def test_apply_source_chunks_skips_raptor_and_stamps_per_doc():
     assert "available_int" not in chunks[0]  # RAPTOR chunk untouched
     assert chunks[1]["available_int"] == 0  # disabled source stamped
     assert "available_int" not in chunks[2]  # enabled source untouched
-    assert "available_int" not in chunks[3]  # fake RAPTOR doc skipped

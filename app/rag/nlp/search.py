@@ -28,7 +28,6 @@ from common.string_utils import remove_redundant_spaces
 from common.float_utils import get_float
 from common.constants import PAGERANK_FLD, TAG_FLD
 from common.tag_feature_utils import parse_tag_features
-from common import settings
 
 from common.misc_utils import thread_pool_exec
 
@@ -134,7 +133,6 @@ class Dealer:
         for key, field in {"kb_ids": "kb_id", "doc_ids": "doc_id"}.items():
             if key in req and req[key] is not None:
                 condition[field] = req[key]
-        # TODO(yzc): `available_int` is nullable however infinity doesn't support nullable columns.
         for key in ["id", "knowledge_graph_kwd", "available_int", "entity_kwd", "from_entity_kwd", "to_entity_kwd", "removed_kwd"]:
             if key in req and req[key] is not None:
                 condition[key] = req[key]
@@ -251,29 +249,10 @@ class Dealer:
                 # ES path no longer fetches chunk vectors here. The clean
                 # cosine score is recovered later via a second KNN-only call
                 # in retrieval(); chunk vectors are fetched on demand for
-                # citations (see Dealer.fetch_chunk_vectors). OceanBase
-                # still relies on local rerank against chunk vectors, so
-                # keep pulling them for that backend.
-                if settings.DOC_ENGINE_OCEANBASE or settings.DOC_ENGINE_SERENEDB:
-                    src.append(f"q_{len(q_vec)}_vec")
+                # citations (see Dealer.fetch_chunk_vectors).
 
                 if candidate_mode == "dense":
                     matchExprs = [matchDense]
-                elif settings.DOC_ENGINE_INFINITY:
-                    logging.debug(
-                        "Dealer.search fusion: knn_top_k=%s candidate_vector_similarity_weight=%s",
-                        knn_top_k,
-                        candidate_vector_similarity_weight,
-                    )
-                    fusionExpr = build_fusion_expr(knn_top_k, candidate_vector_similarity_weight)
-                    matchExprs = [matchText, matchDense, fusionExpr] if matchText else [matchDense]
-                elif settings.DOC_ENGINE_GAUSSDB:
-                    fusionExpr = FusionExpr(
-                        "weighted_sum",
-                        knn_top_k,
-                        {"weights": f"{1 - candidate_vector_similarity_weight:g},{candidate_vector_similarity_weight:g}"},
-                    )
-                    matchExprs = [matchText, matchDense, fusionExpr] if matchText else [matchDense]
                 else:
                     fusionExpr = FusionExpr(
                         "weighted_sum",
@@ -724,8 +703,7 @@ class Dealer:
             "candidate_mode": candidate_mode,
             "candidate_vector_similarity_weight": candidate_vector_similarity_weight,
         }
-        if isinstance(must_not, dict) and must_not:
-            req["must_not"] = must_not
+        req["must_not"] = must_not or {"exists": "compile_kwd"}
         logging.debug(f"[Search] page={page}, page_size={page_size}, candidate_window={candidate_window}")
 
         if isinstance(tenant_ids, str):
@@ -774,44 +752,15 @@ class Dealer:
                 rank_feature=rank_feature,
             )
         else:
-            if settings.DOC_ENGINE_INFINITY:
-                # Don't need rerank here since Infinity normalizes each way score before fusion.
-                sim = [sres.field[id].get("_score", 0.0) for id in sres.ids]
-                sim = [s if s is not None else 0.0 for s in sim]
-                tsim = sim
-                vsim = sim
-            elif settings.DOC_ENGINE_OCEANBASE or settings.DOC_ENGINE_SERENEDB:
-                # OceanBase still returns chunk vectors in the result; use
-                # the historical local rerank that depends on them.
-                sim, tsim, vsim = self.rerank(
-                    sres,
-                    question,
-                    term_similarity_weight,
-                    vector_similarity_weight,
-                    rank_feature=rank_feature,
-                )
-            elif settings.DOC_ENGINE_GAUSSDB:
-                # GaussDB computes fusion and PageRank in SQL; tag features are
-                # applied locally to the returned candidate window.
-                sql_scores = [sres.field[id].get("_score", 0.0) for id in sres.ids]
-                sql_scores = np.array([s if s is not None else 0.0 for s in sql_scores], dtype=np.float64)
-                sim = sql_scores + self._tag_feature_scores(rank_feature, sres)
-                tsim = sql_scores
-                vsim = sql_scores
-            else:
-                # ES path: ask ES for the clean cosine score via a second
-                # KNN-only call filtered by the candidate ids, then merge it
-                # with locally computed term similarity using the user's
-                # weight. Chunk vectors stay in the index.
-                knn_scores = await self._knn_scores(sres, idx_names, kb_ids)
-                sim, tsim, vsim = self.rerank_with_knn(
-                    sres,
-                    question,
-                    knn_scores,
-                    term_similarity_weight,
-                    vector_similarity_weight,
-                    rank_feature=rank_feature,
-                )
+            knn_scores = await self._knn_scores(sres, idx_names, kb_ids)
+            sim, tsim, vsim = self.rerank_with_knn(
+                sres,
+                question,
+                knn_scores,
+                term_similarity_weight,
+                vector_similarity_weight,
+                rank_feature=rank_feature,
+            )
 
         sim_np = np.array(sim, dtype=np.float64)
         if sim_np.size == 0:

@@ -604,7 +604,7 @@ async def tenant_info():
 
 @manager.route("/users/me/models", methods=["PATCH"])  # noqa: F821
 @login_required
-@validate_request("tenant_id", "asr_id", "embd_id", "img2txt_id", "llm_id")
+@validate_request("tenant_id", "embd_id", "img2txt_id", "llm_id")
 async def set_tenant_info():
     """
     Update tenant information.
@@ -630,9 +630,6 @@ async def set_tenant_info():
             embd_id:
               type: string
               description: Embedding model ID.
-            asr_id:
-              type: string
-              description: ASR model ID.
             img2txt_id:
               type: string
               description: Image to Text model ID.
@@ -643,6 +640,8 @@ async def set_tenant_info():
           type: object
     """
     req = await get_request_json()
+    if any(field in req for field in ("asr_id", "tts_id", "ocr_id", "tenant_asr_id", "tenant_tts_id", "tenant_ocr_id")):
+        return get_data_error_result(message="Unsupported model type in tenant defaults")
     try:
         tid = req.pop("tenant_id")
         TenantService.update_by_id(tid, req)

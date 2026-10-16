@@ -25,15 +25,11 @@ from peewee import IntegrityError
 from api.db import UserTenantRole
 from api.db.db_models import init_database_tables as init_web_db
 from api.db.services import UserService
-from api.db.services.canvas_service import CanvasTemplateService
-from api.db.services.compilation_template_service import CompilationTemplateService
 from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.user_service import TenantService, UserTenantService
 from api.db.services.system_settings_service import SystemSettingsService
-from api.db.template_utils import normalize_canvas_template_categories
-from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache, fix_missing_tokenized_memory
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type
 from common.constants import LLMType
 from common.file_utils import get_project_base_directory
@@ -109,7 +105,6 @@ def init_superuser(nickname=DEFAULT_SUPERUSER_NICKNAME, email=DEFAULT_SUPERUSER_
         "name": user_info["nickname"] + "‘s Kingdom",
         "llm_id": settings.CHAT_MDL,
         "embd_id": settings.EMBEDDING_MDL,
-        "asr_id": settings.ASR_MDL,
         "parser_ids": settings.PARSERS,
         "img2txt_id": settings.VISION_MDL,
         "rerank_id": settings.RERANK_MDL,
@@ -152,36 +147,6 @@ def update_document_number_in_init():
         KnowledgebaseService.update_document_number_in_init(kb_id=kb_id, doc_num=doc_count.get(kb_id, 0))
 
 
-def add_graph_templates():
-    dir = os.path.join(get_project_base_directory(), "agent", "templates")
-    CanvasTemplateService.filter_delete([1 == 1])
-    if not os.path.exists(dir):
-        logging.warning("Missing agent templates!")
-        return
-
-    for fnm in sorted(os.listdir(dir)):
-        if not fnm.endswith(".json"):
-            logging.debug("Skipping non-json template file in %s: %s", dir, fnm)
-            continue
-        template_path = os.path.join(dir, fnm)
-        try:
-            with open(template_path, "r", encoding="utf-8") as f:
-                cnvs = normalize_canvas_template_categories(json.load(f))
-            logging.info("Loaded and normalized template file: %s", template_path)
-            try:
-                CanvasTemplateService.save(**cnvs)
-            except Exception:
-                CanvasTemplateService.update_by_id(cnvs["id"], cnvs)
-        except Exception as e:
-            logging.exception("Add agent templates error for %s: %s", template_path, e)
-
-
-def add_compilation_templates():
-    CompilationTemplateService.ensure_table()
-    CompilationTemplateService.filter_delete([CompilationTemplateService.model.is_builtin])
-    CompilationTemplateService.seed_builtins_from_files()
-
-
 def init_web_data():
     start_time = time.time()
 
@@ -193,11 +158,6 @@ def init_web_data():
     # if not UserService.get_all().count():
     #    init_superuser()
 
-    add_graph_templates()
-    add_compilation_templates()
-    init_message_id_sequence()
-    init_memory_size_cache()
-    fix_missing_tokenized_memory()
     logging.info("init web data success:{}".format(time.time() - start_time))
 
 

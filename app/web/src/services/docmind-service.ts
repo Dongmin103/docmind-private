@@ -1,4 +1,4 @@
-import type { ITestingChunk } from '@/interfaces/database/dataset';
+import type { ITestingChunk } from '@/interfaces/database/chunk';
 import request from '@/utils/request';
 
 export interface DocMindFolder {
@@ -55,6 +55,35 @@ export interface DocMindSearchRequest {
   question: string;
   projectId?: string;
   scope: DocMindSearchScope;
+}
+
+export interface DocMindAnswerRequest extends DocMindSearchRequest {
+  neighborWindow: 0 | 2 | 5;
+}
+
+export interface DocMindAnswerResult {
+  answer: string;
+  answer_status?: 'answered' | 'partial' | 'insufficient';
+  dataset_id: string;
+  model?: string;
+  citations: {
+    number: number;
+    chunk_id: string;
+    doc_id: string;
+    document_name: string;
+    document_relative_path?: string;
+    source_version_id?: string;
+    chunk_set_id?: string;
+    content: string;
+  }[];
+  context: {
+    seed_count: number;
+    expanded_count: number;
+    used_count: number;
+    neighbor_window: number;
+    budget_pruned?: boolean;
+    seed_only_count?: number;
+  };
 }
 
 export type DocMindRegistrationState =
@@ -142,6 +171,16 @@ export interface DocMindHierarchyNode {
   index_image_ocr_not_run?: boolean;
   index_pdf_ocr_option?: 'zero_text' | 'partial_images' | null;
   index_pdf_ocr_version_id?: string | null;
+  index_pdf_ocr_requested?: boolean;
+  index_pdf_ocr_job_state?: string | null;
+  index_pdf_ocr_runs?: {
+    version_id: string;
+    state: string | null;
+    cleanup_state: 'PENDING' | 'FAILED' | 'COMPLETE' | null;
+    error_code: string | null;
+    completed: boolean;
+    previous_version: boolean;
+  }[];
   searchable?: boolean;
   semantic_folder_id?: string;
   mutation_capabilities?: {
@@ -190,7 +229,7 @@ export const getDocMindFolders = () => request.get('/api/v1/docmind/folders');
 export const bootstrapDocMindWorkspace = () =>
   request.post('/api/v1/docmind/bootstrap');
 
-export const searchDocMind = ({
+const searchRequestData = ({
   question,
   projectId,
   scope,
@@ -205,8 +244,16 @@ export const searchDocMind = ({
           : { mode: scope.mode },
   };
   if (projectId) data.project_id = projectId;
-  return request.post('/api/v1/docmind/search', { data });
+  return data;
 };
+
+export const searchDocMind = (input: DocMindSearchRequest) =>
+  request.post('/api/v1/docmind/search', { data: searchRequestData(input) });
+
+export const answerDocMind = (input: DocMindAnswerRequest) =>
+  request.post('/api/v1/docmind/answer', {
+    data: { ...searchRequestData(input), neighbor_window: input.neighborWindow },
+  });
 
 export const registerDocMindDocuments = (folderId: string, files: File[]) => {
   const data = new FormData();

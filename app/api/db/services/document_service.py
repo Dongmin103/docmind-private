@@ -18,11 +18,10 @@ import random
 from datetime import datetime
 from time import monotonic
 
-import xxhash
 from peewee import JOIN, Case, fn
 
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
-from api.db import PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES, CanvasCategory, FileType, UserTenantRole
+from api.db import FileType, UserTenantRole
 from api.db.db_models import (
     DB,
     Document,
@@ -36,15 +35,13 @@ from api.db.db_models import (
     Task,
     Tenant,
     User,
-    UserCanvas,
     UserTenant,
 )
-from api.db.db_utils import bulk_insert_into_db
 from api.db.services.common_service import CommonService, retry_deadlock_operation
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from common import settings
-from common.constants import MAXIMUM_TASK_PAGE_NUMBER, SVR_CONSUMER_GROUP_NAME, ParserType, StatusEnum, TaskStatus
+from common.constants import SVR_CONSUMER_GROUP_NAME, ParserType, StatusEnum, TaskStatus
 from common.doc_store.doc_store_base import OrderByExpr
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, get_format_time
@@ -87,7 +84,6 @@ class DocumentService(CommonService):
             cls.model.thumbnail,
             cls.model.kb_id,
             cls.model.parser_id,
-            cls.model.pipeline_id,
             cls.model.parser_config,
             cls.model.source_type,
             cls.model.type,
@@ -181,10 +177,9 @@ class DocumentService(CommonService):
     def get_list(cls, kb_id, page_number, items_per_page, orderby, desc, keywords, id, name, suffix=None, run=None, doc_ids=None):
         fields = cls.get_cls_model_fields()
         docs = (
-            cls.model.select(*[*fields, UserCanvas.title])
+            cls.model.select(*fields)
             .join(File2Document, on=(File2Document.document_id == cls.model.id))
             .join(File, on=(File.id == File2Document.file_id))
-            .join(UserCanvas, on=((cls.model.pipeline_id == UserCanvas.id) & (UserCanvas.canvas_category == CanvasCategory.DataFlow.value)), join_type=JOIN.LEFT_OUTER)
             .where(cls.model.kb_id == kb_id)
         )
         if id:
@@ -232,18 +227,16 @@ class DocumentService(CommonService):
         fields = cls.get_cls_model_fields()
         if keywords:
             docs = (
-                cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])
+                cls.model.select(*[*fields, User.nickname])
                 .join(File2Document, on=(File2Document.document_id == cls.model.id))
                 .join(File, on=(File.id == File2Document.file_id))
-                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)
                 .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)
                 .where((cls.model.kb_id == kb_id), (fn.LOWER(cls.model.name).contains(keywords.lower())))
             )
         else:
             docs = (
-                cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])
+                cls.model.select(*[*fields, User.nickname])
                 .join(File2Document, on=(File2Document.document_id == cls.model.id))
-                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)
                 .join(File, on=(File.id == File2Document.file_id))
                 .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)
                 .where(cls.model.kb_id == kb_id)
@@ -617,77 +610,17 @@ class DocumentService(CommonService):
         except Exception as e:
             logging.warning(f"Failed to delete thumbnail for document {doc.id}: {e}")
 
-        # Prune this doc's line from the KB's tree-kind navigation before the
-        # broad doc_id delete below removes the nav_doc row needed to locate
-        # and update its parent cluster.
-        try:
-            from rag.advanced_rag.knowlege_compile.dataset_nav import (
-                remove_dataset_nav_doc_sync,
-            )
-
-            remove_dataset_nav_doc_sync(tenant_id, doc.kb_id, doc.id)
-        except Exception as e:
-            logging.warning(
-                f"Failed to prune dataset_nav for document {doc.id}: {e}",
-            )
-
         # Delete chunks from doc store - this is critical, log errors
         try:
             settings.docStoreConn.delete({"doc_id": doc.id}, chunk_index_name, doc.kb_id)
         except Exception as e:
             logging.error(f"Failed to delete chunks from doc store for document {doc.id}: {e}")
 
-        # Record doc deletion for incremental structure-merge ghost cleanup.
-        # Runs after the doc_id sweep so the marker (stored under
-        # deleted_doc_id to avoid matching the same sweep) survives.
-        try:
-            from rag.svr.task_executor_refactor.dataset_structure_merger import (
-                record_doc_deletion,
-            )
-
-            record_doc_deletion(tenant_id, doc.kb_id, doc.id)
-        except Exception as e:
-            logging.warning(
-                f"Failed to record doc deletion for structure merge: {e}",
-            )
-
-        # Ref-counted cleanup of wiki/artifact products this doc fed into
-        # (non-critical, log and continue). A product shared by other docs
-        # survives; one this doc solely owned is removed.
-        try:
-            if chunk_index_exists:
-                cls.remove_wiki_products(doc, tenant_id)
-        except Exception as e:
-            logging.warning(f"Failed to clean up artifact products for document {doc.id}: {e}")
-
         # Delete document metadata (non-critical, log and continue)
         try:
             DocMetadataService.delete_document_metadata(doc.id, doc.kb_id, tenant_id)
         except Exception as e:
             logging.warning(f"Failed to delete metadata for document {doc.id}: {e}")
-
-        # Cleanup knowledge graph references (non-critical, log and continue)
-        try:
-            if chunk_index_exists:
-                graph_source = settings.docStoreConn.get_fields(
-                    settings.docStoreConn.search(["source_id"], [], {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["graph"]}, [], OrderByExpr(), 0, 1, chunk_index_name, [doc.kb_id]),
-                    ["source_id"],
-                )
-                if len(graph_source) > 0 and doc.id in list(graph_source.values())[0]["source_id"]:
-                    settings.docStoreConn.update(
-                        {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["entity", "relation", "graph", "subgraph", "community_report"], "source_id": doc.id},
-                        {"remove": {"source_id": doc.id}},
-                        chunk_index_name,
-                        doc.kb_id,
-                    )
-                    settings.docStoreConn.update({"kb_id": doc.kb_id, "knowledge_graph_kwd": ["graph"]}, {"removed_kwd": "Y"}, chunk_index_name, doc.kb_id)
-                    settings.docStoreConn.delete(
-                        {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["entity", "relation", "graph", "subgraph", "community_report"], "must_not": {"exists": "source_id"}},
-                        chunk_index_name,
-                        doc.kb_id,
-                    )
-        except Exception as e:
-            logging.warning(f"Failed to cleanup knowledge graph for document {doc.id}: {e}")
 
         return True
 
@@ -706,128 +639,6 @@ class DocumentService(CommonService):
                     settings.STORAGE_IMPL.rm(doc.kb_id, cid)
             page += 1
 
-    @classmethod
-    def remove_wiki_products(cls, doc, tenant_id):
-        """Reference-counted cleanup of KB-scoped wiki/artifact products
-        in the doc store when a document is deleted.
-
-        Every derived artifact row (pages, entities, relations, drafts,
-        topics, reduce/plan aggregates) carries a ``source_doc_ids`` list
-        of the documents that contributed to it. On delete we detach
-        ``doc.id`` from that list and drop the row only when this document
-        was its sole contributor — a product shared by other docs
-        survives. ``wiki_map_extract`` resume rows are 1:1 with a
-        document and are removed directly by ``doc_id``.
-
-        The compile_kwd set is pulled from the wiki generator so new
-        artifact row types are covered automatically (single source of
-        truth). Deletion is not a hot path, so the module import cost is
-        acceptable here.
-        """
-        from rag.svr.task_executor_refactor.dataset_wiki_generator import (
-            WIKI_MAP_COMPILE_KWD,
-            WIKI_DERIVED_COMPILE_KWDS,
-        )
-
-        index = search.index_name(tenant_id)
-        if not settings.docStoreConn.index_exist(index, doc.kb_id):
-            return
-
-        # 1. Per-doc MAP resume rows are keyed by the real doc_id.
-        settings.docStoreConn.delete(
-            {"compile_kwd": [WIKI_MAP_COMPILE_KWD], "doc_id": doc.id},
-            index,
-            doc.kb_id,
-        )
-
-        # 2. Derived KB-scoped rows: reference-counted via source_doc_ids.
-        # Read every row this doc contributed to, partitioning into rows it
-        # solely owned (delete by id) vs. rows shared with other docs
-        # (detach this doc). Reading first — rather than a blanket
-        # ``must_not exists`` sweep — avoids deleting rows that legitimately
-        # carry no source_doc_ids.
-        derived_kwds = list(WIKI_DERIVED_COMPILE_KWDS)
-        select_fields = ["id", "source_doc_ids"]
-        sole_owner_ids: list[str] = []
-        shared_seen = False
-        offset = 0
-        page_size = 1000
-        while True:
-            res = settings.docStoreConn.search(
-                select_fields,
-                [],
-                {"compile_kwd": derived_kwds, "source_doc_ids": [doc.id]},
-                [],
-                OrderByExpr(),
-                offset,
-                page_size,
-                index,
-                [doc.kb_id],
-            )
-            field_map = settings.docStoreConn.get_fields(res, select_fields) or {}
-            if not field_map:
-                break
-            for row_id, row in field_map.items():
-                raw = row.get("source_doc_ids")
-                if isinstance(raw, str):
-                    owners = [raw] if raw else []
-                elif isinstance(raw, list):
-                    owners = [d for d in raw if isinstance(d, str) and d]
-                else:
-                    owners = []
-                if any(d != doc.id for d in owners):
-                    shared_seen = True
-                else:
-                    sole_owner_ids.append(row_id)
-            if len(field_map) < page_size:
-                break
-            offset += page_size
-
-        # Drop rows this document solely owned (delete by id in batches).
-        for i in range(0, len(sole_owner_ids), page_size):
-            settings.docStoreConn.delete(
-                {"id": sole_owner_ids[i : i + page_size]},
-                index,
-                doc.kb_id,
-            )
-
-        # Detach this document from rows still owned by others. The filter
-        # guarantees source_doc_ids contains doc.id, so the store's
-        # list-remove is safe; any sole-owner rows already deleted above are
-        # simply not matched.
-        if shared_seen:
-            settings.docStoreConn.update(
-                {"compile_kwd": derived_kwds, "source_doc_ids": doc.id},
-                {"remove": {"source_doc_ids": doc.id}},
-                index,
-                doc.kb_id,
-            )
-
-        # 3. Clean up doc_page_source tracking rows (new incremental design).
-        try:
-            doc_page_kwd = "wiki_doc_page_source"
-            res = settings.docStoreConn.search(
-                ["id"],
-                [],
-                {"compile_kwd": [doc_page_kwd], "doc_id": [doc.id]},
-                [],
-                OrderByExpr(),
-                0,
-                10,
-                index,
-                doc.kb_id,
-            )
-            if settings.docStoreConn.get_fields(res, ["id"]):
-                settings.docStoreConn.delete(
-                    {"compile_kwd": [doc_page_kwd], "doc_id": [doc.id]},
-                    index,
-                    doc.kb_id,
-                )
-        except Exception:
-            logging.exception(
-                "DocumentService.remove_wiki_products: doc_page_source cleanup failed for doc %s",
-                doc.id,
-            )
 
     @classmethod
     @DB.connection_context()
@@ -1193,8 +1004,6 @@ class DocumentService(CommonService):
                     old[k] = v
 
         dfs_update(d.parser_config, config)
-        if not config.get("raptor") and d.parser_config.get("raptor"):
-            del d.parser_config["raptor"]
         cls.update_by_id(id, {"parser_config": d.parser_config})
 
     @classmethod
@@ -1252,17 +1061,12 @@ class DocumentService(CommonService):
                 status = doc.run  # TaskStatus.RUNNING.value
                 if status == TaskStatus.CANCEL.value:
                     continue
-                doc_progress = doc.progress if doc and doc.progress else 0.0
-                special_task_running = False
                 priority = 0
                 # Count this document's own not-yet-started tasks per priority so
                 # they can be excluded from the "tasks ahead in the queue" figure
                 # for the matching priority queue.
                 own_queued_by_priority = {}
                 for t in tsks:
-                    task_type = (t.task_type or "").lower()
-                    if task_type in PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES:
-                        special_task_running = True
                     if 0 <= t.progress < 1:
                         finished = False
                     if t.progress == -1:
@@ -1283,8 +1087,6 @@ class DocumentService(CommonService):
                 elif not finished:
                     status = TaskStatus.RUNNING.value
 
-                # only for special task and parsed docs and unfinished
-                freeze_progress = special_task_running and doc_progress >= 1 and not finished
                 msg = "\n".join(sorted(msg))
                 begin_at = d.get("process_begin_at")
                 if not begin_at:
@@ -1293,16 +1095,10 @@ class DocumentService(CommonService):
                     cls.update_by_id(d["id"], {"process_begin_at": begin_at})
 
                 info = {"process_duration": max(datetime.timestamp(datetime.now()) - begin_at.timestamp(), 0), "run": status}
-                if prg != 0 and not freeze_progress:
+                if prg != 0:
                     info["progress"] = prg
                 if msg:
                     info["progress_msg"] = msg
-                    if msg.endswith("created task graphrag") or msg.endswith("created task raptor") or msg.endswith("created task mindmap"):
-                        # Exclude this document's own queued tasks in the same
-                        # priority queue: they are not "ahead" of itself, they
-                        # ARE the work being waited on.
-                        queue_ahead = max(0, get_queue_length(priority) - own_queued_by_priority.get(priority, 0))
-                        info["progress_msg"] += "\n%d tasks are ahead in the queue..." % queue_ahead
                 else:
                     queue_ahead = max(0, get_queue_length(priority) - own_queued_by_priority.get(priority, 0))
                     info["progress_msg"] = "%d tasks are ahead in the queue..." % queue_ahead
@@ -1374,13 +1170,15 @@ class DocumentService(CommonService):
     @classmethod
     def run(cls, tenant_id: str, doc: dict, kb_table_num_map: dict):
         from api.db.services.file2document_service import File2DocumentService
-        from api.db.services.task_service import queue_dataflow, queue_tasks
+        from api.db.services.task_service import queue_tasks
         from rag.parser_platform.gates import enforce_prequeue_gate
 
         # The parser platform is feature-gated and standard-ingestion only. Run
         # this before any mutable guard, task deletion/reuse, queue write, parser
         # service call, or Dataflow conversion so a mode/capability mismatch is
         # fail-closed and leaves the current active evidence untouched.
+        if doc.get("pipeline_id"):
+            raise ValueError("Unsupported document pipeline")
         enforce_prequeue_gate(doc)
 
         cls.assert_docmind_evidence_mutable(
@@ -1399,107 +1197,8 @@ class DocumentService(CommonService):
                 kb_table_num_map[kb_id] = count
                 if kb_table_num_map[kb_id] <= 0:
                     KnowledgebaseService.delete_field_map(kb_id)
-        if doc.get("pipeline_id", ""):
-            queue_dataflow(tenant_id, flow_id=doc["pipeline_id"], task_id=get_uuid(), doc_id=doc["id"])
-        else:
-            bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
-            queue_tasks(doc, bucket, name, 0)
-
-
-def queue_raptor_o_graphrag_tasks(sample_doc, ty, priority, fake_doc_id="", doc_ids=None):
-    """
-    You can provide a fake_doc_id to bypass the restriction of tasks at the knowledgebase level.
-    Optionally, specify a list of doc_ids to determine which documents participate in the task.
-    """
-    if doc_ids is None:
-        doc_ids = []
-    assert ty in [
-        "graphrag",
-        "raptor",
-        "mindmap",
-        "wiki",
-        "skill",
-        # KB-wide structure-graph merge task types (rebuild dataset_graph rows).
-        "structure_graph",
-        "structure_mindmap",
-        "timeline",
-        "session_graph",
-        "session_essence",
-        "structure",
-    ], f"unsupported task type '{ty}'"
-
-    chunking_config = DocumentService.get_chunking_config(sample_doc["id"])
-    hasher = xxhash.xxh64()
-    for field in sorted(chunking_config.keys()):
-        hasher.update(str(chunking_config[field]).encode("utf-8"))
-
-    def new_task():
-        return {
-            "id": get_uuid(),
-            "doc_id": fake_doc_id,
-            "from_page": MAXIMUM_TASK_PAGE_NUMBER,
-            "to_page": MAXIMUM_TASK_PAGE_NUMBER,
-            "task_type": ty,
-            "progress_msg": datetime.now().strftime("%H:%M:%S") + " created task " + ty,
-            "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-
-    task = new_task()
-    for field in ["doc_id", "from_page", "to_page"]:
-        hasher.update(str(task.get(field, "")).encode("utf-8"))
-    hasher.update(ty.encode("utf-8"))
-    task["digest"] = hasher.hexdigest()
-    bulk_insert_into_db(Task, [task], True)
-
-    task["doc_ids"] = doc_ids
-    DocumentService.begin2parse(task["doc_id"], keep_progress=True)
-    assert REDIS_CONN.queue_product(settings.get_svr_queue_name(priority, ty), message=task), "Can't access Redis. Please check the Redis' status."
-    return task["id"]
-
-
-def queue_per_doc_raptor_task(doc, priority):
-    """Queue a doc-scoped RAPTOR task.
-
-    Distinct from :func:`queue_raptor_o_graphrag_tasks` (which is KB-scoped
-    and uses ``GRAPH_RAPTOR_FAKE_DOC_ID`` as the task's ``doc_id`` so it
-    fans out across the dataset). Here the task's ``doc_id`` is the real
-    document id, so ``TaskHandler._run_raptor`` runs only on this doc's
-    chunks and the RAPTOR summaries it produces are scoped to this doc.
-
-    Triggered automatically at the tail of standard chunking when the
-    doc's ``parser_config["raptor"]["use_raptor"]`` is true. No
-    cross-task dedup — within one chunking-task execution this helper is
-    called at most once, which is the only invariant the caller needs.
-    """
-    chunking_config = DocumentService.get_chunking_config(doc["id"])
-    hasher = xxhash.xxh64()
-    for field in sorted(chunking_config.keys()):
-        hasher.update(str(chunking_config[field]).encode("utf-8"))
-
-    task = {
-        "id": get_uuid(),
-        "doc_id": doc["id"],
-        "from_page": MAXIMUM_TASK_PAGE_NUMBER,
-        "to_page": MAXIMUM_TASK_PAGE_NUMBER,
-        "task_type": "raptor",
-        "progress_msg": datetime.now().strftime("%H:%M:%S") + " created task raptor",
-        "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    for field in ["doc_id", "from_page", "to_page"]:
-        hasher.update(str(task[field]).encode("utf-8"))
-    hasher.update(b"raptor")
-    task["digest"] = hasher.hexdigest()
-    bulk_insert_into_db(Task, [task], True)
-
-    # Redis message carries ``doc_ids`` for downstream consumers
-    # (TaskHandler._run_raptor reads it). Identical to the fake-doc
-    # path's convention so we don't have to special-case the executor.
-    task["doc_ids"] = [doc["id"]]
-    assert REDIS_CONN.queue_product(
-        settings.get_svr_queue_name(priority, "raptor"),
-        message=task,
-    ), "Can't access Redis. Please check the Redis' status."
-    return task["id"]
+        bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
+        queue_tasks(doc, bucket, name, 0)
 
 
 # Short-lived per-priority cache for the genuine queued-task backlog so the
@@ -1513,13 +1212,8 @@ def get_pending_task_count(priority=None):
     """Count tasks that are genuinely still waiting to be processed.
 
     A task counts as "waiting" when it has not started yet (progress == 0) and
-    its document is neither cancelled nor failed. We deliberately do NOT require
-    the document to be RUNNING with progress in [0, 1): special tasks (graphrag/
-    raptor/mindmap) are queued via ``begin2parse(keep_progress=True)`` while the
-    document's own progress may already be 1, so requiring RUNNING/progress<1
-    would undercount them and wrongly drop the cap to 0 while Redis lag is still
-    non-zero. Only cancelled documents (run == CANCEL) and failed ones
-    (progress < 0) are excluded, plus soft-deleted (invalid) documents.
+    its document is neither cancelled nor failed. Only cancelled documents
+    (run == CANCEL), failed ones (progress < 0), and invalid documents are excluded.
 
     When ``priority`` is given, only tasks queued at that priority are counted,
     so the figure stays consistent with the per-priority Redis queue it caps.

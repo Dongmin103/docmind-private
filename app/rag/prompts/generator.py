@@ -173,19 +173,6 @@ def kb_prompt(kbinfos, max_tokens, hash_id=False):
     return knowledges
 
 
-def memory_prompt(message_list, max_tokens):
-    used_token_count = 0
-    content_list = []
-    for message in message_list:
-        current_content_tokens = num_tokens_from_string(message["content"])
-        if used_token_count + current_content_tokens > max_tokens * 0.97:
-            logging.warning(f"Not all the retrieval into prompt: {len(content_list)}/{len(message_list)}")
-            break
-        content_list.append(message["content"])
-        used_token_count += current_content_tokens
-    return content_list
-
-
 CITATION_PROMPT_TEMPLATE = load_prompt("citation_prompt")
 CITATION_PLUS_TEMPLATE = load_prompt("citation_plus")
 CONTENT_TAGGING_PROMPT_TEMPLATE = load_prompt("content_tagging_prompt")
@@ -539,7 +526,7 @@ async def gen_meta_filter(chat_mdl, meta_data: dict, query: str, constraints: di
 
 
 async def gen_json(system_prompt: str, user_prompt: str, chat_mdl, gen_conf={}, max_retry=2):
-    from rag.graphrag.utils import get_llm_cache, set_llm_cache
+    from rag.utils.llm_cache import get_llm_cache, set_llm_cache
 
     cached = get_llm_cache(chat_mdl.llm_name, system_prompt, user_prompt, gen_conf)
     if cached:
@@ -958,46 +945,3 @@ async def gen_metadata(chat_mdl, schema: dict, content: str):
     _, msg = message_fit_in(form_message(system_prompt, user_prompt), chat_mdl.max_length)
     ans = await chat_mdl.async_chat(msg[0]["content"], msg[1:])
     return re.sub(r"^.*</think>", "", ans, flags=re.DOTALL)
-
-
-SUFFICIENCY_CHECK = load_prompt("sufficiency_check")
-
-
-async def sufficiency_check(chat_mdl, question: str, ret_content: str):
-    try:
-        return await gen_json(PROMPT_JINJA_ENV.from_string(SUFFICIENCY_CHECK).render(question=question, retrieved_docs=ret_content), "Output:\n", chat_mdl)
-    except Exception as e:
-        logging.exception(e)
-    return {}
-
-
-SUFFICIENCY_SELECT = load_prompt("sufficiency_select")
-
-
-async def sufficiency_select(chat_mdl, question: str, ret_content: str):
-    """Sufficiency judgement that also returns the IDs of the useful chunks.
-
-    ``ret_content`` must label each chunk with an ``ID: n`` marker (as
-    :func:`kb_prompt` does). Returns a dict with ``is_sufficient``,
-    ``reasoning``, ``missing_information`` and ``useful_chunk_ids``.
-    """
-    try:
-        return await gen_json(PROMPT_JINJA_ENV.from_string(SUFFICIENCY_SELECT).render(question=question, retrieved_docs=ret_content), "Output:\n", chat_mdl)
-    except Exception as e:
-        logging.exception(e)
-    return {}
-
-
-MULTI_QUERIES_GEN = load_prompt("multi_queries_gen")
-
-
-async def multi_queries_gen(chat_mdl, question: str, query: str, missing_infos: list[str], ret_content: str):
-    try:
-        return await gen_json(
-            PROMPT_JINJA_ENV.from_string(MULTI_QUERIES_GEN).render(original_question=question, original_query=query, missing_info="\n - ".join(missing_infos), retrieved_docs=ret_content),
-            "Output:\n",
-            chat_mdl,
-        )
-    except Exception as e:
-        logging.exception(e)
-    return {}

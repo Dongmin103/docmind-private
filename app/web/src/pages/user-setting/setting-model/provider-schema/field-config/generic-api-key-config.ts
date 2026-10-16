@@ -15,80 +15,32 @@
  */
 
 import { FormFieldType } from '@/components/dynamic-form';
-import { LLMFactory } from '@/constants/llm';
 import type { ProviderConfig } from '../types';
 
-/**
- * Generic ApiKey configuration (used for factories not in ProviderConfigMap)
- */
 export const GenericApiKeyConfig: ProviderConfig = {
   llmFactory: '__generic__',
   title: 'API Key',
   fields: [
     {
-      name: 'instance_name',
-      label: 'instanceName',
-      type: FormFieldType.Text,
-      required: true,
-      placeholder: 'instanceNameMessage',
-      tooltip: 'instanceNameTip',
-      autoComplete: 'new-password',
-      validation: { message: 'instanceNameMessage' },
+      name: 'instance_name', label: 'instanceName', type: FormFieldType.Text,
+      required: true, placeholder: 'instanceNameMessage', tooltip: 'instanceNameTip',
+      autoComplete: 'new-password', validation: { message: 'instanceNameMessage' },
     },
     {
-      name: 'api_key',
-      label: 'apiKey',
-      type: FormFieldType.Password,
-      required: true,
-      placeholder: 'apiKeyMessage',
-      autoComplete: 'new-password',
+      name: 'api_key', label: 'apiKey', type: FormFieldType.Password,
+      required: true, placeholder: 'apiKeyMessage', autoComplete: 'new-password',
       validation: { message: 'apiKeyMessage' },
     },
     {
-      name: 'base_url',
-      label: 'baseUrl',
-      type: 'inputSelect',
-      required: false,
-      tooltip: (factory) => {
-        if (factory === LLMFactory.MiniMax) return 'minimaxBaseUrlTip';
-        if (factory === LLMFactory.TongYiQianWen) return 'tongyiBaseUrlTip';
-        if (factory === LLMFactory.SILICONFLOW) return 'siliconBaseUrlTip';
-        return 'baseUrlTip';
-      },
-      placeholder: (factory) => {
-        if (factory === LLMFactory.MiniMax) return 'minimaxBaseUrlPlaceholder';
-        if (factory === LLMFactory.TongYiQianWen)
-          return 'tongyiBaseUrlPlaceholder';
-        if (factory === LLMFactory.SILICONFLOW)
-          return 'siliconflowBaseUrlPlaceholder';
-        if (factory?.toLowerCase() === 'Anthropic')
-          return 'anthropicBaseUrlPlaceholder';
-        return 'openaiBaseUrlPlaceholder';
-      },
-      shouldRender: 'showBaseUrl',
-      autoComplete: 'new-password',
-    },
-    {
-      name: 'group_id',
-      label: 'groupId',
-      type: FormFieldType.Text,
-      required: false,
-      shouldRender: 'showGroupId',
-      autoComplete: 'new-password',
+      name: 'base_url', label: 'baseUrl', type: 'inputSelect', required: false,
+      tooltip: 'baseUrlTip', placeholder: 'openaiBaseUrlPlaceholder',
+      shouldRender: 'showBaseUrl', autoComplete: 'new-password',
     },
   ],
-  verifyTransform: (values) => ({
-    apiKey: values.api_key,
-    baseUrl: values.base_url,
+  verifyTransform: (values) => ({ apiKey: values.api_key, baseUrl: values.base_url }),
+  submitTransform: (values) => ({
+    instance_name: values.instance_name,
+    api_key: values.api_key ?? '',
+    base_url: values.base_url || '',
   }),
-  submitTransform: (values) => {
-    const apiKey = values.group_id
-      ? { api_key: values.api_key ?? '', group_id: values.group_id }
-      : (values.api_key ?? '');
-    return {
-      instance_name: values.instance_name,
-      api_key: apiKey,
-      base_url: values.base_url || '',
-    };
-  },
 };

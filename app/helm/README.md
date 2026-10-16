@@ -2,7 +2,7 @@
 
 A Helm chart to deploy RAGFlow and its dependencies on Kubernetes.
 
-- Components: RAGFlow (web/api) and optional dependencies (Infinity/Elasticsearch/OpenSearch, MySQL, MinIO, Redis)
+- Components: RAGFlow (web/api) and optional dependencies (Elasticsearch, MySQL, MinIO, Redis)
 - Requirements: Kubernetes >= 1.24, Helm >= 3.10
 
 ## Install
@@ -91,17 +91,14 @@ Apply:
 helm upgrade --install ragflow ./helm -n ragflow -f values.override.yaml
 ```
 
-## Document Engine Selection
+## Document Engine
 
-Choose one of `infinity` (default), `elasticsearch`, or `opensearch` via `env.DOC_ENGINE`. The chart renders only the selected engine and sets the appropriate host variables.
+Elasticsearch is the supported document engine and is deployed by this chart. Rendering fails if `env.DOC_ENGINE` has any other value.
 
 ```yaml
 env:
-  DOC_ENGINE: infinity   # or: elasticsearch | opensearch
-  # For elasticsearch
+  DOC_ENGINE: elasticsearch
   ELASTIC_PASSWORD: "<es-pass>"
-  # For opensearch
-  OPENSEARCH_PASSWORD: "<os-pass>"
 ```
 
 ## Ingress
@@ -128,6 +125,6 @@ helm template ragflow ./helm > rendered.yaml
 
 ## Notes
 
-- By default, the chart uses `DOC_ENGINE: infinity` and deploys in-cluster MySQL, MinIO, and Redis.
+- By default, the chart uses `DOC_ENGINE: elasticsearch` and deploys in-cluster MySQL, MinIO, and Redis.
 - The chart injects derived `*_HOST`/`*_PORT` and required secrets into a single Secret (`<release>-ragflow-env-config`).
 - `global.repo` and `global.imagePullSecrets` apply to all Pods; per-component `*.image.pullSecrets` still work and are merged with global settings.

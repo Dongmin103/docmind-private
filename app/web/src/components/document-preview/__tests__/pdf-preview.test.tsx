@@ -4,6 +4,7 @@ import * as React from 'react';
 let mockHighlighterProps: any;
 let mockLoaderProps: any;
 let mockLayerReady = true;
+let mockPageRendered: ((event: any) => void) | undefined;
 
 jest.mock('react-pdf-highlighter', () => {
   const ReactLib = jest.requireActual('react');
@@ -22,7 +23,11 @@ jest.mock('react-pdf-highlighter', () => {
         }),
       );
     },
-    PdfHighlighter: (props: any) => {
+    PdfHighlighter: ReactLib.forwardRef((props: any, ref: any) => {
+      ReactLib.useImperativeHandle(ref, () => ({ eventBus: {
+        on: (_name: string, callback: any) => { mockPageRendered = callback; },
+        off: () => { mockPageRendered = undefined; },
+      } }));
       mockHighlighterProps = props;
       return ReactLib.createElement(
         'div',
@@ -33,7 +38,7 @@ jest.mock('react-pdf-highlighter', () => {
             })
           : null,
       );
-    },
+    }),
     Highlight: () => null,
     AreaHighlight: () => null,
     Popup: ({ children }: any) => children,
@@ -99,6 +104,21 @@ describe('PdfPreview', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('reports first page only after the PDF renderer finishes painting', async () => {
+    const rendered = jest.fn();
+    const { unmount } = render(React.createElement(PdfPreview, { url: 'blob:render-test', onFirstPageRendered: rendered }));
+    await flushPendingFrames();
+    expect(rendered).not.toHaveBeenCalled();
+    act(() => { mockPageRendered?.({ pageNumber: 2 }); });
+    expect(rendered).not.toHaveBeenCalled();
+    act(() => { mockPageRendered?.({ pageNumber: 1, error: new Error('paint failed') }); });
+    expect(rendered).not.toHaveBeenCalled();
+    act(() => { mockPageRendered?.({ pageNumber: 1, cssTransform: false }); });
+    await flushPendingFrames();
+    expect(rendered).toHaveBeenCalledTimes(1);
+    unmount();
   });
 
   it('scrolls after a delayed highlighter scroll ref becomes ready', async () => {

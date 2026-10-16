@@ -580,6 +580,11 @@ class FileService(CommonService):
     @classmethod
     @DB.connection_context()
     def upload_document(self, kb, file_objs, user_id, src="local", parent_path: str | None = None, parser_config_override: dict | None = None):
+        for upload in file_objs:
+            if filename_type(upload.filename) == FileType.AURAL.value:
+                raise ValueError("Unsupported upload type: audio")
+        from common.parser_config_utils import validate_parser_selection
+        validate_parser_selection(kb.parser_id, {**(kb.parser_config or {}), **(parser_config_override or {})})
         root_folder = self.get_root_folder(user_id)
         pf_id = root_folder["id"]
         self.init_knowledgebase_docs(pf_id, user_id)
@@ -665,7 +670,6 @@ class FileService(CommonService):
                     "id": doc_id,
                     "kb_id": kb.id,
                     "parser_id": self.get_parser(filetype, filename, kb.parser_id),
-                    "pipeline_id": kb.pipeline_id,
                     "parser_config": merged_parser_config,
                     "created_by": user_id,
                     "type": filetype,
@@ -712,15 +716,17 @@ class FileService(CommonService):
     @staticmethod
     def parse(filename, blob, img_base64=True, tenant_id=None, layout_recognize=None):
         from api.apps import current_user
-        from rag.app import audio, email, naive, picture, presentation
+        from rag.app import email, naive, picture, presentation
 
         def dummy(prog=None, msg=""):
             pass
 
-        FACTORY = {ParserType.PRESENTATION.value: presentation, ParserType.PICTURE.value: picture, ParserType.AUDIO.value: audio, ParserType.EMAIL.value: email}
+        FACTORY = {ParserType.PRESENTATION.value: presentation, ParserType.PICTURE.value: picture, ParserType.EMAIL.value: email}
         parser_config = {"chunk_token_num": 16096, "delimiter": "\n!?;。；！？", "layout_recognize": layout_recognize or "Plain Text"}
         kwargs = {"lang": "English", "callback": dummy, "parser_config": parser_config, "from_page": 0, "to_page": MAXIMUM_PAGE_NUMBER, "tenant_id": current_user.id if current_user else tenant_id}
         file_type = filename_type(filename)
+        if file_type == FileType.AURAL.value:
+            raise ValueError("Unsupported attachment type: audio")
         if img_base64 and file_type == FileType.VISUAL.value:
             return GptV4.image2base64(blob)
         cks = FACTORY.get(FileService.get_parser(filename_type(filename), filename, ""), naive).chunk(filename, blob, **kwargs)
@@ -731,7 +737,7 @@ class FileService(CommonService):
         if doc_type == FileType.VISUAL:
             return ParserType.PICTURE.value
         if doc_type == FileType.AURAL:
-            return ParserType.AUDIO.value
+            raise ValueError("Unsupported attachment type: audio")
         if re.search(r"\.(ppt|pptx|pages)$", filename):
             return ParserType.PRESENTATION.value
         if re.search(r"\.(msg|eml)$", filename):
@@ -823,6 +829,8 @@ class FileService(CommonService):
     def upload_info(user_id, file, url: str | None = None):
         def structured(filename, filetype, blob, content_type):
             nonlocal user_id
+            if filetype == FileType.AURAL.value:
+                raise ValueError("Unsupported attachment type: audio")
             if filetype == FileType.PDF.value:
                 blob = read_potential_broken_pdf(blob)
 

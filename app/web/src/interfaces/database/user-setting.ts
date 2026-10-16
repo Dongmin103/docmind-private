@@ -94,3 +94,10 @@ export interface ITenant {
   tenant_id: string;
   update_date: string;
 }
+
+export interface ITenantInfo {
+  name: string;
+  parser_ids: string;
+  role: string;
+  tenant_id: string;
+}

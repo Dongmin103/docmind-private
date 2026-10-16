@@ -24,8 +24,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      bge-m3-cpu:
-        condition: service_healthy
       kordoc-parser:
         condition: service_healthy
 

@@ -37,7 +37,6 @@ Usage example::
             minio=minio_limiter,
             chunk=chunk_limiter,
             embed=embed_limiter,
-            kg=kg_limiter,
         ),
         callbacks=TaskCallbacks(
             progress=progress_callback,
@@ -56,7 +55,7 @@ Usage example::
 import asyncio
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Required, TypedDict
+from typing import Any, Callable, Dict, List, Required, TypedDict
 
 from rag.svr.task_executor_refactor.recording_context import BaseRecordingContext
 from rag.svr.task_executor_refactor.write_operation_interceptor import WriteOperationInterceptor
@@ -135,25 +134,12 @@ class TaskDict(TypedDict, total=False):
     """Ending page number for processing (-1 means all pages)."""
 
     task_type: str
-    """Task type (e.g., 'dataflow', 'raptor', 'graphrag', 'memory')."""
+    """Standard document task type."""
 
-    dataflow_id: str
-    """Dataflow/pipeline identifier."""
 
     pagerank: int
     """PageRank value for document scoring."""
 
-    file: Any
-    """File object for dataflow processing."""
-
-    memory_id: str
-    """Memory identifier for memory tasks."""
-
-    source_id: str
-    """Source identifier for memory tasks."""
-
-    message_dict: Dict[str, Any]
-    """Message dictionary for memory tasks."""
 
 
 # ============================================================================
@@ -180,9 +166,6 @@ class TaskLimiters:
 
     embed: asyncio.Semaphore = None
     """Asyncio semaphore for embedding rate limiting."""
-
-    kg: asyncio.Semaphore = None
-    """Asyncio semaphore for knowledge graph rate limiting."""
 
 
 def _noop_progress(**kwargs: Any) -> None:
@@ -247,11 +230,7 @@ class TaskContext:
         "from_page": 0,
         "to_page": -1,
         "task_type": "",
-        "dataflow_id": "",
         "pagerank": 0,
-        "memory_id": "",
-        "source_id": "",
-        "message_dict": {},
     }
 
     def __init__(
@@ -422,13 +401,9 @@ class TaskContext:
 
     @property
     def task_type(self) -> str:
-        """Task type (e.g., 'dataflow', 'raptor', 'graphrag', 'memory')."""
+        """Standard document task type."""
         return self._task.get("task_type", self._DEFAULTS["task_type"])
 
-    @property
-    def dataflow_id(self) -> str:
-        """Dataflow/pipeline identifier."""
-        return self._task.get("dataflow_id", self._DEFAULTS["dataflow_id"])
 
     # =========================================================================
     # Additional properties
@@ -439,29 +414,10 @@ class TaskContext:
         """PageRank value for document scoring."""
         return self._task.get("pagerank", self._DEFAULTS["pagerank"])
 
-    @property
-    def file(self) -> Optional[Any]:
-        """File object for dataflow processing."""
-        return self._task.get("file")
 
     # =========================================================================
-    # Memory task specific properties
     # =========================================================================
 
-    @property
-    def memory_id(self) -> str:
-        """Memory identifier for memory tasks."""
-        return self._task.get("memory_id", self._DEFAULTS["memory_id"])
-
-    @property
-    def source_id(self) -> str:
-        """Source identifier for memory tasks."""
-        return self._task.get("source_id", self._DEFAULTS["source_id"])
-
-    @property
-    def message_dict(self) -> Dict[str, Any]:
-        """Message dictionary for memory tasks."""
-        return self._task.get("message_dict", {})
 
     # =========================================================================
     # Raw task dictionary access
@@ -508,10 +464,6 @@ class TaskContext:
         """Asyncio semaphore for embedding rate limiting."""
         return self.limiters.embed or asyncio.Semaphore(1)
 
-    @property
-    def kg_limiter(self) -> asyncio.Semaphore:
-        """Asyncio semaphore for knowledge graph rate limiting."""
-        return self.limiters.kg or asyncio.Semaphore(1)
 
     # =========================================================================
     # Context and interceptor properties

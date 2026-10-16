@@ -30,10 +30,6 @@ ALLOWED_METHOD_NAMES = {
     "TaskService.update_chunk_ids",
     "DocumentService.increment_chunk_num",
     "DocMetadataService.update_document_metadata",
-    "PipelineOperationLogService.record_pipeline_operation",
-    "PipelineOperationLogService.create",
-    "delete_raptor_chunks",
-    "handle_save_to_memory_task",
     "docStoreConn.insert",
     "docStoreConn.delete",
 }

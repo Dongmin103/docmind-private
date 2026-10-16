@@ -37,6 +37,7 @@ describe('DocMind workspace navigation', () => {
   it('does not trust arbitrary view or return URL parameters', () => {
     expect(parseDocMindView('document')).toBe('document');
     expect(parseDocMindView('catalog')).toBe('search');
+    expect(parseDocMindView('settings')).toBe('search');
     expect(parseDocMindView('https://external.test')).toBe('search');
     expect(parseDocMindReturnView('https://external.test')).toBe('search');
     expect(parseDocMindReturnView('document')).toBe('search');

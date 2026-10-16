@@ -282,52 +282,7 @@ class ElasticsearchActiveChunkFilterTranslator(ActiveChunkFilterTranslator):
         }
 
 
-class OpenSearchActiveChunkFilterTranslator(ElasticsearchActiveChunkFilterTranslator):
-    backend = "opensearch"
-
-
-class _SqlActiveChunkFilterTranslator(ActiveChunkFilterTranslator):
-    placeholder = "?"
-
-    def translate(self, expression: ActiveChunkSetFilterExpr) -> dict:
-        self._check(expression)
-        if expression.match_none:
-            return {"where": "1 = 0", "rendered_where": "1 = 0", "params": []}
-        params: list[str] = []
-
-        def in_clause(field: str, values: tuple[str, ...]) -> str:
-            params.extend(values)
-            return f"{field} IN ({', '.join(self.placeholder for _ in values)})"
-
-        kb_clause = in_clause("kb_id", expression.kb_ids)
-        branches = []
-        if expression.active_chunk_set_ids:
-            branches.append(in_clause("chunk_set_id", expression.active_chunk_set_ids))
-        if expression.legacy_doc_ids:
-            branches.append(f"({in_clause('doc_id', expression.legacy_doc_ids)} AND chunk_set_id IS NULL)")
-        where = f"{kb_clause} AND ({' OR '.join(branches)})"
-        rendered = where
-        for value in params:
-            rendered = rendered.replace(self.placeholder, f"'{value}'", 1)
-        return {"where": where, "rendered_where": rendered, "params": params}
-
-
-class InfinityActiveChunkFilterTranslator(_SqlActiveChunkFilterTranslator):
-    backend = "infinity"
-    placeholder = "?"
-
-
-class OceanBaseActiveChunkFilterTranslator(_SqlActiveChunkFilterTranslator):
-    backend = "oceanbase"
-    placeholder = "%s"
-
-
-TRANSLATORS = {
-    "elasticsearch": ElasticsearchActiveChunkFilterTranslator,
-    "opensearch": OpenSearchActiveChunkFilterTranslator,
-    "infinity": InfinityActiveChunkFilterTranslator,
-    "oceanbase": OceanBaseActiveChunkFilterTranslator,
-}
+TRANSLATORS = {"elasticsearch": ElasticsearchActiveChunkFilterTranslator}
 
 
 def active_chunk_filter_translator(backend: str, *, safe_maximum: int = 10_000) -> ActiveChunkFilterTranslator:

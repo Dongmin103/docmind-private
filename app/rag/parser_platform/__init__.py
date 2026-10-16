@@ -8,9 +8,6 @@ from rag.parser_platform.active_scope import (
     ActiveScopeResolution,
     DocumentScopeRow,
     ElasticsearchActiveChunkFilterTranslator,
-    InfinityActiveChunkFilterTranslator,
-    OceanBaseActiveChunkFilterTranslator,
-    OpenSearchActiveChunkFilterTranslator,
     active_chunk_filter_translator,
     translator_snapshot,
 )

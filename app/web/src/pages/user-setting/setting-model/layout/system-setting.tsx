@@ -124,22 +124,10 @@ function SystemSetting() {
         tooltip: t('img2txtModelTip'),
       },
       {
-        id: 'asr_id',
-        label: t('sequence2txtModel'),
-        value: defaultModelDictionary.asr_id ?? '',
-        tooltip: t('sequence2txtModelTip'),
-      },
-      {
         id: 'rerank_id',
         label: t('rerankModel'),
         value: defaultModelDictionary.rerank_id ?? '',
         tooltip: t('rerankModelTip'),
-      },
-      {
-        id: 'tts_id',
-        label: t('ttsModel'),
-        value: defaultModelDictionary.tts_id ?? '',
-        tooltip: t('ttsModelTip'),
       },
     ];
   }, [defaultModelDictionary, t]);

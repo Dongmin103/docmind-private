@@ -14,19 +14,8 @@
  *  limitations under the License.
  */
 
-import { SwitchLogicOperator } from '@/constants/agent';
-import { buildOptions } from '@/utils/form';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-
-export function useBuildSwitchLogicOperatorOptions() {
-  const { t } = useTranslation();
-  return buildOptions(
-    SwitchLogicOperator,
-    t,
-    'flow.switchLogicOperatorOptions',
-  );
-}
 
 export function useBuildModelTypeOptions() {
   const { t } = useTranslation();

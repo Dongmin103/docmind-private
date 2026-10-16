@@ -8,6 +8,8 @@ from rag.parser_platform.errors import parser_error
 
 
 def enforce_prequeue_gate(document: dict, *, env: Mapping[str, str] | None = None) -> bool:
+    if document.get("pipeline_id"):
+        raise parser_error("PARSER_PLATFORM_DATAFLOW_UNSUPPORTED")
     config = ParserPlatformConfig.from_env(env)
     source_format = document_source_format(document)
     if source_format is None:
@@ -15,8 +17,6 @@ def enforce_prequeue_gate(document: dict, *, env: Mapping[str, str] | None = Non
     config.require_queue_ready()
     if not config.format_enabled(source_format.value):
         raise parser_error("PARSER_PLATFORM_DISABLED")
-    if document.get("pipeline_id"):
-        raise parser_error("PARSER_PLATFORM_DATAFLOW_UNSUPPORTED")
     return True
 
 

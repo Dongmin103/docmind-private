@@ -4,11 +4,9 @@ jest.mock('react-router', () => ({
   useSearchParams: jest.fn(),
 }));
 
-jest.mock('@/routes', () => ({
-  Routes: { DataflowResult: '/dataflow-result' },
-}));
-
-import { InspectionSource, parseInspectionSource } from './route-hook';
+import { renderHook } from '@testing-library/react';
+import { useSearchParams } from 'react-router';
+import { useGetKnowledgeSearchParams, InspectionSource, parseInspectionSource } from './route-hook';
 
 describe('parseInspectionSource', () => {
   it('accepts the bounded docmind source enum', () => {
@@ -25,4 +23,11 @@ describe('parseInspectionSource', () => {
   ])('rejects unsupported source value %p', (source) => {
     expect(parseInspectionSource(source)).toBeUndefined();
   });
+});
+
+
+it('retains direct and embedded inspection dataset/document query IDs', () => {
+  (useSearchParams as jest.Mock).mockReturnValue([new URLSearchParams('id=dataset-1&doc_id=document-1&type=pdf&source=docmind')]);
+  const { result } = renderHook(() => useGetKnowledgeSearchParams());
+  expect(result.current).toEqual({ knowledgeId: 'dataset-1', documentId: 'document-1', type: 'pdf' });
 });

@@ -49,7 +49,7 @@ def test_kordoc_bridge_stores_v2_raw_and_normalized_artifacts(monkeypatch, tmp_p
                                 "has_images": False, "ocr_applied": False}]
     calls = []
 
-    def parse_service(data, format_, *, service_url, timeout, max_pdf_pages, pdf_ocr_requested=False):
+    def parse_service(data, format_, *, service_url, timeout, max_pdf_pages, pdf_ocr_requested=False, timing_scope=None):
         calls.append((data, format_, service_url, timeout, max_pdf_pages, pdf_ocr_requested))
         return result
 

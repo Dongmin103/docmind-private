@@ -53,7 +53,7 @@ describe('useFetchInstanceModels', () => {
     );
 
     const { result } = renderHook(
-      () => useFetchInstanceModels('Bedrock', 'saved-instance'),
+      () => useFetchInstanceModels('OpenAI-API-Compatible', 'saved-instance'),
       { wrapper },
     );
 
@@ -69,7 +69,7 @@ jest.mock('../use-warn-empty-model', () => ({
 describe('useAddProviderInstance', () => {
   it('invalidates the added-model catalog after creating an instance', async () => {
     mockListProviders.mockResolvedValue({
-      data: { code: 0, data: [{ name: 'Bedrock' }] },
+      data: { code: 0, data: [{ name: 'OpenAI-API-Compatible' }] },
     });
     mockListProviderInstances.mockResolvedValue({
       data: { code: 0, data: [] },
@@ -89,7 +89,7 @@ describe('useAddProviderInstance', () => {
 
     await act(async () => {
       await result.current.addProviderInstance({
-        llm_factory: 'Bedrock',
+        llm_factory: 'OpenAI-API-Compatible',
         instance_name: 'bedrock-api-key',
         api_key: {
           auth_mode: 'bedrock_api_key',

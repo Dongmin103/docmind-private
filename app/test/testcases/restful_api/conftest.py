@@ -16,7 +16,6 @@
 
 import pytest
 
-from test.testcases.configs import IS_GO_PROXY
 from libs.auth import RAGFlowHttpApiAuth
 from test.testcases.restful_api.helpers.client import RestClient
 from utils.file_utils import create_txt_file
@@ -125,8 +124,7 @@ GO_ONLY_SKIPS = {
 
 
 def pytest_collection_modifyitems(items):
-    if not IS_GO_PROXY:
-        return
+    return
     for item in items:
         test_name = item.name.split("[", 1)[0]
         for reason, skipped_tests in GO_ONLY_SKIPS.items():

@@ -26,7 +26,7 @@ Key optimizations (ref: arXiv:2510.09722):
 
 Compatibility:
     - chunk(filename, binary, callback, **kwargs) signature remains unchanged
-    - Compatible with FACTORY[ParserType.RESUME.value] in task_executor.py
+    - Compatible with FACTORY[ParserType.RESUME.value] in the shared task handler
 """
 
 import json
@@ -2109,7 +2109,7 @@ def _build_chunk_document(filename: str, resume: dict, lang: str = "Chinese") ->
     Build a list of document chunks from structured resume information
 
     Each field generates an independent chunk containing tokenization results and metadata.
-    Compatible with the build_chunks flow in task_executor.py.
+    Compatible with the build_chunks flow in the shared task handler.
 
     Key design: Each chunk redundantly includes key identity fields (name, phone, email, etc.),
     so that when any chunk is retrieved, the candidate's identity can be immediately identified.
@@ -2481,7 +2481,7 @@ def _blackout_text_regions(image: "np.ndarray", meta_blocks: list[dict], page_id
 
 def chunk(filename, binary, tenant_id, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang="Chinese", callback=None, **kwargs):
     """
-    Resume parsing entry function (compatible with task_executor.py)
+    Resume parsing entry function (compatible with the shared task handler)
 
     This function is the entry point registered as FACTORY[ParserType.RESUME.value],
     with a signature consistent with other parsers (e.g., naive.chunk).

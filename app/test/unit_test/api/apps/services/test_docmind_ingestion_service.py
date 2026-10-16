@@ -104,6 +104,194 @@ def _enqueue_and_claim():
     return discovered, claimed
 
 
+def test_validate_worker_lease_is_read_only(ingestion_db):
+    _, claimed = _enqueue_and_claim()
+    before = dict(DocmindIngestionJob.get_by_id(claimed.job_id).__data__)
+
+    result = service.validate_worker_lease(
+        claimed.job_id, worker_id="windows-worker-1", version_id=claimed.version_id,
+        fencing_token=claimed.fencing_token,
+    )
+
+    assert result == {"valid": True, "lease_expires_at": claimed.lease_expires_at}
+    assert DocmindIngestionJob.get_by_id(claimed.job_id).__data__ == before
+
+
+@pytest.mark.parametrize("microsecond", [100000, 499999, 500000, 800000, 999999])
+@pytest.mark.parametrize("lease_seconds", [30, 300, 1800])
+def test_claim_persists_exact_wire_expiry_before_datetime_storage_rounding(ingestion_db, monkeypatch, microsecond, lease_seconds):
+    now = datetime(2030, 1, 1, 0, 0, 0, microsecond)
+    monkeypatch.setattr(service, "_now", lambda: now)
+    _observe()
+    _observe()
+
+    claimed = service.claim_next("windows-worker-1", lease_seconds=lease_seconds)
+
+    assert claimed is not None
+    persisted = DocmindIngestionJob.get_by_id(claimed.job_id).lease_expires_at
+    wire_expiry = datetime.fromisoformat(claimed.lease_expires_at).replace(tzinfo=None)
+    # MySQL DATETIME(0) rounds fractional seconds. The value sent to storage
+    # must already be the exact whole-second instant advertised to the worker.
+    assert persisted == wire_expiry
+    assert persisted.microsecond == 0
+    assert timedelta(seconds=lease_seconds - 1) < persisted - now <= timedelta(seconds=lease_seconds)
+    result = service.validate_worker_lease(
+        claimed.job_id, worker_id="windows-worker-1", version_id=claimed.version_id,
+        fencing_token=claimed.fencing_token,
+    )
+    assert result == {"valid": True, "lease_expires_at": claimed.lease_expires_at}
+
+
+@pytest.mark.parametrize("change, code", [
+    ("owner", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("fence", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("expired", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("revoked", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("PARSING", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("FAILED", "DOCMIND_INGESTION_STALE_LEASE"),
+    ("version", "DOCMIND_INGESTION_VERSION_MISMATCH"),
+    ("source_changed", "DOCMIND_INGESTION_SOURCE_CHANGED"),
+    ("source_deleted", "DOCMIND_INGESTION_SOURCE_CHANGED"),
+])
+def test_validate_worker_lease_rejects_invalidated_authority(ingestion_db, change, code):
+    _, claimed = _enqueue_and_claim()
+    kwargs = dict(worker_id="windows-worker-1", version_id=claimed.version_id, fencing_token=claimed.fencing_token)
+    if change == "owner":
+        DocmindIngestionJob.update(lease_owner="replacement-worker").execute()
+    elif change == "fence":
+        DocmindIngestionJob.update(fencing_token=claimed.fencing_token + 1).execute()
+    elif change == "expired":
+        DocmindIngestionJob.update(lease_expires_at=service._now() - timedelta(seconds=1)).execute()
+    elif change == "revoked":
+        DocmindIngestionJob.update(lease_expires_at=None).execute()
+    elif change in {"PARSING", "FAILED"}:
+        DocmindIngestionJob.update(lifecycle_state=change).execute()
+    elif change == "version":
+        kwargs["version_id"] = "another-version"
+    elif change == "source_changed":
+        DocmindSourceDocument.update(observed_ciphertext_sha256="c" * 64).execute()
+    else:
+        DocmindSourceDocument.update(deleted_at=service._now()).execute()
+    before = dict(DocmindIngestionJob.get_by_id(claimed.job_id).__data__)
+
+    with pytest.raises(service.DocmindIngestionError, match=code):
+        service.validate_worker_lease(claimed.job_id, **kwargs)
+
+    assert DocmindIngestionJob.get_by_id(claimed.job_id).__data__ == before
+
+
+def _pool_document(number, *, ocr=False):
+    document_id = f'pool-document-{number}'
+    path = f'reports/pool-{number}.pdf'
+    service.register_source_document_mapping('tenant-1', project_id='project-1', source_id='home-test1',
+        document_id=document_id, folder_id='folder-1', relative_path=path)
+    _observe(document_id=document_id, relative_path=path)
+    result = _observe(document_id=document_id, relative_path=path)
+    if ocr:
+        DocmindIngestionJob.update(pdf_ocr_requested=True).where(DocmindIngestionJob.id == result['job_id']).execute()
+    return result['job_id']
+
+
+def test_four_slots_hold_failed_cleanup_and_reject_fifth(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '4')
+    ids = [_pool_document(n) for n in range(5)]
+    claimed = [service.claim_next(f'pool-{n}', ingestion_pool_size=4) for n in range(4)]
+    assert len({job.job_id for job in claimed}) == 4
+    assert service.claim_next('standalone-worker') is None
+    DocmindIngestionJob.update(lifecycle_state='FAILED', host_cleanup_state='PENDING').where(DocmindIngestionJob.id == ids[0]).execute()
+    assert service.claim_next('pool-0', ingestion_pool_size=4) is None
+    DocmindIngestionJob.update(host_cleanup_state='COMPLETE').where(DocmindIngestionJob.id == ids[0]).execute()
+    assert service.claim_next('pool-0', ingestion_pool_size=4).job_id == ids[4]
+    with pytest.raises(service.DocmindIngestionError, match='DOCMIND_INGESTION_REQUEST_INVALID'):
+        service.claim_next('invalid', ingestion_pool_size=5)
+
+
+def test_pool_caps_active_documents_and_requires_enabled_server(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '1')
+    _pool_document(1)
+    with pytest.raises(service.DocmindIngestionError, match='DOCMIND_INGESTION_POOL_NOT_ENABLED'):
+        service.claim_next('pool-0', ingestion_pool_size=3)
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '3')
+    _pool_document(2); _pool_document(3)
+    first = service.claim_next('pool-0', ingestion_pool_size=3)
+    second = service.claim_next('pool-1', ingestion_pool_size=3)
+    third = service.claim_next('pool-2', ingestion_pool_size=3)
+    assert third and third.job_id not in {first.job_id, second.job_id}
+    assert first and second and first.job_id != second.job_id
+    assert service.claim_next('standalone-worker') is None
+
+
+def test_pool_ocr_waits_for_active_document_and_blocks_new_claims(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '3')
+    regular = _pool_document(1)
+    assert service.claim_next('pool-0', ingestion_pool_size=3)
+    ocr = _pool_document(2, ocr=True)
+    assert service.claim_next('pool-1', ingestion_pool_size=3, lease_seconds=1800) is None
+    DocmindIngestionJob.update(lifecycle_state='COMPLETE', host_cleanup_state='COMPLETE').where(DocmindIngestionJob.id == regular).execute()
+    claimed = service.claim_next('pool-1', ingestion_pool_size=3, lease_seconds=1800)
+    assert claimed.job_id == ocr
+    _pool_document(3)
+    assert service.claim_next('pool-0', ingestion_pool_size=3) is None
+
+
+def test_pool_holds_slot_until_host_cleanup(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '3')
+    ids = [_pool_document(n) for n in range(4)]
+    for n in range(3): assert service.claim_next(f'pool-{n}', ingestion_pool_size=3)
+    DocmindIngestionJob.update(lifecycle_state='FAILED', host_cleanup_state='PENDING').where(DocmindIngestionJob.id == ids[0]).execute()
+    assert service.claim_next('pool-0', ingestion_pool_size=3) is None
+    DocmindIngestionJob.update(host_cleanup_state='COMPLETE').where(DocmindIngestionJob.id == ids[0]).execute()
+    assert service.claim_next('pool-0', ingestion_pool_size=3) is not None
+
+
+def test_concurrent_claim_threads_never_exceed_pool_capacity(ingestion_db, monkeypatch, tmp_path):
+    import sqlite3
+    import threading
+    from contextlib import closing
+    from concurrent.futures import ThreadPoolExecutor
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '3')
+    for n in range(4): _pool_document(n)
+    path = str(tmp_path / 'claims.sqlite')
+    with closing(sqlite3.connect(path)) as target:
+        ingestion_db.connection().backup(target)
+    database = SqliteDatabase(path, timeout=5)
+    barrier = threading.Barrier(4)
+    def claim(n):
+        barrier.wait(timeout=5)
+        with database.connection_context():
+            result = service.claim_next(f'pool-{n}', ingestion_pool_size=3)
+            return result.job_id if result else None
+    with database.bind_ctx(MODELS):
+        with ThreadPoolExecutor(4) as pool:
+            ids = list(pool.map(claim, range(4)))
+        assert len([value for value in ids if value]) == 3
+        assert len(set(value for value in ids if value)) == 3
+        with database.connection_context():
+            assert DocmindIngestionJob.select().where(DocmindIngestionJob.lifecycle_state == 'DECRYPTING').count() == 3
+
+
+@pytest.mark.parametrize('capacity,ocr', [(1, False), (2, False), (3, False), (4, False), (1, True), (2, True), (3, True), (4, True)])
+def test_pool_reclaims_lost_claim_response_after_lease_expiry(ingestion_db, monkeypatch, capacity, ocr):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', str(capacity))
+    job_id = _pool_document(1, ocr=ocr)
+    first = service.claim_next('lost-worker', ingestion_pool_size=capacity, lease_seconds=1800)
+    if capacity == 3 and not ocr:
+        _pool_document(2)
+        assert service.claim_next('other-worker', ingestion_pool_size=capacity)
+    DocmindIngestionJob.update(lease_expires_at=service._now()-timedelta(seconds=1)).where(DocmindIngestionJob.id == job_id).execute()
+    retry = service.claim_next('replacement', ingestion_pool_size=capacity, lease_seconds=1800)
+    assert retry and retry.job_id == job_id
+    assert retry.fencing_token == first.fencing_token + 1
+
+
+def test_pool_does_not_reclaim_expired_attempt_awaiting_host_cleanup(ingestion_db, monkeypatch):
+    monkeypatch.setenv('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '1')
+    _pool_document(1)
+    assert service.claim_next('lost-worker', ingestion_pool_size=1)
+    DocmindIngestionJob.update(host_cleanup_state='PENDING', lease_expires_at=service._now()-timedelta(seconds=1)).execute()
+    assert service.claim_next('replacement', ingestion_pool_size=1) is None
+
+
 def test_observation_requires_repeat_and_is_idempotent(ingestion_db):
     assert _observe() == {"state": "WAITING_SOURCE_STABLE", "stable_observations": 1}
     second = _observe()
@@ -1312,30 +1500,46 @@ def test_long_stage_connection_recycle_closes_and_reconnects_before_activation()
     assert events == ["closed", ("connected", True)]
 
 
-def test_long_stage_connection_recycle_discards_only_current_pooled_connection():
-    events = []
+def test_long_stage_connection_recycle_discards_only_current_pooled_connection(tmp_path):
+    import sqlite3
+    import threading
+    from playhouse.pool import PooledSqliteDatabase
 
-    class PooledDatabase:
-        database = "rag_flow_dev"
+    database = PooledSqliteDatabase(str(tmp_path / "pool.db"), check_same_thread=False)
+    other_ready = threading.Event()
+    recycled = threading.Event()
+    errors = []
 
-        @staticmethod
-        def in_transaction():
-            return False
+    def other_request():
+        try:
+            database.connect()
+            connection = database.connection()
+            other_ready.set()
+            assert recycled.wait(5)
+            assert database.connection() is connection
+            assert connection.execute("SELECT 1").fetchone() == (1,)
+        except Exception as error:
+            errors.append(error)
+        finally:
+            database.close()
 
-        @staticmethod
-        def manual_close():
-            events.append("discarded")
-
-        @staticmethod
-        def close():
-            pytest.fail("pooled close would return the stale socket to the pool")
-
-        @staticmethod
-        def connect(*, reuse_if_open):
-            events.append(("connected", reuse_if_open))
-
-    service._recycle_database_connection_after_long_stage(PooledDatabase())
-    assert events == ["discarded", ("connected", True)]
+    thread = threading.Thread(target=other_request)
+    thread.start()
+    try:
+        assert other_ready.wait(5)
+        database.connect()
+        original = database.connection()
+        service._recycle_database_connection_after_long_stage(database)
+        assert database.connection() is not original
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            original.execute("SELECT 1")
+        assert database.connection().execute("SELECT 1").fetchone() == (1,)
+    finally:
+        recycled.set()
+        thread.join(6)
+        database.close_all()
+    assert not thread.is_alive()
+    assert not errors, repr(errors)
 
 
 def test_long_stage_connection_recycle_rejects_transaction_leak():
@@ -1345,6 +1549,69 @@ def test_long_stage_connection_recycle_rejects_transaction_leak():
     )
     with pytest.raises(service.DocmindIngestionError, match="DOCMIND_INGESTION_DATABASE_TRANSACTION_LEAK"):
         service._recycle_database_connection_after_long_stage(database)
+
+
+def test_connection_recycle_and_concurrent_close_do_not_invert_pool_locks(tmp_path):
+    import threading
+    from playhouse.pool import PooledSqliteDatabase
+
+    normal_locked = threading.Event()
+    pool_taken = threading.Event()
+    recycler_ready = threading.Event()
+    ordinary_closing = threading.Event()
+    errors = []
+
+    class BoundedLock:
+        def __init__(self, *, pool=False):
+            self.lock = threading.RLock() if pool else threading.Lock()
+            self.pool = pool
+
+        def __enter__(self):
+            if not self.lock.acquire(timeout=2):
+                raise TimeoutError("database/pool lock inversion")
+            if not self.pool and threading.current_thread().name == "ordinary" and ordinary_closing.is_set():
+                normal_locked.set()
+                pool_taken.wait(.5)
+            if self.pool and threading.current_thread().name == "recycler" and normal_locked.is_set():
+                pool_taken.set()
+            return self
+
+        def __exit__(self, *_args):
+            self.lock.release()
+
+    database = PooledSqliteDatabase(str(tmp_path / "pool.db"), check_same_thread=False)
+    database._lock = BoundedLock()
+    database._pool_lock = BoundedLock(pool=True)
+
+    def recycle():
+        try:
+            database.connect()
+            original = database.connection()
+            recycler_ready.set()
+            assert normal_locked.wait(3)
+            service._recycle_database_connection_after_long_stage(database)
+            assert database.connection() is not original
+            database.close()
+        except Exception as error:
+            errors.append(error)
+
+    def ordinary_close():
+        try:
+            assert recycler_ready.wait(3)
+            database.connect()
+            ordinary_closing.set()
+            database.close()
+        except Exception as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=recycle, name="recycler"), threading.Thread(target=ordinary_close, name="ordinary")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(6)
+    assert not any(thread.is_alive() for thread in threads)
+    database.close_all()
+    assert not errors, repr(errors)
 
 
 @pytest.mark.parametrize(

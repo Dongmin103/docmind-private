@@ -1,0 +1,399 @@
+{
+  "valid": true,
+  "exit_code": 0,
+  "manifest_sha256": "26f422a472086aa2641e2a7f61ec53111a812fefaec070edb2c99714f92fc358",
+  "scope": "embedding replay only; deployed pipeline + candidate shared limiter; no decrypt, parse, ES write",
+  "settings": [
+    {
+      "kind": "settings",
+      "batch": 32,
+      "batch_concurrency": 2,
+      "shared_requests": 2
+    }
+  ],
+  "runs": [
+    {
+      "kind": "end",
+      "run": 0,
+      "slots": 1,
+      "epoch": 1791874850.2377026,
+      "seconds": 52.54847882899958,
+      "documents": [
+        {
+          "chunks": 1,
+          "seconds": 14.697565577000205
+        },
+        {
+          "chunks": 2,
+          "seconds": 0.6805317349990219
+        },
+        {
+          "chunks": 4,
+          "seconds": 0.10842312699969625
+        },
+        {
+          "chunks": 5,
+          "seconds": 0.26508214099885663
+        },
+        {
+          "chunks": 9,
+          "seconds": 0.5016487320008309
+        },
+        {
+          "chunks": 12,
+          "seconds": 0.2877763969991065
+        },
+        {
+          "chunks": 21,
+          "seconds": 0.8457828320006229
+        },
+        {
+          "chunks": 36,
+          "seconds": 0.40867709499980265
+        },
+        {
+          "chunks": 63,
+          "seconds": 1.197443306000423
+        },
+        {
+          "chunks": 1395,
+          "seconds": 33.5501477730013
+        }
+      ],
+      "gpu_samples": 244,
+      "gpu_percent": {
+        "mean": 60.81147540983606,
+        "max": 100.0
+      },
+      "vram_mib": {
+        "mean": 4790.672131147541,
+        "max": 4793.0
+      },
+      "power_w": {
+        "mean": 128.83881147540984,
+        "max": 228.94
+      }
+    },
+    {
+      "kind": "end",
+      "run": 1,
+      "slots": 2,
+      "epoch": 1791874883.1952622,
+      "seconds": 33.779140621001716,
+      "documents": [
+        {
+          "chunks": 1,
+          "seconds": 0.03720613199948275
+        },
+        {
+          "chunks": 2,
+          "seconds": 0.10264818199902948
+        },
+        {
+          "chunks": 4,
+          "seconds": 0.08654209500127763
+        },
+        {
+          "chunks": 5,
+          "seconds": 0.13389957999970648
+        },
+        {
+          "chunks": 9,
+          "seconds": 0.24814157500077272
+        },
+        {
+          "chunks": 12,
+          "seconds": 0.3335281159997976
+        },
+        {
+          "chunks": 21,
+          "seconds": 0.9453661110001121
+        },
+        {
+          "chunks": 36,
+          "seconds": 1.058419221000804
+        },
+        {
+          "chunks": 63,
+          "seconds": 1.428778102999786
+        },
+        {
+          "chunks": 1395,
+          "seconds": 32.1477357950007
+        }
+      ],
+      "gpu_samples": 155,
+      "gpu_percent": {
+        "mean": 95.03225806451613,
+        "max": 100.0
+      },
+      "vram_mib": {
+        "mean": 4793.0,
+        "max": 4793.0
+      },
+      "power_w": {
+        "mean": 195.22,
+        "max": 231.94
+      }
+    },
+    {
+      "kind": "end",
+      "run": 2,
+      "slots": 2,
+      "epoch": 1791874942.6401398,
+      "seconds": 61.085522835999654,
+      "documents": [
+        {
+          "chunks": 1,
+          "seconds": 0.025683414000013727
+        },
+        {
+          "chunks": 2,
+          "seconds": 0.08893580699987069
+        },
+        {
+          "chunks": 4,
+          "seconds": 0.08528853100142442
+        },
+        {
+          "chunks": 5,
+          "seconds": 0.12015832499855605
+        },
+        {
+          "chunks": 9,
+          "seconds": 0.24766093700054626
+        },
+        {
+          "chunks": 12,
+          "seconds": 0.3425067280004441
+        },
+        {
+          "chunks": 21,
+          "seconds": 0.9556669409994356
+        },
+        {
+          "chunks": 36,
+          "seconds": 1.0946869020008307
+        },
+        {
+          "chunks": 63,
+          "seconds": 1.4518813819995557
+        },
+        {
+          "chunks": 1395,
+          "seconds": 59.43624096500025
+        }
+      ],
+      "gpu_samples": 281,
+      "gpu_percent": {
+        "mean": 53.195729537366546,
+        "max": 100.0
+      },
+      "vram_mib": {
+        "mean": 4793.0,
+        "max": 4793.0
+      },
+      "power_w": {
+        "mean": 119.0985409252669,
+        "max": 235.58
+      }
+    },
+    {
+      "kind": "end",
+      "run": 3,
+      "slots": 1,
+      "epoch": 1791874976.5321686,
+      "seconds": 34.716914169999654,
+      "documents": [
+        {
+          "chunks": 1,
+          "seconds": 0.026418637000460876
+        },
+        {
+          "chunks": 2,
+          "seconds": 0.07115533000069263
+        },
+        {
+          "chunks": 4,
+          "seconds": 0.03150647300026321
+        },
+        {
+          "chunks": 5,
+          "seconds": 0.11000389399850974
+        },
+        {
+          "chunks": 9,
+          "seconds": 0.41618084000037925
+        },
+        {
+          "chunks": 12,
+          "seconds": 0.23028329699991446
+        },
+        {
+          "chunks": 21,
+          "seconds": 0.8184859760003746
+        },
+        {
+          "chunks": 36,
+          "seconds": 0.374272586999723
+        },
+        {
+          "chunks": 63,
+          "seconds": 1.102868636000494
+        },
+        {
+          "chunks": 1395,
+          "seconds": 31.531801531999008
+        }
+      ],
+      "gpu_samples": 158,
+      "gpu_percent": {
+        "mean": 92.58227848101266,
+        "max": 100.0
+      },
+      "vram_mib": {
+        "mean": 4793.0,
+        "max": 4793.0
+      },
+      "power_w": {
+        "mean": 193.9691772151899,
+        "max": 235.9
+      }
+    },
+    {
+      "kind": "end",
+      "run": 4,
+      "slots": 1,
+      "epoch": 1791875009.8189902,
+      "seconds": 34.11211590899984,
+      "documents": [
+        {
+          "chunks": 1,
+          "seconds": 0.025934273999155266
+        },
+        {
+          "chunks": 2,
+          "seconds": 0.07011302099999739
+        },
+        {
+          "chunks": 4,
+          "seconds": 0.029537107999203727
+        },
+        {
+          "chunks": 5,
+          "seconds": 0.10798327399970731
+        },
+        {
+          "chunks": 9,
+          "seconds": 0.1563292939990788
+        },
+        {
+          "chunks": 12,
+          "seconds": 0.21033243499914533
+        },
+        {
+          "chunks": 21,
+          "seconds": 0.7747429030005151
+        },
+        {
+          "chunks": 36,
+          "seconds": 0.37224305299969274
+        },
+        {
+          "chunks": 63,
+          "seconds": 1.1126975179995497
+        },
+        {
+          "chunks": 1395,
+          "seconds": 31.24843946400142
+        }
+      ],
+      "gpu_samples": 156,
+      "gpu_percent": {
+        "mean": 95.28846153846153,
+        "max": 100.0
+      },
+      "vram_mib": {
+        "mean": 4793.0,
+        "max": 4793.0
+      },
+      "power_w": {
+        "mean": 196.74166666666667,
+        "max": 232.07
+      }
+    },
+    {
+      "kind": "end",
+      "run": 5,
+      "slots": 2,
+      "epoch": 1791875044.1425378,
+      "seconds": 35.94874985799834,
+      "documents": [
+        {
+          "chunks": 1,
+          "seconds": 0.02529449299981934
+        },
+        {
+          "chunks": 2,
+          "seconds": 0.08925155399992946
+        },
+        {
+          "chunks": 4,
+          "seconds": 0.08641983799861919
+        },
+        {
+          "chunks": 5,
+          "seconds": 0.12140521399851423
+        },
+        {
+          "chunks": 9,
+          "seconds": 0.24326860399924044
+        },
+        {
+          "chunks": 12,
+          "seconds": 0.3402417549987149
+        },
+        {
+          "chunks": 21,
+          "seconds": 0.9579529160000675
+        },
+        {
+          "chunks": 36,
+          "seconds": 1.076979424999081
+        },
+        {
+          "chunks": 63,
+          "seconds": 1.4167601310000464
+        },
+        {
+          "chunks": 1395,
+          "seconds": 34.315983997999865
+        }
+      ],
+      "gpu_samples": 161,
+      "gpu_percent": {
+        "mean": 90.9192546583851,
+        "max": 100.0
+      },
+      "vram_mib": {
+        "mean": 4793.0,
+        "max": 4793.0
+      },
+      "power_w": {
+        "mean": 194.0744099378882,
+        "max": 230.4
+      }
+    }
+  ],
+  "diagnostic": {
+    "error_classes": [],
+    "frames": []
+  },
+  "errors": [],
+  "active_jobs_after": [
+    [
+      "0"
+    ]
+  ],
+  "index_counters_unchanged": true
+}

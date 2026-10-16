@@ -17,7 +17,7 @@
 import { Images, SupportedPreviewDocumentTypes } from '@/constants/common';
 import { UploadFile } from '@/interfaces/antd-compat';
 import { IReferenceChunk } from '@/interfaces/database/chat';
-import { IChunk } from '@/interfaces/database/dataset';
+import { IChunk } from '@/interfaces/database/chunk';
 import { get } from 'lodash';
 import { v4 as uuid } from 'uuid';
 

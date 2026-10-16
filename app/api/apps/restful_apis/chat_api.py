@@ -17,9 +17,7 @@
 import json
 import logging
 import math
-import os
 import re
-import tempfile
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -39,10 +37,9 @@ from api.db.joint_services.tenant_model_service import (
 )
 from api.db.services.chunk_feedback_service import ChunkFeedbackService
 from api.db.services.conversation_service import ConversationService, structure_answer
-from api.db.services.dialog_service import DialogService, gen_mindmap, rag_agent
+from api.db.services.dialog_service import DialogService, async_chat
 from api.db.services.knowledgebase_service import KnowledgebaseService, validate_dataset_embedding_models
 from api.db.services.llm_service import LLMBundle
-from api.db.services.search_service import SearchService
 from api.db.services.user_service import TenantService, UserTenantService
 from api.utils.api_utils import (
     check_duplicate_ids,
@@ -106,7 +103,6 @@ _DEFAULT_PROMPT_CONFIG = {
     "parameters": [{"key": "knowledge", "optional": False}, {"key": "date", "optional": True}],
     "empty_response": "Sorry! No relevant content was found in the knowledge base!",
     "quote": True,
-    "tts": False,
     "refine_multiturn": True,
 }
 _DEFAULT_DIRECT_CHAT_PROMPT_CONFIG = {
@@ -115,7 +111,6 @@ _DEFAULT_DIRECT_CHAT_PROMPT_CONFIG = {
     "parameters": [],
     "empty_response": "",
     "quote": False,
-    "tts": False,
     "refine_multiturn": True,
 }
 _DEFAULT_RERANK_MODELS = {"BAAI/bge-reranker-v2-m3", "maidalun1020/bce-reranker-base_v1"}
@@ -1082,127 +1077,13 @@ async def update_message_feedback(chat_id, session_id, msg_id):
         return server_error_response(ex)
 
 
-@manager.route("/chat/audio/speech", methods=["POST"])  # noqa: F821
-@login_required
-async def tts():
-    req = await get_request_json()
-    text = req["text"]
-
-    try:
-        default_tts_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.TTS)
-    except Exception as e:
-        return get_data_error_result(message=str(e))
-
-    tts_mdl = LLMBundle(current_user.id, default_tts_model_config)
-
-    def stream_audio():
-        try:
-            for txt in re.split(r"[，。/《》？；：！\n\r:;]+", text):
-                for chunk in tts_mdl.tts(txt):
-                    yield chunk
-        except Exception as e:
-            yield ("data:" + json.dumps({"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e)}}, ensure_ascii=False)).encode("utf-8")
-
-    resp = Response(stream_audio(), mimetype="audio/mpeg")
-    resp.headers.add_header("Cache-Control", "no-cache")
-    resp.headers.add_header("Connection", "keep-alive")
-    resp.headers.add_header("X-Accel-Buffering", "no")
-    return resp
-
-
-@manager.route("/chat/audio/transcription", methods=["POST"])  # noqa: F821
-@login_required
-async def transcription():
-    req = await request.form
-    stream_mode = req.get("stream", "false").lower() == "true"
-    files = await request.files
-    if "file" not in files:
-        return get_data_error_result(message="Missing 'file' in multipart form-data")
-
-    uploaded = files["file"]
-
-    ALLOWED_EXTS = {
-        ".wav",
-        ".mp3",
-        ".m4a",
-        ".aac",
-        ".flac",
-        ".ogg",
-        ".webm",
-        ".opus",
-        ".wma",
-    }
-
-    filename = uploaded.filename or ""
-    suffix = os.path.splitext(filename)[-1].lower()
-    if suffix not in ALLOWED_EXTS:
-        return get_data_error_result(message=f"Unsupported audio format: {suffix}. Allowed: {', '.join(sorted(ALLOWED_EXTS))}")
-
-    fd, temp_audio_path = tempfile.mkstemp(suffix=suffix)
-    os.close(fd)
-    await uploaded.save(temp_audio_path)
-
-    try:
-        default_asr_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.ASR)
-    except Exception as e:
-        return get_data_error_result(message=str(e))
-
-    asr_mdl = LLMBundle(current_user.id, default_asr_model_config)
-    if not stream_mode:
-        text = asr_mdl.transcription(temp_audio_path)
-        try:
-            os.remove(temp_audio_path)
-        except Exception as e:
-            logging.error(f"Failed to remove temp audio file: {str(e)}")
-        if "**ERROR**" in text:
-            return get_data_error_result(message=text)
-        return get_json_result(data={"text": text})
-
-    async def event_stream():
-        try:
-            for evt in asr_mdl.stream_transcription(temp_audio_path):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            err = {"event": "error", "text": str(e)}
-            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
-        finally:
-            try:
-                os.remove(temp_audio_path)
-            except Exception as e:
-                logging.error(f"Failed to remove temp audio file: {str(e)}")
-
-    return Response(event_stream(), content_type="text/event-stream")
-
-
-@manager.route("/chat/mindmap", methods=["POST"])  # noqa: F821
-@login_required
-@validate_request("question", "kb_ids")
-async def mindmap():
-    req = await get_request_json()
-    search_id = req.get("search_id", "")
-    search_app = SearchService.get_detail(search_id) if search_id else {}
-    search_config = search_app.get("search_config", {}) if search_app else {}
-    kb_ids = search_config.get("kb_ids", [])
-    kb_ids.extend(req["kb_ids"])
-    kb_ids = list(set(kb_ids))
-
-    mind_map = await gen_mindmap(req["question"], kb_ids, search_app.get("tenant_id", current_user.id), search_config)
-    if "error" in mind_map:
-        return server_error_response(Exception(mind_map["error"]))
-    return get_json_result(data=mind_map)
-
-
 @manager.route("/chat/recommendation", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("question")
 async def recommendation():
     req = await get_request_json()
 
-    search_id = req.get("search_id", "")
     search_config = {}
-    if search_id:
-        if search_app := SearchService.get_detail(search_id):
-            search_config = search_app.get("search_config", {})
 
     question = req["question"]
 
@@ -1341,7 +1222,7 @@ async def session_completion(chat_id_in_arg=""):
                     # start_to_think/end_to_think events.
                     legacy_answer = ""
                     final_answer = None
-                    async for ans in rag_agent(dia, msg, True, session_id=session_id, **req):
+                    async for ans in async_chat(dia, msg, True, session_id=session_id, **req):
                         ans = _format_answer(ans)
                         if ans.get("final"):
                             final_answer = ans
@@ -1378,7 +1259,7 @@ async def session_completion(chat_id_in_arg=""):
                         payload = _sanitize_json_floats({"code": 0, "message": "", "data": final_chunk})
                         yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
                 else:
-                    async for ans in rag_agent(dia, msg, True, session_id=session_id, **req):
+                    async for ans in async_chat(dia, msg, True, session_id=session_id, **req):
                         ans = _format_answer(ans)
                         payload = _sanitize_json_floats({"code": 0, "message": "", "data": ans})
                         yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
@@ -1398,7 +1279,7 @@ async def session_completion(chat_id_in_arg=""):
             return resp
 
         answer = None
-        async for ans in rag_agent(dia, msg, False, session_id=session_id, **req):
+        async for ans in async_chat(dia, msg, False, session_id=session_id, **req):
             answer = _format_answer(ans)
             if conv is not None and store_history_messages:
                 await thread_pool_exec(ConversationService.update_by_id, conv.id, conv.to_dict())

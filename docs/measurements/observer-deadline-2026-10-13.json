@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-13",
+  "historical_document_pipeline_seconds": 20.599398851394653,
+  "historical_controller_seconds": 41.87408959999448,
+  "historical_after_document_observation_delay_seconds": 19.805551052093506,
+  "historical_cause": "Unresolved: no per-request client timing or retry errors recorded. API resource calls continued while status observations paused.",
+  "original_client_socket_timeout_seconds": 90,
+  "new_read_only_request_total_deadline_seconds": 2,
+  "new_hidden_retries": 0,
+  "new_observer_retry_pause_seconds": 0.2,
+  "legacy_path_fixture": {
+    "connect": {
+      "count": 200,
+      "maximum_seconds": 0.029257599962875247,
+      "errors": 0
+    },
+    "getresponse": {
+      "count": 200,
+      "maximum_seconds": 0.008159500022884458,
+      "errors": 0
+    },
+    "total": {
+      "count": 200,
+      "maximum_seconds": 0.07377339998492971,
+      "errors": 0
+    }
+  },
+  "bounded_client_fixture": {
+    "requests": 100,
+    "errors": 0,
+    "maximum_seconds": 0.037331400031689554
+  },
+  "fault_tests_passed": 5,
+  "fault_tests": [
+    "header stall deadline and successful next poll",
+    "slow drip body total deadline",
+    "HTTP500 without retry or secret body logging",
+    "successful authoritative status without payload logging",
+    "mutation action rejected"
+  ],
+  "new_document_or_gpu_benchmark_runs": 0,
+  "operating_services_stopped": false,
+  "synthetic_container_removed": true,
+  "original_gpu_health_http": 200,
+  "original_api_health_http": 200,
+  "limitation": "Synthetic fault tests prove bounded observation requests, not the historical transport root cause or a new full-pipeline completion-confirmation latency."
+}

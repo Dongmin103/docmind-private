@@ -34,7 +34,7 @@ import { useTranslation } from 'react-i18next';
 
 import 'katex/dist/katex.min.css'; // `rehype-katex` does not import the CSS for you
 
-import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-request';
+import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-inspection';
 import { useLoadingPause } from '@/hooks/use-loading-pause';
 import {
   currentReg,

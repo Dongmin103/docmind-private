@@ -76,7 +76,7 @@ describe('SourceTree', () => {
       screen.getByText(/인덱싱 실패 · 임시 파일 정리 대기/),
     ).toHaveTextContent('이전 색인 검색 가능 (HOST_WORKER_ERROR)');
   });
-  it('labels a searchable partial PPTX and unrecognized image text separately', () => {
+  it('keeps actual partial coverage but hides image OCR hints', () => {
     render(<SourceTree nodes={[{
       ...Nodes[1],
       index_partial_coverage: true,
@@ -84,7 +84,7 @@ describe('SourceTree', () => {
       searchable: true,
     }]} />);
     expect(screen.getByText(/인덱싱 완료 · 일부 내용 미추출/)).toBeInTheDocument();
-    expect(screen.getByText(/이미지 속 글자 미인식/)).toBeInTheDocument();
+    expect(screen.queryByText(/이미지 속 글자 미인식/)).not.toBeInTheDocument();
   });
   it('keeps active-index coverage visible while a newer attempt fails', () => {
     render(<SourceTree nodes={[{
@@ -95,7 +95,7 @@ describe('SourceTree', () => {
       searchable: true,
     }]} />);
     expect(screen.getByText(/이전 색인 검색 가능/)).toHaveTextContent('일부 내용 미추출');
-    expect(screen.getByText(/이미지 속 글자 미인식/)).toBeInTheDocument();
+    expect(screen.queryByText(/이미지 속 글자 미인식/)).not.toBeInTheDocument();
   });
   it('does not imply partial indexed coverage without an active index', () => {
     render(<SourceTree nodes={[{

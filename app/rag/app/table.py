@@ -30,12 +30,10 @@ from collections import Counter
 from dateutil.parser import parse as datetime_parse
 
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from deepdoc.parser.figure_parser import vision_figure_parser_figure_xlsx_wrapper
 from common.constants import MAXIMUM_TASK_PAGE_NUMBER
 from deepdoc.parser.utils import get_text
 from rag.nlp import rag_tokenizer, tokenize, tokenize_table
 from deepdoc.parser import ExcelParser
-from common import settings
 
 logger = logging.getLogger(__name__)
 
@@ -89,23 +87,6 @@ class Excel(ExcelParser):
             ws = wb[sheet_name]
             images = Excel._extract_images_from_worksheet(ws, sheetname=sheet_name)
             pending_cell_images = []
-            if images:
-                image_descriptions = vision_figure_parser_figure_xlsx_wrapper(
-                    images=images,
-                    callback=callback,
-                    lang=lang,
-                    **kwargs,
-                )
-                if image_descriptions and len(image_descriptions) == len(images):
-                    for i, bf in enumerate(image_descriptions):
-                        desc = bf[0][1]
-                        images[i]["image_description"] = "\n".join(desc) if isinstance(desc, list) else str(desc)
-                    for img in images:
-                        if img["span_type"] == "single_cell" and img.get("image_description"):
-                            pending_cell_images.append(img)
-                        else:
-                            flow_images.append(img)
-
             try:
                 rows = Excel._get_rows_limited(ws)
             except Exception as e:
@@ -547,12 +528,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_TASK_PAGE_NUMBER, 
         clmns_map = [(py_clmns[i].lower() + fields_map[clmn_tys[i]], str(clmns[i]).replace("_", " ")) for i in range(len(clmns))]
         # field_map: only columns stored in chunk_data (metadata or both) — used for retrieval/SQL
         stored_indices = [i for i in range(len(clmns)) if column_roles.get(clmns[i], "both") in ("metadata", "both")]
-        if settings.DOC_ENGINE_INFINITY or settings.DOC_ENGINE_OCEANBASE or settings.DOC_ENGINE_GAUSSDB or settings.DOC_ENGINE_SERENEDB:
-            field_map = {py_clmns[i].lower(): str(clmns[i]).replace("_", " ") for i in stored_indices}
-        else:
-            field_map = {clmns_map[i][0]: clmns_map[i][1] for i in stored_indices}
-        if settings.DOC_ENGINE_GAUSSDB:
-            field_map = {py_clmns[i].lower(): str(clmns[i]) for i in stored_indices}
+        field_map = {clmns_map[i][0]: clmns_map[i][1] for i in stored_indices}
         logging.debug(f"Field map (sheet): {field_map}")
         sheet_specs.append(
             {
@@ -610,43 +586,35 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_TASK_PAGE_NUMBER, 
                 if role in ("indexing", "vectorize", "both"):
                     text_fields.append((col_name, row[col_name]))
                 if role in ("metadata", "both"):
-                    if settings.DOC_ENGINE_INFINITY or settings.DOC_ENGINE_OCEANBASE or settings.DOC_ENGINE_GAUSSDB or settings.DOC_ENGINE_SERENEDB:
-                        stored[str(col_name)] = row[col_name]
-                    else:
-                        fld = clmns_map[j][0]
-                        if clmn_tys[j] != "text":
-                            val = row[col_name]
-                            # If a string value ended up in a non-text column,
-                            # it was preserved from a failed conversion in
-                            # column_data_type. Skip storing in the typed ES
-                            # field to avoid type mapping errors; the value is
-                            # already in text_fields for chunk content.
-                            if isinstance(val, str):
-                                pass
-                            else:
-                                stored[fld] = val
+                    fld = clmns_map[j][0]
+                    if clmn_tys[j] != "text":
+                        val = row[col_name]
+                        # If a string value ended up in a non-text column,
+                        # it was preserved from a failed conversion in
+                        # column_data_type. Skip storing in the typed ES
+                        # field to avoid type mapping errors; the value is
+                        # already in text_fields for chunk content.
+                        if isinstance(val, str):
+                            pass
                         else:
-                            cell = row[col_name]
-                            stored[fld] = rag_tokenizer.tokenize(cell)
-                            raw_s = str(cell).strip() if cell is not None else ""
-                            if raw_s:
-                                stored[f"{py_clmns[j].lower()}_raw"] = raw_s
+                            stored[fld] = val
+                    else:
+                        cell = row[col_name]
+                        stored[fld] = rag_tokenizer.tokenize(cell)
+                        raw_s = str(cell).strip() if cell is not None else ""
+                        if raw_s:
+                            stored[f"{py_clmns[j].lower()}_raw"] = raw_s
             if not text_fields and not stored:
                 continue
-            if settings.DOC_ENGINE_INFINITY or settings.DOC_ENGINE_OCEANBASE or settings.DOC_ENGINE_GAUSSDB or settings.DOC_ENGINE_SERENEDB:
-                if stored:
-                    d["chunk_data"] = stored
-            else:
-                d.update(stored)
+            d.update(stored)
             formatted_text = "\n".join([f"- {field}: {value}" for field, value in text_fields]) if text_fields else ""
             tokenize(d, formatted_text, eng, language=lang)
             if _debug_row_idx == 1:
                 logger.debug(f"[TABLE_PARSER_DEBUG] Chunk content_with_weight length: {len(d.get('content_with_weight', '') or '')}")
                 _cd = d.get("chunk_data")
                 logger.debug(f"[TABLE_PARSER_DEBUG] Chunk chunk_data keys: {list(_cd.keys()) if isinstance(_cd, dict) else 'N/A'}")
-                if not (settings.DOC_ENGINE_INFINITY or settings.DOC_ENGINE_OCEANBASE or settings.DOC_ENGINE_GAUSSDB or settings.DOC_ENGINE_SERENEDB):
-                    _extra = [k for k in d if k not in ("docnm_kwd", "title_tks", "content_with_weight", "content_ltks", "content_sm_ltks")]
-                    logger.debug(f"[TABLE_PARSER_DEBUG] Chunk ES extra field keys (sample): {_extra[:20]}")
+                _extra = [k for k in d if k not in ("docnm_kwd", "title_tks", "content_with_weight", "content_ltks", "content_sm_ltks")]
+                logger.debug(f"[TABLE_PARSER_DEBUG] Chunk ES extra field keys (sample): {_extra[:20]}")
             res.append(d)
     if tbls:
         doc = {"docnm_kwd": filename, "title_tks": rag_tokenizer.tokenize(re.sub(r"\.[a-zA-Z]+$", "", filename))}

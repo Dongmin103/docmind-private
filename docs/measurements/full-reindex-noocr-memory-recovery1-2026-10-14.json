@@ -1,0 +1,86 @@
+{
+  "status": "single_full_reindex_verified_after_memory_intervention",
+  "date_kst": "2026-10-14",
+  "source_commit": "579805f05940e4555f04f94ff5acf7da63a71483",
+  "api_image_source_commit": "747a2823af366456b15dcd24346f5d6751a01d64",
+  "measurement": {
+    "documents_attempted": 244,
+    "completed": 223,
+    "chunks_and_vectors": 12460,
+    "errors": {
+      "PARSER_PDF_NO_SEARCHABLE_TEXT": 18,
+      "PARSER_SOURCE_TYPE_MISMATCH": 2,
+      "PARSER_HWP_INVALID": 1
+    },
+    "new_processing_errors": 0,
+    "worker_start_to_final_host_cleanup_ack_seconds": 276.5764410495758,
+    "actual_document_processing_seconds": 271.82197403907776,
+    "all_terminal_observed_seconds": 280.43846079998184,
+    "gpu_average_percent": 57.71926605504587,
+    "gpu_processing_window_average_percent": 59.690702087286525,
+    "gpu_peak_percent": 100,
+    "gpu_peak_memory_mib": 8005,
+    "gpu_peak_temperature_c": 70,
+    "cpu_average_percent": 26.991819953225693,
+    "cpu_peak_percent": 75.51282051282051,
+    "windows_ram_peak_percent": 99,
+    "windows_ram_min_available_mib": 5.89453125,
+    "ocr_documents_completed": 0,
+    "source_hashes_verified": 244,
+    "all_attempts_exactly_once": true,
+    "sql_es_active_chunk_sets_and_vectors_match": true,
+    "host_parser_temporary_files": 0,
+    "cleanup_pending": 0,
+    "status_observation_errors": 0
+  },
+  "configuration": {
+    "document_concurrency": 4,
+    "parser_processes": 2,
+    "parser_cpu_limit": 4,
+    "gpu_inference_concurrency": 1,
+    "gpu_short_batch": 16,
+    "gpu_short_min_fill_percent": 85
+  },
+  "memory": {
+    "before_intervention_api_docker_usage_gib": 3.545,
+    "after_restart_warm_api_docker_usage_gib": 1.971,
+    "post_index_api_docker_usage_gib": 2.986,
+    "sampled_peak_api_cgroup_gib": 3.447296142578125,
+    "api_cgroup_oom_events": 0,
+    "api_cgroup_oom_kill_events": 0,
+    "api_cgroup_limit_hit_events": 0,
+    "api_admin_process_ids_unchanged_during_measurement": true,
+    "admin_process_pss_kib": 887795,
+    "api_process_pss_kib": 2364743
+  },
+  "interventions": [
+    "Stopped legacy BGE service; active workspace GTE binding retained.",
+    "Drained workers and restarted API, then checked synthetic GTE vectors and runtime hashes.",
+    "One-time sync and clean Linux page/slab cache reclaim; no persistent WSL policy change.",
+    "Kept administrator API, OCR service and other user applications running."
+  ],
+  "restoration": {
+    "ingestion_preview_source_watcher_running": true,
+    "legacy_bge_stopped": true,
+    "admin_api_running": true,
+    "ocr_service_unchanged": true
+  },
+  "additional_savings_candidates": [
+    "Administrator API on demand: about 867 MiB measured PSS; not applied, user preference pending because admin CLI/API availability changes.",
+    "Lazy loading optional TaskHandler/common.settings dependencies: code paths inspected, savings not measured, no implementation changes."
+  ],
+  "limits": [
+    "One measured run; excludes service restart, cache reclaim, discovery and reset preparation. Not a long-duration stability certification.",
+    "The 2 GiB free Windows RAM preflight target was not reached. Peak RAM remained 99 percent; memory pressure is unresolved.",
+    "API processing reloaded memory after restart; immediate restart savings are not steady-state savings.",
+    "Several environmental interventions and uncontrolled host activity prevent attributing the speed gain to one cause.",
+    "Docker displayed memory and cgroup memory.current account for cache differently; compare matching metrics.",
+    "GPU and host CPU/RAM metrics are system-wide. Preview and watcher were paused during measurement.",
+    "Cache clearing may add CPU and I/O overhead; it was not installed as recurring maintenance.",
+    "BGE was stopped, not deleted; base Compose may start it again. No product code or .wslconfig changed."
+  ],
+  "references": [
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/sysctl/vm.html",
+    "https://learn.microsoft.com/windows/wsl/wsl-config"
+  ]
+}

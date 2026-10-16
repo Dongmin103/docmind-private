@@ -48,7 +48,7 @@ import {
 import { citationMarkerReg } from '@/utils/citation-utils';
 import { getDirAttribute } from '@/utils/text-direction';
 
-import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-request';
+import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-inspection';
 import { useLoadingPause } from '@/hooks/use-loading-pause';
 import { cn } from '@/lib/utils';
 import classNames from 'classnames';

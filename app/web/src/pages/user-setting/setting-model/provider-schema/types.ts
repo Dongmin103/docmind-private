@@ -35,9 +35,7 @@ export type ShouldRenderToken =
   | 'hideWhenInstanceExists'
   | 'modelTypeIncludesChat'
   | 'modelTypeSupportsToolCall'
-  | 'modelTypeIncludesTtsAndNotExists'
-  | 'showBaseUrl'
-  | 'showGroupId';
+  | 'showBaseUrl';
 
 /**
  * Option label can be a string or ReactNode (used for rich-text labels in InputSelect).

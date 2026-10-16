@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Protocol
 
 from peewee import IntegrityError
+from playhouse.pool import PooledDatabase
 
 from api.db.db_models import (
     DocmindFolder,
@@ -488,13 +489,19 @@ def _recycle_database_connection_after_long_stage(database=None) -> None:
         return
     if database.in_transaction():
         raise DocmindIngestionError("DOCMIND_INGESTION_DATABASE_TRANSACTION_LEAK")
-    manual_close = getattr(database, "manual_close", None)
-    if callable(manual_close):
-        # PooledDatabase.close() only returns the connection to the pool.  An
-        # immediate connect can therefore reacquire the same socket that went
-        # stale while Docling/OCR was running.  manual_close() discards just
-        # this request's connection without disrupting concurrent requests.
-        manual_close()
+    if isinstance(database, PooledDatabase):
+        if not database.is_closed():
+            connection = database.connection()
+            # Remove this thread's socket from the pool before closing it so
+            # another request cannot borrow it. Release the pool lock before
+            # close() acquires Peewee's non-reentrant DB lock; manual_close()
+            # holds the pool lock across close() and can invert that order.
+            with database._pool_lock:
+                database._in_use.pop(database.conn_key(connection), None)
+            try:
+                database.close()
+            finally:
+                database._close(connection, close_conn=True)
     elif not database.is_closed():
         database.close()
     database.connect(reuse_if_open=True)
@@ -1067,10 +1074,33 @@ def _claimable_jobs(
     return query
 
 
-def claim_next(
+_ingestion_claim_lock = threading.Lock()
+
+
+def claim_next(worker_id: str, *, lease_seconds: int = 300, allowed_formats: list[str] | None = None,
+               skip_retries: bool = False, claim_source_id: str | None = None,
+               claim_job_id: str | None = None, ingestion_pool_size: int | None = None) -> WorkerDecryptRequest | None:
+    limit = int(os.environ.get('DOCMIND_INGESTION_DOCUMENT_CONCURRENCY', '1'))
+    if limit not in (1, 2, 3, 4):
+        raise DocmindIngestionError('DOCMIND_INGESTION_POOL_CONFIG_INVALID')
+    if ingestion_pool_size is not None:
+        if type(ingestion_pool_size) is not int or ingestion_pool_size not in (1, 2, 3, 4):
+            raise DocmindIngestionError('DOCMIND_INGESTION_REQUEST_INVALID')
+        if ingestion_pool_size > limit:
+            raise DocmindIngestionError('DOCMIND_INGESTION_POOL_NOT_ENABLED')
+    # One API process owns pool admission. SQL fencing still protects each job.
+    # Include standalone callers while pool mode is enabled.
+    with _ingestion_claim_lock:
+        return _claim_next(worker_id, lease_seconds=lease_seconds, allowed_formats=allowed_formats,
+            skip_retries=skip_retries, claim_source_id=claim_source_id, claim_job_id=claim_job_id,
+            admission_limit=limit if limit > 1 or ingestion_pool_size is not None else None)
+
+
+def _claim_next(
     worker_id: str, *, lease_seconds: int = 300, allowed_formats: list[str] | None = None,
     skip_retries: bool = False, claim_source_id: str | None = None,
     claim_job_id: str | None = None,
+    admission_limit: int | None = None,
 ) -> WorkerDecryptRequest | None:
     worker_id = _valid_identifier(worker_id, max_length=128)
     if lease_seconds < 30 or lease_seconds > 1800:
@@ -1102,6 +1132,23 @@ def claim_next(
     ).order_by(DocmindIngestionJob.create_time.asc()).first()
     if candidate is None:
         return None
+    if admission_limit is not None:
+        active = DocmindIngestionJob.select().where(
+            DocmindIngestionJob.lifecycle_state.in_({'CLAIMED', 'DECRYPTING', 'DELIVERED', 'PARSING', 'INDEXING', 'CLEANUP', 'CLEANUP_FAILED'})
+            | (DocmindIngestionJob.host_cleanup_state == 'PENDING')
+        )
+        if candidate.lifecycle_state == 'DECRYPTING':
+            # _claimable_jobs permits only expired decrypt leases here. Replace
+            # that fenced attempt in its existing slot after host cleanup;
+            # counting it again would permanently block a lost claim response.
+            if candidate.host_cleanup_state == 'PENDING' or candidate.parser_input_token_hash:
+                return None
+            active = active.where(DocmindIngestionJob.id != candidate.id)
+        count = active.count()
+        if count >= admission_limit or active.where(DocmindIngestionJob.pdf_ocr_requested == True).exists():  # noqa: E712
+            return None
+        if candidate.pdf_ocr_requested and count:
+            return None
     database = DocmindIngestionJob._meta.database
     now = _now()
     with database.atomic():
@@ -1116,7 +1163,9 @@ def claim_next(
         if job.pdf_ocr_requested and lease_seconds < 1500:
             raise DocmindIngestionError("DOCMIND_PDF_OCR_LEASE_TOO_SHORT")
         next_fence = job.fencing_token + 1
-        expires = now + timedelta(seconds=lease_seconds)
+        # Persist the same whole-second instant sent to the worker; MySQL
+        # DATETIME(0) can otherwise round fractional seconds up on write.
+        expires = (now + timedelta(seconds=lease_seconds)).replace(microsecond=0)
         changed = (
             DocmindIngestionJob.update(
                 lifecycle_state="DECRYPTING",
@@ -1186,6 +1235,14 @@ def _leased_job(job_id: str, worker_id: str, fencing_token: int) -> DocmindInges
     if not _current_observation(source_document, job, version):
         raise DocmindIngestionError("DOCMIND_INGESTION_SOURCE_CHANGED")
     return job
+
+
+def validate_worker_lease(job_id: str, *, worker_id: str, version_id: str, fencing_token: int) -> dict:
+    """Check current decrypt authority without renewing or changing the job."""
+    job = _leased_job(job_id, worker_id, fencing_token)
+    if job.version_id != _valid_identifier(version_id, max_length=32):
+        raise DocmindIngestionError("DOCMIND_INGESTION_VERSION_MISMATCH")
+    return {"valid": True, "lease_expires_at": job.lease_expires_at.isoformat(timespec="seconds") + "Z"}
 
 
 def accept_decrypted_artifact(

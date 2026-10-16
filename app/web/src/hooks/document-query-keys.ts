@@ -14,30 +14,6 @@
  *  limitations under the License.
  */
 
-export const enum DocumentApiAction {
-  UploadDocument = 'uploadDocument',
-  FetchDocumentList = 'fetchDocumentList',
-  UpdateDocumentStatus = 'updateDocumentStatus',
-  RunDocumentByIds = 'runDocumentByIds',
-  RemoveDocument = 'removeDocument',
-  SaveDocumentName = 'saveDocumentName',
-  SetDocumentParser = 'setDocumentParser',
-  SetDocumentMeta = 'setDocumentMeta',
-  FetchDocumentFilter = 'fetchDocumentFilter',
-  CreateDocument = 'createDocument',
-  FetchDocumentThumbnails = 'fetchDocumentThumbnails',
-  ParseDocument = 'parseDocument',
-}
-
 export const DocumentKeys = {
-  all: () => [DocumentApiAction.FetchDocumentList] as const,
-  list: (searchString: string, pagination: unknown, filter: unknown) =>
-    [...DocumentKeys.all(), searchString, pagination, filter] as const,
-  allFilters: () => [DocumentApiAction.FetchDocumentFilter] as const,
-  filter: (searchString: string, knowledgeId?: string) =>
-    [...DocumentKeys.allFilters(), searchString, knowledgeId] as const,
-  thumbnails: (ids: string[]) =>
-    [DocumentApiAction.FetchDocumentThumbnails, ids] as const,
-  byIds: (ids: string[]) =>
-    [DocumentApiAction.FetchDocumentList, 'byIds', ids] as const,
+  thumbnails: (ids: string[]) => ['fetchDocumentThumbnails', ids] as const,
 };

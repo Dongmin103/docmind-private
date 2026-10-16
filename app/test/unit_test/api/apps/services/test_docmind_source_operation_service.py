@@ -1,7 +1,7 @@
 import hashlib
 import importlib.util
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -17,6 +17,7 @@ from api.db.db_models import (
     DocmindSourceFolder,
     DocmindSourceOperation,
     DocmindSourceVersion,
+    Document,
 )
 
 SERVICE_PATH = Path(__file__).resolve().parents[5] / "api" / "apps" / "services" / "docmind_source_operation_service.py"
@@ -37,6 +38,7 @@ sys.modules[SPEC.name] = service
 SPEC.loader.exec_module(service)
 
 MODELS = [
+    Document,
     DocmindProject,
     DocmindFolder,
     DocmindSource,
@@ -646,7 +648,10 @@ def test_confirmed_delete_excludes_search_but_keeps_metadata(source_operation_db
     assert DocmindSourceVersion.get_by_id("version-1").lifecycle_state == "DELETED_RETAINED"
     tombstone = DocmindSourceDeletion.get(DocmindSourceDeletion.source_document_id == "mapping-1")
     assert tombstone.lifecycle_state == "INACTIVE_RETAINED"
-    assert tombstone.retained_until - tombstone.confirmed_at == timedelta(days=30)
+    # SQLite can return offset-bearing DateTimeField values as ISO strings.
+    retained_until = datetime.fromisoformat(str(tombstone.retained_until))
+    confirmed_at = datetime.fromisoformat(str(tombstone.confirmed_at))
+    assert retained_until - confirmed_at == timedelta(days=30)
 
 
 def test_source_success_is_not_relabelled_source_failure_when_index_exclusion_fails(source_operation_db):

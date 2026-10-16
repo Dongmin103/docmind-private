@@ -1,0 +1,248 @@
+{
+  "status": "complete",
+  "configuration": {
+    "documents": 3,
+    "parser_processes": 2,
+    "parser_cpu_quota": 4,
+    "gpu_inference_slots": 2,
+    "cuda_streams": 2,
+    "model_copies": 1,
+    "request_batch": 32,
+    "adaptive_gpu_batches": [
+      8,
+      2,
+      1
+    ]
+  },
+  "baseline": {
+    "source": "cpu-parser-324-2026-10-13.json",
+    "new_baseline_run": false,
+    "run": {
+      "label": "final-run-1-324",
+      "slots": 3,
+      "valid": true,
+      "documents": 14,
+      "chunks": 885,
+      "chunk_counts": [
+        1,
+        2,
+        3,
+        5,
+        5,
+        10,
+        14,
+        19,
+        41,
+        63,
+        66,
+        71,
+        290,
+        295
+      ],
+      "launch_to_completion_seconds": 24.577628200000618,
+      "startup_seconds": 1.4780194759368896,
+      "pipeline_seconds": 22.930355072021484,
+      "documents_per_minute": 36.63266431599777,
+      "first_document_seconds": 2.9638400077819824,
+      "document_latency_mean_seconds": 4.0160116214285715,
+      "document_latency_median_seconds": 2.20261025,
+      "document_latency_p95_seconds": 14.287003454999999,
+      "batch_completion_mean_seconds": 9.370049323354449,
+      "parse_to_last_embedding_seconds": 22.289012975998048,
+      "cross_document_parse_embedding_overlap_seconds": 2.338325095,
+      "stage_sum_seconds": {
+        "parser_queue": 0.984348683,
+        "parser_serialize": 0.230163327,
+        "parser_transport": 10.291609233,
+        "parse_http": 11.541248057,
+        "normalize_artifacts": 0.49615018099999997,
+        "chunk": 1.164302201,
+        "embedding": 25.183127184,
+        "index_staging": 1.688317699,
+        "activation": 1.045070445,
+        "container_cleanup": 0.478331456,
+        "parse_native_pptx": 0.150979184
+      },
+      "gpu_samples": 108,
+      "gpu_average_percent": 56.851851851851855,
+      "gpu_peak_percent": 100.0,
+      "gpu_below_10_percent_fraction": 0.3148148148148148,
+      "gpu_below_10_percent_approx_seconds": 7.2188154856363935,
+      "vram_peak_mib": 4793.0,
+      "gpu_power_mean_w": 144.20138888888889,
+      "gpu_power_peak_w": 229.82,
+      "gpu_energy_approx_wh": 0.9184969580835767,
+      "api_memory_peak_mib": 2040.38671875,
+      "parser_temporary_peak_mib": 28.76595973968506,
+      "host_temporary_peak_mib": 25.423017501831055,
+      "max_active_observed": 3,
+      "pool_exit": 0,
+      "host_files_remaining": 0,
+      "parser_files_remaining": 0,
+      "configuration": "324",
+      "parsers": 2,
+      "parser_cpu_quota": 4,
+      "parser_sampled_memory_peak_mib": 909.47265625,
+      "parser_container_memory_peak_including_warmup_mib": 993.67578125,
+      "parser_processes_observed": 2,
+      "parser_request_overlap_seconds": 3.0189995765686035,
+      "parser_worker_response_sum_seconds": 9.895,
+      "vm_min_available_mib": 2266.75,
+      "vm_swap_in_pages": 72,
+      "vm_swap_out_pages": 52,
+      "parser_throttled_usec": 0,
+      "parser_cpu_usage_usec": 13903405,
+      "parser_oom_kills": 0,
+      "reduction_vs_112_percent": 38.80377698695909
+    }
+  },
+  "candidate": {
+    "label": "measured-gpu2-324",
+    "slots": 3,
+    "valid": true,
+    "documents": 14,
+    "chunks": 885,
+    "chunk_counts": [
+      1,
+      2,
+      3,
+      5,
+      5,
+      10,
+      14,
+      19,
+      41,
+      63,
+      66,
+      71,
+      290,
+      295
+    ],
+    "launch_to_completion_seconds": 28.802341600006912,
+    "startup_seconds": 1.6638312339782715,
+    "pipeline_seconds": 26.9879949092865,
+    "documents_per_minute": 31.124950290803493,
+    "first_document_seconds": 3.9851629734039307,
+    "document_latency_mean_seconds": 4.93941115,
+    "document_latency_median_seconds": 3.4713925999999997,
+    "document_latency_p95_seconds": 14.394142984999998,
+    "batch_completion_mean_seconds": 12.211558886936732,
+    "parse_to_last_embedding_seconds": 27.0127036269987,
+    "cross_document_parse_embedding_overlap_seconds": 5.935263249,
+    "stage_sum_seconds": {
+      "parser_queue": 0.367613358,
+      "parser_serialize": 2.185344455,
+      "parser_transport": 21.376062949,
+      "parse_http": 23.963923593,
+      "normalize_artifacts": 0.552052549,
+      "chunk": 1.17488354,
+      "embedding": 23.763926391,
+      "index_staging": 1.838987769,
+      "activation": 0.65250693,
+      "container_cleanup": 0.573505037,
+      "parse_native_pptx": 0.152338741
+    },
+    "gpu_samples": 127,
+    "gpu_average_percent": 49.85826771653543,
+    "gpu_peak_percent": 100.0,
+    "gpu_below_10_percent_fraction": 0.4015748031496063,
+    "gpu_below_10_percent_approx_seconds": 10.837698743099303,
+    "vram_peak_mib": 6291.0,
+    "gpu_power_mean_w": 123.8603937007874,
+    "gpu_power_peak_w": 229.41,
+    "gpu_energy_approx_wh": 0.92853990962752,
+    "api_memory_peak_mib": 1844.37890625,
+    "parser_temporary_peak_mib": 23.003860473632812,
+    "host_temporary_peak_mib": 26.11299228668213,
+    "max_active_observed": 3,
+    "pool_exit": 0,
+    "host_files_remaining": 0,
+    "parser_files_remaining": 0
+  },
+  "reduction_percent": -17.69549500877965,
+  "internal": {
+    "requests": 52,
+    "successful_requests": 52,
+    "peak_active_requests": 2,
+    "streams_used": 2,
+    "host_request_overlap_seconds": 11.15009880065918,
+    "request_queue_sum_seconds": 0.6671569999307394,
+    "tokenizer_lock_wait_sum_seconds": 0.03387389983981848,
+    "tokenization_sum_seconds": 0.2608756997506134,
+    "gpu_stream_elapsed_sum_seconds": 21.977507046222687,
+    "h2d_wall_sum_seconds": 0.02604149980470538,
+    "model_enqueue_wall_sum_seconds": 11.366169999877457,
+    "d2h_and_gpu_wait_wall_sum_seconds": 12.550211900030263,
+    "output_conversion_sum_seconds": 0.028090900334063917,
+    "request_execution_sum_seconds": 24.847838878631592,
+    "oom_events": 0,
+    "batches": 137
+  },
+  "limitations": [
+    "One new GPU2 measurement; historical GPU1 baseline reused at user request.",
+    "CUDA event stream intervals include contention/launch gaps, not exclusive kernel-active time.",
+    "GPU stream durations and CPU enqueue/copy wait overlap and cannot be added.",
+    "CPU request overlap is not proof of simultaneous GPU kernels.",
+    "Per-event instrumentation is present only in GPU2; non-contemporaneous baseline and allocator history differ."
+  ],
+  "vector_comparison": {
+    "matched_vectors": 885,
+    "cosine_min": 0.9999999999991054,
+    "cosine_mean": 0.9999999999998789,
+    "max_component_delta": 1.9185245037078857e-07,
+    "reference": "Existing live GTE vectors; matched by document and content SHA256, no GPU1 inference rerun."
+  },
+  "resources": {
+    "parser_worker_response_sum_seconds": 20.284,
+    "parser_cpu_usage_seconds": 24.717701,
+    "parser_throttled_seconds": 0.0,
+    "vm_available_min_mib": 2431.70703125,
+    "swap_in_pages": 39,
+    "swap_out_pages": 58,
+    "api_memory_peak_mib": 1844.37890625
+  },
+  "cleanup": {
+    "sources": {
+      "checked": 14,
+      "unchanged": 14
+    },
+    "temporary_work_files_remaining": 0,
+    "isolated_containers_remaining": 0,
+    "isolated_database_remaining": false,
+    "container_oom": false
+  },
+  "restoration": {
+    "gpu_health_http": 200,
+    "candidate_listener_present": false,
+    "tasks": [
+      {
+        "TaskName": "DocMind GTE GPU Embedding",
+        "State": "Running"
+      },
+      {
+        "TaskName": "DocMind Host Worker (ingest)",
+        "State": "Running"
+      },
+      {
+        "TaskName": "DocMind Source Watcher (dept-2-e2e)",
+        "State": "Running"
+      }
+    ],
+    "api_health_http": 200
+  },
+  "validation": {
+    "focused_tests_passed": 12,
+    "review_critical": 0,
+    "review_important": 0,
+    "review_minors_deferred": [
+      "Event-write failure can retain acquired request permit",
+      "Add test for synchronization failure followed by poisoned-engine rejection"
+    ]
+  },
+  "manifest_sha256": "d9e75e20b8c19560deadc125fd42299dd5b6bfc8997b89aadf6549f16388846f",
+  "decision": "Retain GPU inference1: GPU2 did not demonstrate end-to-end benefit; slower parsing confounds attribution to GPU concurrency.",
+  "source_sha256": {
+    "compare_concurrency.py": "4b58fe49b550064d5a53c4ff35c7f07daca796442a2a0f239b7688f04702d599",
+    "service.py": "7b5c0ffd250120754b90085fea512eef77ba21a892293402f39b8b722d005a89"
+  }
+}

@@ -110,7 +110,7 @@ class TestDocumentsUpdated:
             ("presentation", ""),
             ("picture", ""),
             ("one", ""),
-            ("knowledge_graph", ""),
+
             ("email", ""),
             ("tag", ""),
             ("", "`chunk_method` (empty string) is not valid"),
@@ -296,27 +296,8 @@ DEFAULT_PARSER_CONFIG_FOR_TEST = {
     "auto_questions": 0,
     "html4excel": False,
     "topn_tags": 3,
-    "raptor": {
-        "use_raptor": True,
-        "prompt": "Summarize the paragraphs below without inventing facts or changing numbers.\nOutput exactly two parts in the same language as the source:\n1. First line: a concise title only.\n2. Following lines: a concise summary of the content.\nDo not output labels, Markdown headings, bullet points, or any other commentary.\n\nParagraphs:\n{cluster_content}",
-        "max_token": 512,
-        "clustering_threshold": 0.3,
-        "clustering_ratio": 0.5,
-        "max_cluster": 64,
-        "random_seed": 0,
-    },
-    "graphrag": {
-        "use_graphrag": True,
-        "entity_types": [
-            "organization",
-            "person",
-            "geo",
-            "event",
-            "category",
-        ],
-        "method": "light",
-        "batch_chunk_token_size": 4096,
-    },
+
+
 }
 
 
@@ -398,22 +379,8 @@ class TestUpdateDocumentParserConfig:
                 {"task_page_size": "1024"},
                 "Input should be a valid integer",
             ),
-            (
-                "naive",
-                {
-                    "raptor": {
-                        "use_raptor": True,
-                        "prompt": "Summarize the paragraphs below without inventing facts or changing numbers.\nOutput exactly two parts in the same language as the source:\n1. First line: a concise title only.\n2. Following lines: a concise summary of the content.\nDo not output labels, Markdown headings, bullet points, or any other commentary.\n\nParagraphs:\n{cluster_content}",
-                        "max_token": 512,
-                        "clustering_threshold": 0.3,
-                        "clustering_ratio": 0.5,
-                        "max_cluster": 64,
-                        "random_seed": 0,
-                    }
-                },
-                "",
-            ),
-            ("naive", {"raptor": {"use_raptor": False}}, ""),
+
+
             (
                 "naive",
                 {"invalid_key": "invalid_value"},

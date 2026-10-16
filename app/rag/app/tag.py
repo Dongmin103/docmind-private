@@ -122,7 +122,7 @@ def chunk(filename, binary=None, lang="Chinese", callback=None, **kwargs):
 
 def label_question(question, kbs):
     from api.db.services.knowledgebase_service import KnowledgebaseService
-    from rag.graphrag.utils import get_tags_from_cache, set_tags_to_cache
+    from rag.utils.llm_cache import get_tags_from_cache, set_tags_to_cache
 
     tags = None
     tag_kb_ids = []

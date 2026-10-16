@@ -99,8 +99,11 @@ C:\Users\uplex\bin\docker.cmd compose `
   --profile full up -d --build
 ```
 
-The first full start downloads the pinned BGE-M3 model into the dedicated
-`docmind-windows-dev_bge_model_cache` volume. No host model directory is used.
+The `full` profile does not start BGE-M3. The current Windows deployment uses
+the host GTE service and its configured model binding; see the
+[GTE deployment and BGE recovery runbook](LOCAL-GTE-DEPLOYMENT-2026-10-12.md).
+BGE remains available through the explicit `bge-cpu` profile and retains the
+dedicated `docmind-windows-dev_bge_model_cache` volume.
 The UI is then available only from the same Windows machine at
 `http://127.0.0.1:18080`.
 
@@ -127,10 +130,11 @@ for the exact four-file command and rollback. The readiness script's
 and `/health.gpu_execution_verified` after a real synthetic OCR request
 separately. A missing per-layer count is reported as unknown.
 
-The tracked defaults cap the six full-profile services at about 12.25 GiB in
-total so the stack can fit on the confirmed 16 GiB development host. Actual
-model and indexing load must still be observed; adjust the ignored env file if
-the host needs a smaller profile or a larger BGE/RAGFlow allowance.
+The tracked defaults cap the five persistent full-profile services at about
+8.25 GiB in total. This excludes parser/preview overlays, the Windows GTE
+service, and other host processes; it does not guarantee that the full workload
+fits in RAM. Observe actual model and indexing load when sizing the ignored
+local environment.
 
 On this host WSL2 originally exposed only about 7.3 GiB. The local user
 configuration `C:\Users\uplex\.wslconfig` now sets `memory=12GB` and `swap=4GB`;

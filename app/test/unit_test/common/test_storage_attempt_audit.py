@@ -1,4 +1,7 @@
 import json
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -78,3 +81,32 @@ def test_job_stage_timer_records_cleanup_without_parse_run(tmp_path):
     assert report["stages"][0]["job_id"] == "e" * 32
     assert report["stages"][0]["name"] == "container_cleanup"
     assert report["stages"][0]["duration_ns"] >= 0
+
+
+def test_parallel_documents_record_comparable_stage_intervals(tmp_path):
+    audited = StorageAttemptAudit(Storage(), tmp_path)
+    entered = threading.Barrier(2)
+    leaving = threading.Barrier(2)
+
+    def document(job_id, stage):
+        with audited.attempt(job_id, 1):
+            with audited.stage(stage, job_id):
+                entered.wait(timeout=5)
+                leaving.wait(timeout=5)
+
+    with ThreadPoolExecutor(2) as executor:
+        futures = [executor.submit(document, 'a' * 32, 'embedding'),
+                   executor.submit(document, 'b' * 32, 'parse_http')]
+        for future in futures:
+            future.result(timeout=10)
+    reports = [json.loads(path.read_text()) for path in tmp_path.glob('*.json')]
+    assert len(reports) == 2
+    for report in reports:
+        assert report['process_id'] == os.getpid()
+        assert report['clock'] == 'perf_counter_ns'
+        stage = report['stages'][0]
+        assert report['started_ns'] <= stage['started_ns'] <= stage['finished_ns'] <= report['finished_ns']
+        assert stage['duration_ns'] == stage['finished_ns'] - stage['started_ns']
+        assert report['duration_ns'] == report['finished_ns'] - report['started_ns']
+    stages = [report['stages'][0] for report in reports]
+    assert max(stage['started_ns'] for stage in stages) < min(stage['finished_ns'] for stage in stages)

@@ -14,23 +14,19 @@
 #  limitations under the License.
 #
 
-import logging
 import re
 import csv
 from copy import deepcopy
 from io import BytesIO
-from timeit import default_timer as timer
 from openpyxl import load_workbook
 
 from common.constants import MAXIMUM_PAGE_NUMBER
 from deepdoc.parser.utils import get_text
-from rag.nlp import is_english, random_choices, qbullets_category, add_positions, has_qbullet, docx_question_level
+from rag.nlp import is_english, random_choices, add_positions, docx_question_level
 from rag.nlp import rag_tokenizer, tokenize_table, concat_img
-from deepdoc.parser import PdfParser, ExcelParser, DocxParser
+from deepdoc.parser import ExcelParser, DocxParser
 from docx import Document
 from markdown import markdown
-
-from common.float_utils import get_float
 
 
 class Excel(ExcelParser):
@@ -69,108 +65,6 @@ class Excel(ExcelParser):
         callback(0.6, ("Extract pairs: {}. ".format(len(res)) + (f"{len(fails)} failure, line: %s..." % (",".join(fails[:3])) if fails else "")))
         self.is_english = is_english([rmPrefix(q) for q, _ in random_choices(res, k=30) if len(q) > 1])
         return res
-
-
-class Pdf(PdfParser):
-    def __call__(self, filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, zoomin=3, callback=None):
-        start = timer()
-        callback(msg="OCR started")
-        self.__images__(filename if not binary else binary, zoomin, from_page, to_page, callback)
-        callback(msg="OCR finished ({:.2f}s)".format(timer() - start))
-        logging.debug("OCR({}~{}): {:.2f}s".format(from_page, to_page, timer() - start))
-        start = timer()
-        self._layouts_rec(zoomin, drop=False)
-        callback(0.63, "Layout analysis ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._table_transformer_job(zoomin)
-        callback(0.65, "Table analysis ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._text_merge()
-        callback(0.67, "Text merged ({:.2f}s)".format(timer() - start))
-        tbls = self._extract_table_figure(True, zoomin, True, True)
-        # self._naive_vertical_merge()
-        # self._concat_downward()
-        # self._filter_forpages()
-        logging.debug("layouts: {}".format(timer() - start))
-        sections = [b["text"] for b in self.boxes]
-        bull_x0_list = []
-        q_bull, reg = qbullets_category(sections)
-        if q_bull == -1:
-            raise ValueError("Unable to recognize Q&A structure.")
-        qai_list = []
-        last_q, last_a, last_tag = "", "", ""
-        last_index = -1
-        last_box = {"text": ""}
-        last_bull = None
-
-        def sort_key(element):
-            tbls_pn = element[1][0][0]
-            tbls_top = element[1][0][3]
-            return tbls_pn, tbls_top
-
-        tbls.sort(key=sort_key)
-        tbl_index = 0
-        last_pn, last_bottom = 0, 0
-        tbl_pn, tbl_left, tbl_right, tbl_top, tbl_bottom, tbl_tag, tbl_text = 1, 0, 0, 0, 0, "@@0\t0\t0\t0\t0##", ""
-        for box in self.boxes:
-            section, line_tag = box["text"], self._line_tag(box, zoomin)
-            has_bull, index = has_qbullet(reg, box, last_box, last_index, last_bull, bull_x0_list)
-            last_box, last_index, last_bull = box, index, has_bull
-            line_pn = get_float(line_tag.lstrip("@@").split("\t")[0])
-            line_top = get_float(line_tag.rstrip("##").split("\t")[3])
-            tbl_pn, tbl_left, tbl_right, tbl_top, tbl_bottom, tbl_tag, tbl_text = self.get_tbls_info(tbls, tbl_index)
-            if not has_bull:  # No question bullet
-                if not last_q:
-                    if tbl_pn < line_pn or (tbl_pn == line_pn and tbl_top <= line_top):  # image passed
-                        tbl_index += 1
-                    continue
-                else:
-                    sum_tag = line_tag
-                    sum_section = section
-                    while ((tbl_pn == last_pn and tbl_top >= last_bottom) or (tbl_pn > last_pn)) and (
-                        (tbl_pn == line_pn and tbl_top <= line_top) or (tbl_pn < line_pn)
-                    ):  # add image at the middle of current answer
-                        sum_tag = f"{tbl_tag}{sum_tag}"
-                        sum_section = f"{tbl_text}{sum_section}"
-                        tbl_index += 1
-                        tbl_pn, tbl_left, tbl_right, tbl_top, tbl_bottom, tbl_tag, tbl_text = self.get_tbls_info(tbls, tbl_index)
-                    last_a = f"{last_a}{sum_section}"
-                    last_tag = f"{last_tag}{sum_tag}"
-            else:
-                if last_q:
-                    while ((tbl_pn == last_pn and tbl_top >= last_bottom) or (tbl_pn > last_pn)) and (
-                        (tbl_pn == line_pn and tbl_top <= line_top) or (tbl_pn < line_pn)
-                    ):  # add image at the end of last answer
-                        last_tag = f"{last_tag}{tbl_tag}"
-                        last_a = f"{last_a}{tbl_text}"
-                        tbl_index += 1
-                        tbl_pn, tbl_left, tbl_right, tbl_top, tbl_bottom, tbl_tag, tbl_text = self.get_tbls_info(tbls, tbl_index)
-                    image, poss = self.crop(last_tag, need_position=True)
-                    qai_list.append((last_q, last_a, image, poss))
-                    last_q, last_a, last_tag = "", "", ""
-                last_q = has_bull.group()
-                _, end = has_bull.span()
-                last_a = section[end:]
-                last_tag = line_tag
-            last_bottom = float(line_tag.rstrip("##").split("\t")[4])
-            last_pn = line_pn
-        if last_q:
-            qai_list.append((last_q, last_a, *self.crop(last_tag, need_position=True)))
-        return qai_list, tbls
-
-    def get_tbls_info(self, tbls, tbl_index):
-        if tbl_index >= len(tbls):
-            return 1, 0, 0, 0, 0, "@@0\t0\t0\t0\t0##", ""
-        tbl_pn = tbls[tbl_index][1][0][0] + 1
-        tbl_left = tbls[tbl_index][1][0][1]
-        tbl_right = tbls[tbl_index][1][0][2]
-        tbl_top = tbls[tbl_index][1][0][3]
-        tbl_bottom = tbls[tbl_index][1][0][4]
-        tbl_tag = "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(tbl_pn, tbl_left, tbl_right, tbl_top, tbl_bottom)
-        _tbl_text = "".join(tbls[tbl_index][0][1])
-        return tbl_pn, tbl_left, tbl_right, tbl_top, tbl_bottom, tbl_tag, _tbl_text
 
 
 class Docx(DocxParser):
@@ -383,11 +277,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
 
     elif re.search(r"\.pdf$", filename, re.IGNORECASE):
         callback(0.1, "Start to parse.")
-        pdf_parser = Pdf()
-        qai_list, tbls = pdf_parser(filename if not binary else binary, from_page=from_page, to_page=to_page, callback=callback)
-        for q, a, image, poss in qai_list:
-            res.append(beAdocPdf(deepcopy(doc), q, a, eng, image, poss))
-        return res
+        raise ValueError("PDF QA extraction requires a prepared parser-platform run")
 
     elif re.search(r"\.(md|markdown|mdx)$", filename, re.IGNORECASE):
         callback(0.1, "Start to parse.")

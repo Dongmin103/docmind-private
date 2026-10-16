@@ -14,15 +14,14 @@
 #  limitations under the License.
 #
 import logging
-import os
 
-from api.db.joint_services.tenant_model_service import ensure_mineru_from_env, ensure_opendataloader_from_env, ensure_paddleocr_from_env, resolve_model_id
+from api.db.joint_services.tenant_model_service import resolve_model_id
 from api.db.services.tenant_model_instance_service import TenantModelInstanceService
 from api.db.services.tenant_model_provider_service import TenantModelProviderService
 from api.db.services.tenant_model_service import TenantModelService
 from api.db.services.user_service import TenantService
 from api.utils.model_utils import get_model_type_human, calculate_model_type
-from common.constants import ActiveStatusEnum, LLMType
+from common.constants import ActiveStatusEnum
 from common.settings import FACTORY_LLM_INFOS
 
 # Mapping from model_type string to Tenant model field name
@@ -30,30 +29,21 @@ MODEL_TYPE_TO_FIELD = {
     "chat": "llm_id",
     "embedding": "embd_id",
     "rerank": "rerank_id",
-    "asr": "asr_id",
     "vision": "img2txt_id",
-    "tts": "tts_id",
-    "ocr": "ocr_id",
 }
 
 MODEL_TYPE_TO_TENANT_ID_FIELD = {
     "chat": "tenant_llm_id",
     "embedding": "tenant_embd_id",
     "rerank": "tenant_rerank_id",
-    "asr": "tenant_asr_id",
     "vision": "tenant_img2txt_id",
-    "tts": "tenant_tts_id",
-    "ocr": "tenant_ocr_id",
 }
 
 MODEL_TAG_TO_TYPE = {
     "chat": "chat",
     "embedding": "embedding",
     "rerank": "rerank",
-    "asr": "asr",
     "vision": "vision",
-    "tts": "tts",
-    "ocr": "ocr",
 }
 
 
@@ -108,19 +98,6 @@ def _get_model_info(tenant_id: str, default_model: str, model_type: str, model_i
             "enable": True,
         }
 
-    # Special case: TEI Builtin embedding model
-    compose_profiles = os.getenv("COMPOSE_PROFILES", "")
-    tei_model = os.getenv("TEI_MODEL", "")
-    if model_type == "embedding" and "tei-" in compose_profiles and tei_model and model_name == tei_model and (not provider_name or provider_name == "Builtin"):
-        return {
-            "model_id": model_id,
-            "model_provider": "Builtin",
-            "model_instance": "default",
-            "model_name": model_name,
-            "model_type": model_type,
-            "enable": True,
-        }
-
     # Check if the provider exists for the tenant
     provider_obj = TenantModelProviderService.get_by_tenant_id_and_provider_name(tenant_id, provider_name)
     if not provider_obj:
@@ -156,16 +133,11 @@ def _check_model_available(tenant_id: str, provider_name: str, instance_name: st
 
     Returns (success, error_message).
     """
-    if provider_name == "infiniflow" and instance_name == "default" and model_name == "deepdoc":
-        return True, None
-
-    if model_type == "ocr" and provider_name == "infiniflow" and instance_name == "default" and model_name == "deepdoc":
-        return True, None
-
-    compose_profiles = os.getenv("COMPOSE_PROFILES", "")
-    is_tei_builtin_embedding = model_type == LLMType.EMBEDDING.value and "tei-" in compose_profiles and model_name == os.getenv("TEI_MODEL", "") and (provider_name == "Builtin" or not provider_name)
-    if is_tei_builtin_embedding:
-        return True, None
+    from rag.llm import validate_model_selection
+    try:
+        validate_model_selection(provider_name, MODEL_TAG_TO_TYPE.get(model_type, model_type))
+    except ValueError as error:
+        return False, str(error)
 
     # Check provider
     provider_obj = TenantModelProviderService.get_by_tenant_id_and_provider_name(tenant_id, provider_name)
@@ -302,9 +274,6 @@ def list_tenant_added_models(tenant_id: str, model_type_filter: str = None):
     if not e:
         return False, "Tenant not found"
 
-    ensure_mineru_from_env(tenant_id)
-    ensure_paddleocr_from_env(tenant_id)
-    ensure_opendataloader_from_env(tenant_id)
 
     model_type_filter_bin = calculate_model_type(model_type_filter.lower()) if model_type_filter else None
 
@@ -342,29 +311,5 @@ def list_tenant_added_models(tenant_id: str, model_type_filter: str = None):
                 }
                 for model_record in target_type_records
             ]
-
-    # Add TEI Builtin embedding model if configured
-    compose_profiles = os.getenv("COMPOSE_PROFILES", "")
-    tei_model = os.getenv("TEI_MODEL", "")
-    if "tei-" in compose_profiles and tei_model:
-        if not model_type_filter or model_type_filter == "embedding":
-            tei_already_added = any(m["provider_name"] == "Builtin" and m["name"] == tei_model for m in added_models)
-            if not tei_already_added:
-                added_models.append(
-                    {
-                        "model_id": "",
-                        "tenant_id": tenant.id,
-                        "tenant_name": tenant.name,
-                        "model_type": ["embedding"],
-                        "name": tei_model,
-                        "provider_id": "",
-                        "provider_name": "Builtin",
-                        "instance_id": "",
-                        "instance_name": "default",
-                        "rank": model_rank_map.get(("Builtin", tei_model), 500),
-                    }
-                )
-
-    added_models.sort(key=lambda x: (factory_rank_mapping.get(x["provider_name"], -500), x["provider_name"], x["instance_name"], -x["rank"], x["name"]))
 
     return True, added_models

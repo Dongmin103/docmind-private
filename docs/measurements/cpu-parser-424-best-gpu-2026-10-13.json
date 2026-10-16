@@ -1,0 +1,191 @@
+{
+  "status": "complete",
+  "configuration": {
+    "documents": 4,
+    "parser_processes": 2,
+    "parser_cpu_quota": 4,
+    "gpu_inference_slots": 1,
+    "cuda_streams": 1,
+    "model_copies": 1,
+    "request_batch": 32,
+    "adaptive_gpu_batches": [
+      16,
+      2,
+      1
+    ],
+    "short_min_token_fill_percent": 85,
+    "worker_auth_db_offload": true,
+    "pipeline_probe": true,
+    "parser_client_concurrency": 2
+  },
+  "manifest_sha256": "d9e75e20b8c19560deadc125fd42299dd5b6bfc8997b89aadf6549f16388846f",
+  "candidate": {
+    "label": "measured-1-424",
+    "slots": 4,
+    "valid": true,
+    "documents": 14,
+    "chunks": 885,
+    "chunk_counts": [
+      1,
+      2,
+      3,
+      5,
+      5,
+      10,
+      14,
+      19,
+      41,
+      63,
+      66,
+      71,
+      290,
+      295
+    ],
+    "launch_to_completion_seconds": 22.22730629995931,
+    "startup_seconds": 1.657496452331543,
+    "pipeline_seconds": 20.17198896408081,
+    "documents_per_minute": 41.64190261534167,
+    "first_document_seconds": 3.5652201175689697,
+    "document_latency_mean_seconds": 4.227130178571429,
+    "document_latency_median_seconds": 3.65620475,
+    "document_latency_p95_seconds": 10.02732002,
+    "batch_completion_mean_seconds": 8.503507035119194,
+    "parse_to_last_embedding_seconds": 20.208851643000344,
+    "cross_document_parse_embedding_overlap_seconds": 9.097701834,
+    "stage_sum_seconds": {
+      "parser_queue": 0.233355307,
+      "parser_serialize": 1.4533321849999998,
+      "parser_transport": 17.045923816,
+      "parse_http": 18.767564719,
+      "normalize_artifacts": 0.466786473,
+      "chunk": 0.469860405,
+      "embedding": 15.757695008,
+      "index_staging": 1.961791163,
+      "activation": 0.817843015,
+      "container_cleanup": 0.37255963599999997,
+      "parse_native_pptx": 0.273062483
+    },
+    "gpu_samples": 96,
+    "gpu_average_percent": 51.8125,
+    "gpu_peak_percent": 100.0,
+    "gpu_below_10_percent_fraction": 0.3541666666666667,
+    "gpu_below_10_percent_approx_seconds": 7.144246091445287,
+    "vram_peak_mib": 4543.0,
+    "gpu_power_mean_w": 131.19958333333332,
+    "gpu_power_peak_w": 224.33,
+    "gpu_energy_approx_wh": 0.7351545964144446,
+    "api_memory_peak_mib": 2149.43359375,
+    "parser_temporary_peak_mib": 27.447778701782227,
+    "host_temporary_peak_mib": 30.05649471282959,
+    "max_active_observed": 4,
+    "pool_exit": 0,
+    "host_files_remaining": 0,
+    "parser_files_remaining": 0,
+    "vector_comparison": {
+      "matched_vectors": 885,
+      "cosine_min": 0.9999999999969806,
+      "cosine_mean": 0.9999999999997348,
+      "max_component_delta": 3.047054633496457e-07,
+      "reference": "Existing live GTE vectors; matched by document and content SHA256, no GPU1 inference rerun."
+    },
+    "clock_alignment": {
+      "api_minus_host_seconds_interval": [
+        1.3031764030456543,
+        1.307891607284546
+      ]
+    },
+    "number": 1,
+    "request_count": 52,
+    "gpu_stream_elapsed_seconds": 10.544970881462097,
+    "gpu_oom_events": 0,
+    "batches": 272,
+    "tokens_padded": 146082,
+    "before_first_document_seconds": 1.657496452331543,
+    "after_last_document_observation_seconds": 0.39782118797302246,
+    "control": {
+      "requests": 37,
+      "failures": 0,
+      "max_seconds": 0.8520080999587663
+    },
+    "resources": {
+      "parser_cpu_seconds": 19.268895,
+      "parser_throttled_seconds": 0.008282,
+      "vm_available_min_mib": 2422.90234375,
+      "api_peak_mib": 2149.43359375,
+      "swap_used_peak_mib": 3685.45703125,
+      "swap_in_pages_delta": 95,
+      "swap_out_pages_delta": 24080,
+      "parser_peak_mib": 1102.87890625
+    }
+  },
+  "comparison": {
+    "best_324_seconds": 20.599398851394653,
+    "mean_324_seconds": 21.336756944656372,
+    "reduction_vs_best_percent": 2.0748658268971987,
+    "reduction_vs_mean_percent": 5.458973843104442,
+    "source": "gpu-verify-two-runs-2026-10-13.json",
+    "previous_434_seconds": 21.694115161895752,
+    "reduction_vs_434_percent": 7.016309199318959
+  },
+  "runtime_verification": {
+    "parser_health": {
+      "ready": true,
+      "version": "4.15.7",
+      "busy": false,
+      "active_jobs": 0,
+      "capacity": 2,
+      "ocr_models_ready": true
+    },
+    "document_slots_observed": 4,
+    "parser_cpu_quota": 4.0,
+    "parser_worker_processes_observed": 2,
+    "peak_overlapping_parser_jobs": 2,
+    "successful_parser_jobs": 12,
+    "gpu_config_identical_to_best": true,
+    "gpu_runtime_identical_to_best": true
+  },
+  "limitations": [
+    "One measured run after one corpus warmup; historical best and three-run average reused.",
+    "Same best GPU configuration, auth DB offload and probe; only document capacity expanded in isolated copies; parser and client capacity remain 2.",
+    "GPU utilization is device-wide and CUDA timing is stream elapsed time.",
+    "Swap pressure and cache state may affect comparison; no concurrent baseline rerun.",
+    "Cross-environment wall clocks are not the primary pipeline duration."
+  ],
+  "preparation": {
+    "successful_corpus_warmup_runs": 1,
+    "measured_runs": 1,
+    "warmup_controller_seconds": 53.55377719999524,
+    "production_source_modified": false,
+    "production_settings_changed": false,
+    "wsl_restarted_this_trial": false
+  },
+  "cleanup": {
+    "sources": {
+      "checked": 14,
+      "unchanged": 14
+    },
+    "temporary_work_files_remaining": 0,
+    "isolated_containers_remaining": 0,
+    "isolated_database_remaining": false,
+    "container_oom": false
+  },
+  "restoration": {
+    "gpu_health_http": 200,
+    "api_health_http": 200,
+    "tasks": [
+      {
+        "TaskName": "DocMind GTE GPU Embedding",
+        "State": "Running"
+      },
+      {
+        "TaskName": "DocMind Host Worker (ingest)",
+        "State": "Running"
+      },
+      {
+        "TaskName": "DocMind Source Watcher (dept-2-e2e)",
+        "State": "Running"
+      }
+    ],
+    "candidate_listener_present": false
+  }
+}

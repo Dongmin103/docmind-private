@@ -17,7 +17,7 @@
 import message from '@/components/ui/message';
 import { ResponseGetType } from '@/interfaces/database/base';
 import { IToken } from '@/interfaces/database/chat';
-import { ITenantInfo } from '@/interfaces/database/dataset';
+import { ITenantInfo } from '@/interfaces/database/user-setting';
 import { ILangfuseConfig } from '@/interfaces/database/system';
 import {
   ITenant,
@@ -26,7 +26,6 @@ import {
 } from '@/interfaces/database/user-setting';
 import { ISetLangfuseConfigRequestBody } from '@/interfaces/request/system';
 import { DEFAULT_LANGUAGE_CODE, supportedLanguages } from '@/locales/config';
-import kbService from '@/services/knowledge-service';
 import userService, {
   addTenantUser,
   agreeTenant,
@@ -34,11 +33,9 @@ import userService, {
   listTenant,
   listTenantUser,
 } from '@/services/user-service';
-import { useIsGoBackend } from '@/utils/backend-variant';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useFetchDefaultModelDictionary } from './use-llm-request';
 
 export const enum UserSettingApiAction {
   UserInfo = 'userInfo',
@@ -55,7 +52,6 @@ export const enum UserSettingApiAction {
   AgreeTenant = 'agreeTenant',
   SetLangfuseConfig = 'setLangfuseConfig',
   DeleteLangfuseConfig = 'deleteLangfuseConfig',
-  ListPipelines = 'listPipelines',
   FetchLangfuseConfig = 'fetchLangfuseConfig',
 }
 
@@ -102,132 +98,6 @@ export const useFetchTenantData = (): ResponseGetType<ITenantInfo> => {
 };
 
 export const useFetchTenantInfo = useFetchTenantData;
-
-export const useSelectParserList = (): Array<{
-  value: string;
-  label: string;
-}> => {
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const { t } = useTranslation();
-
-  // Detect backend runtime language (Go vs Python) so we can choose
-  // the matching parser-list code path at runtime.
-  const isGo = useIsGoBackend();
-
-  // Go backend: fetch pipeline catalog dynamically.
-  const { data: pipelineListData } = useQuery({
-    queryKey: [UserSettingApiAction.ListPipelines],
-    queryFn: async () => {
-      const { data } = await kbService.listPipelines();
-      return data;
-    },
-    staleTime: Infinity,
-    enabled: isGo,
-  });
-  useFetchDefaultModelDictionary(true);
-
-  const defaultParsers = useMemo(
-    () => [
-      { value: 'naive', label: t('knowledgeConfiguration.parserLabel.naive') },
-      { value: 'qa', label: t('knowledgeConfiguration.parserLabel.qa') },
-      {
-        value: 'resume',
-        label: t('knowledgeConfiguration.parserLabel.resume'),
-      },
-      {
-        value: 'manual',
-        label: t('knowledgeConfiguration.parserLabel.manual'),
-      },
-      { value: 'table', label: t('knowledgeConfiguration.parserLabel.table') },
-      { value: 'paper', label: t('knowledgeConfiguration.parserLabel.paper') },
-      { value: 'book', label: t('knowledgeConfiguration.parserLabel.book') },
-      { value: 'laws', label: t('knowledgeConfiguration.parserLabel.laws') },
-      {
-        value: 'presentation',
-        label: t('knowledgeConfiguration.parserLabel.presentation'),
-      },
-      {
-        value: 'picture',
-        label: t('knowledgeConfiguration.parserLabel.picture'),
-      },
-      { value: 'one', label: t('knowledgeConfiguration.parserLabel.one') },
-      { value: 'audio', label: t('knowledgeConfiguration.parserLabel.audio') },
-      { value: 'email', label: t('knowledgeConfiguration.parserLabel.email') },
-      { value: 'tag', label: t('knowledgeConfiguration.parserLabel.tag') },
-    ],
-    [t],
-  );
-
-  const parserList = useMemo(() => {
-    // Go backend: prefer the dynamic pipeline catalog from the API.
-    // GET /api/v1/pipelines?type=builtin responds with
-    // { code, data: { canvas: [{ id, title, description, filename }], total } }.
-    if (isGo) {
-      const pipelineList: Array<{
-        id: string;
-        title: string;
-        description?: string;
-        filename?: string;
-      }> = pipelineListData?.data?.canvas ?? [];
-      if (pipelineList.length > 0) {
-        const labelFromAPI = (parserId: string, title: string) => {
-          const key = `knowledgeConfiguration.parserLabel.${parserId}`;
-          const translated = t(key);
-          return translated !== key ? translated : title;
-        };
-        // Order the Go pipeline catalog the same way as the Python
-        // backend's parser_ids (settings.PARSERS), so the chunk-method
-        // dropdown lists commonly used methods first. The Python "naive"
-        // slot corresponds to the Go "general" pipeline. Go-only pipelines
-        // Any backend-only pipelines keep their API order at the end.
-        const pythonParserOrder = [
-          'general', // "naive" in Python parser_ids
-          'qa',
-          'resume',
-          'manual',
-          'table',
-          'paper',
-          'book',
-          'laws',
-          'presentation',
-          'picture',
-          'one',
-          'audio',
-          'email',
-          'tag',
-        ];
-        const order = new Map(
-          pythonParserOrder.map((id, index) => [id, index]),
-        );
-        const sortedList = [...pipelineList].sort(
-          (a, b) =>
-            (order.get(a.id) ?? pythonParserOrder.length) -
-            (order.get(b.id) ?? pythonParserOrder.length),
-        );
-        return sortedList.map((item) => ({
-          value: item.id,
-          label: labelFromAPI(item.id, item.title),
-        }));
-      }
-    }
-
-    // Python backend (or fallback): use tenant-level parser_ids or
-    // the hardcoded default parsers.
-    const parserArray: Array<string> = tenantInfo?.parser_ids?.split(',') ?? [];
-    const filteredArray = parserArray.filter((x) => x.trim() !== '');
-
-    if (filteredArray.length === 0) {
-      return defaultParsers;
-    }
-
-    return filteredArray.map((x) => {
-      const arr = x.split(':');
-      return { value: arr[0], label: arr[1] };
-    });
-  }, [tenantInfo, defaultParsers, isGo, pipelineListData, t]);
-
-  return parserList;
-};
 
 export const useSaveSetting = (silent = false) => {
   const queryClient = useQueryClient();

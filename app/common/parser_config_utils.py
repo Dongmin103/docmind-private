@@ -14,57 +14,35 @@
 #  limitations under the License.
 #
 
+import re
 from typing import Any
 
-
-# Parser-specific option keys. ``_has_mineru_options`` uses these to detect
-# whether the operator clearly intended the MinerU parser (issue #17114).
-MINERU_OPTION_KEYS: tuple[str, ...] = (
-    "mineru_parse_method",
-    "mineru_formula_enable",
-    "mineru_table_enable",
-    "mineru_lang",
-)
+_RETIRED_SELECTORS = frozenset({"mineru", "paddleocr", "opendataloader", "somark", "mistral ocr", "docling", "tcadp parser"})
 
 
-def has_mineru_options(parser_config: Any) -> bool:
-    """Return True if parser_config carries any MinerU-specific option.
-
-    Used by the PDF dispatch in :mod:`rag.app.naive` to recover from a
-    misconfigured ``layout_recognize`` value (a stale TenantModel id rather
-    than the ``"MinerU"`` keyword) — see issue #17114.
-    """
-    if not isinstance(parser_config, dict):
-        return False
-    return any(k in parser_config for k in MINERU_OPTION_KEYS)
-
-
-def normalize_layout_recognizer(layout_recognizer_raw: Any) -> tuple[Any, str | None]:
-    parser_model_name: str | None = None
-    layout_recognizer = layout_recognizer_raw
-
+def normalize_layout_recognizer(layout_recognizer_raw: Any) -> tuple[Any, None]:
     if isinstance(layout_recognizer_raw, str):
-        lowered = layout_recognizer_raw.lower()
-        if lowered.endswith("@mineru"):
-            parser_model_name = layout_recognizer_raw
-            layout_recognizer = "MinerU"
-        elif lowered.endswith("@paddleocr"):
-            parser_model_name = layout_recognizer_raw
-            layout_recognizer = "PaddleOCR"
-        elif lowered.endswith("@opendataloader"):
-            parser_model_name = layout_recognizer_raw
-            layout_recognizer = "OpenDataLoader"
-        elif lowered.endswith("@somark"):
-            # Keep the full 3-segment form ``<llm_name>@<instance_name>@<provider>``
-            # produced by the new Tenant LLM Provider UI (#14595); downstream
-            # ``get_model_config_from_provider_instance`` -> ``split_model_name``
-            # expects all three segments to locate the provider/instance row.
-            parser_model_name = layout_recognizer_raw
-            layout_recognizer = "SoMark"
-        elif lowered.endswith("@mistral ocr"):
-            # Separate OCR-only factory (never the multi-type "Mistral" factory),
-            # so this suffix cannot collide with pixtral vision models.
-            parser_model_name = layout_recognizer_raw
-            layout_recognizer = "Mistral OCR"
+        name = layout_recognizer_raw.strip().lower()
+        if name in _RETIRED_SELECTORS or name.rsplit("@", 1)[-1] in _RETIRED_SELECTORS:
+            raise ValueError(f"Unsupported parser selection: {layout_recognizer_raw}")
+    return layout_recognizer_raw, None
 
-    return layout_recognizer, parser_model_name
+
+def validate_parser_selection(parser_id, parser_config=None):
+    if str(parser_id).lower() == "audio":
+        raise ValueError("Unsupported parser selection: audio")
+    config = parser_config or {}
+    normalize_layout_recognizer(config.get("layout_recognize"))
+    if any(str(key).startswith(("mineru_", "paddleocr_", "opendataloader_", "somark_", "mistral_ocr_")) for key in config):
+        raise ValueError("Unsupported retired parser options")
+
+
+def validate_task_parser_identity(context):
+    validate_parser_selection(context.parser_id, context.parser_config)
+    run_id = context.parse_run_id
+    chunk_id = context.chunk_set_id
+    docmind_job = hasattr(context, "_docmind_parser_platform_config") or getattr(context, "_docmind_defer_activation", False)
+    if bool(run_id) != bool(chunk_id):
+        raise ValueError("Invalid DocMind parser run identity")
+    if docmind_job and any(not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{32}", value) for value in (run_id, chunk_id)):
+        raise ValueError("Invalid DocMind parser run identity")

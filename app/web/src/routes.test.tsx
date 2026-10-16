@@ -9,10 +9,12 @@ jest.mock('react-router', () => ({
 
 import authorizationUtil from './utils/authorization-util';
 import { routers } from './routes';
+import { matchRoutes } from 'react-router';
 
 const load = async (path: string, search = '') => {
   const route = routers.routes.find((item) => item.path === path);
-  if (typeof route?.loader !== 'function') throw new Error(`Missing loader for ${path}`);
+  if (typeof route?.loader !== 'function')
+    throw new Error(`Missing loader for ${path}`);
   return route.loader({
     request: { url: `http://localhost${path}${search}` } as Request,
     params: {},
@@ -35,4 +37,103 @@ it('stores an OAuth callback token before redirecting to DocMind', async () => {
   expect(setAuthorization).toHaveBeenCalledWith('sample-token');
   expect(result.headers.get('Location')).toBe('/docmind?view=library');
   setAuthorization.mockRestore();
+});
+
+it.each([
+  '/admin',
+  '/admin/users',
+  '/admin/users/example',
+  '/admin/services',
+  '/admin/sandbox-settings',
+  '/admin/roles',
+  '/admin/whitelist',
+  '/admin/monitoring',
+])('rejects the retired administration or messaging route %s', (path) => {
+  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
+});
+
+it.each(['/docmind'])('preserves the supported route %s', (path) => {
+  const matches = matchRoutes(routers.routes, path);
+  expect(matches?.at(-1)?.route.path).toBe(path);
+});
+
+it.each([
+  '/chats/share?shared_id=example',
+  '/chats/widget?mode=master',
+  '/chat/example',
+  '/chats',
+  '/searches',
+  '/search/example',
+  '/files?folderId=example',
+  '/search/share?shared_id=example',
+])('rejects the retired generic application route %s', (path) => {
+  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
+});
+
+it.each([
+  ['/document/example', '/document/:id'],
+  ['/chunk/parsed/chunks', '/chunk/parsed/chunks'],
+])('preserves retained inspection %s', (path, pattern) => {
+  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe(pattern);
+});
+
+it.each([
+  '/agent/share',
+  '/agent-list',
+  '/agents',
+  '/agent-templates',
+  '/agent/example',
+  '/agent/example/explore',
+  '/agent-log-page/example',
+  '/dataflow-result',
+  '/memories',
+  '/memory',
+  '/memory/memory-message/example',
+  '/memory/memory-setting/example',
+  '/memory//memory-message/example',
+  '/memory//memory-setting/example',
+  '/datasets',
+  '/dataset',
+  '/dataset/files/example',
+  '/dataset/retrieval/example',
+  '/dataset/logs/example',
+  '/dataset/configuration/example',
+  '/dataset/knowledge-graph/example',
+  '/dataset/compilation/example',
+  '/compilation-templates/edit-next',
+  '/compilation-templates/edit-next/example',
+  '/files/skills',
+  '/chunk',
+  '/chunk/chunk/example',
+  '/chunk/result/example',
+])('rejects retired feature %s', (path) => {
+  expect(matchRoutes(routers.routes, path)?.at(-1)?.route.path).toBe('/*');
+});
+
+it.each([
+  '/user-setting',
+  '/user-setting/model',
+  '/user-setting/profile',
+  '/user-setting/team',
+  '/user-setting/api',
+  '/user-setting/data-source',
+  '/user-setting/data-source/data-source-detail-page',
+  '/user-setting/chat-channel',
+  '/user-setting/mcp',
+  '/user-setting/unknown/deep',
+  '/profile-setting',
+  '/profile-setting/model',
+  '/profile-setting/unknown/deep',
+])('redirects hidden user settings %s to search', async (path) => {
+  const route = matchRoutes(routers.routes, path)?.at(-1)?.route;
+  expect(typeof route?.loader).toBe('function');
+  if (typeof route?.loader !== 'function')
+    throw new Error('Missing settings redirect');
+  const result = (await route.loader({
+    request: { url: `http://localhost${path}` } as Request,
+    params: {},
+    context: {},
+  } as Parameters<typeof route.loader>[0])) as Response;
+  expect(result.status).toBe(302);
+  expect(result.headers.get('Location')).toBe('/docmind');
 });

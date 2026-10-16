@@ -24,6 +24,7 @@ a flat "No models found for provider 'X'", which reads as a credential or
 catalogue problem and sends people hunting for a bad API key.
 """
 
+import ast
 import importlib.util
 import logging
 import sys
@@ -34,7 +35,7 @@ import pytest
 
 pytestmark = pytest.mark.p2
 
-PROVIDER = "LM-Studio"
+PROVIDER = "OpenAI-API-Compatible"
 BASE_URL = "http://127.0.0.1:1234/v1"
 
 
@@ -78,10 +79,17 @@ def _load_service(monkeypatch, discovery):
     _stub(monkeypatch, "api.db.services.tenant_model_provider_service", TenantModelProviderService=SimpleNamespace(get_by_id=lambda _id: (False, None)))
     _stub(monkeypatch, "api.db.services.tenant_model_instance_service", TenantModelInstanceService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.tenant_model_service", TenantModelService=SimpleNamespace())
-    _stub(monkeypatch, "api.utils.model_utils", get_model_type_human=lambda *_a, **_k: "", calculate_model_type=lambda *_a, **_k: 0)
+    _stub(monkeypatch, "api.utils.model_utils", get_model_type_human=lambda *_a, **_k: "", calculate_model_type=lambda *_a, **_k: 0, normalize_model_types=lambda value: [value] if isinstance(value, str) else value or [])
+    registry_path = Path(__file__).resolve().parents[5] / "rag" / "llm" / "__init__.py"
+    source = registry_path.read_text()
+    nodes = [n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == "validate_model_selection" or isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "SUPPORTED_MODEL_TYPES" for t in n.targets)]
+    namespace = {}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(registry_path), "exec"), namespace)
     _stub(
         monkeypatch,
         "rag.llm",
+        SUPPORTED_MODEL_TYPES=namespace["SUPPORTED_MODEL_TYPES"],
+        validate_model_selection=namespace["validate_model_selection"],
         ChatModel={},
         CvModel={},
         EmbeddingModel={},
@@ -217,3 +225,39 @@ async def test_discovery_failure_does_not_abort_the_request(monkeypatch):
     assert ok is False
     assert verify_result == {}
     assert "TLS handshake failed" in message
+
+
+@pytest.mark.asyncio
+async def test_retired_type_rejected_before_model_request(monkeypatch):
+    async def discover():
+        raise AssertionError("must not discover for explicit invalid types")
+    module = _load_service(monkeypatch, discover)
+    ok, message, result = await module.verify_api_key(PROVIDER, "synthetic", base_url=BASE_URL, model_info=[{"model_name": "old", "model_type": ["tts"]}])
+    assert not ok
+    assert "Unsupported model type" in message
+    assert result == {}
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('provider,model_type', [('OpenAI-API-Compatible', 'embedding'), ('Jina', 'rerank'), ('OpenAI', 'chat')])
+async def test_supported_verification_dispatch_reaches_selected_transport(monkeypatch, provider, model_type):
+    async def discover():
+        raise AssertionError('explicit selection must not discover')
+    module = _load_service(monkeypatch, discover)
+    if provider != PROVIDER:
+        module.FACTORY_LLM_INFOS.append({'name': provider, 'llm': [], 'url': ''})
+    calls = []
+    class Transport:
+        def __init__(self, key, model, base_url=None, **kwargs):
+            calls.append((key, model, base_url, kwargs))
+        def encode(self, texts):
+            return [[0.1, 0.2, 0.3]], 7
+        def similarity(self, query, texts):
+            return [0.4], 7
+        async def async_chat_streamly(self, *args):
+            yield 'synthetic answer'
+    registry = {'embedding': module.EmbeddingModel, 'rerank': module.RerankModel, 'chat': module.ChatModel}[model_type]
+    registry[provider] = Transport
+    ok, message, result = await module.verify_api_key(provider, 'synthetic', base_url=BASE_URL, model_info=[{'model_name': 'synthetic-model', 'model_type': [model_type]}])
+    assert ok and message == 'success'
+    assert result['synthetic-model'] == module.ModelVerifyStatusEnum.SUCCESS.value
+    assert calls[0][:3] == ('synthetic', 'synthetic-model', BASE_URL)

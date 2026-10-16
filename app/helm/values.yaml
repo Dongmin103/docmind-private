@@ -11,24 +11,14 @@ global:
   imagePullSecrets: []
 
 env:
-  # The type of doc engine to use.
-  # Available options:
-  # - `elasticsearch` (default)
-  # - `infinity` (https://github.com/infiniflow/infinity)
-  # - `opensearch` (https://github.com/opensearch-project/OpenSearch)
-  # DOC_ENGINE: elasticsearch
-  DOC_ENGINE: infinity
-  # DOC_ENGINE: opensearch
+  # Elasticsearch is the supported document engine.
+  DOC_ENGINE: elasticsearch
 
   # The version of Elasticsearch.
   STACK_VERSION: "8.11.3"
 
   # The password for Elasticsearch
   ELASTIC_PASSWORD: infini_rag_flow_helm
-
-  # The password for OpenSearch.
-  # At least one uppercase letter, one lowercase letter, one digit, and one special character
-  OPENSEARCH_PASSWORD: CHANGE_ME_NEW_DEVELOPMENT_VALUE
 
   # The password for MySQL
   MYSQL_PASSWORD: infini_rag_flow_helm
@@ -93,7 +83,7 @@ ragflow:
     # factory_llm_infos:
     # - name: OpenAI-API-Compatible
     #   logo: ""
-    #   tags: "LLM,TEXT EMBEDDING,SPEECH2TEXT,MODERATION"
+    #   tags: "LLM,TEXT EMBEDDING,IMAGE2TEXT"
     #   status: "1"
     #   llm:
     #     - llm_name: my-custom-llm
@@ -109,64 +99,15 @@ ragflow:
   service:
     # Use LoadBalancer to expose the web interface externally
     type: ClusterIP
-  admin:
-    # Enable Admin Service
-    enabled: true
-    # Admin Service port configuration
-    port: 9381
-    # Admin Service type
-    serviceType: ClusterIP
   api:
     service:
       enabled: true
       type: ClusterIP
 
-infinity:
-  image:
-    repository: infiniflow/infinity
-    tag: v0.7.3-x64-v3
-    pullPolicy: IfNotPresent
-    pullSecrets: []
-  storage:
-    className:
-    capacity: 5Gi
-  deployment:
-    strategy:
-    resources:
-  service:
-    type: ClusterIP
-
 elasticsearch:
   image:
     repository: elasticsearch
     tag: "8.11.3"
-    pullPolicy: IfNotPresent
-    pullSecrets: []
-  initContainers:
-    alpine:
-      repository: alpine
-      tag: latest
-      pullPolicy: IfNotPresent
-    busybox:
-      repository: busybox
-      tag: latest
-      pullPolicy: IfNotPresent
-  storage:
-    className:
-    capacity: 20Gi
-  deployment:
-    strategy:
-    resources:
-      requests:
-        cpu: "4"
-        memory: "16Gi"
-  service:
-    type: ClusterIP
-
-opensearch:
-  image:
-    repository: opensearchproject/opensearch
-    tag: 2.19.1
     pullPolicy: IfNotPresent
     pullSecrets: []
   initContainers:

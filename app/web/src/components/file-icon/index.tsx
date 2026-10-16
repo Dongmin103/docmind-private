@@ -18,7 +18,7 @@ import { getExtension } from '@/utils/document-util';
 import { File as LucideFile } from 'lucide-react';
 import SvgIcon, { hasSvgIcon } from '../svg-icon';
 
-import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-request';
+import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-inspection';
 import { useAuthenticatedImageUrl } from '@/components/image';
 import { useEffect } from 'react';
 import styles from './index.module.less';

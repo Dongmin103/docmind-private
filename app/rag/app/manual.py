@@ -14,58 +14,19 @@
 #  limitations under the License.
 #
 
-import logging
 import copy
 import re
 
-from common.constants import ParserType, MAXIMUM_PAGE_NUMBER
+from common.constants import MAXIMUM_PAGE_NUMBER
 from io import BytesIO
 from deepdoc.parser.utils import extract_pdf_outlines
 from rag.nlp import rag_tokenizer, tokenize, tokenize_table, bullets_category, title_frequency, tokenize_chunks, docx_question_level, attach_media_context, concat_img
 from common.token_utils import num_tokens_from_string
-from deepdoc.parser import PdfParser, DocxParser
-from deepdoc.parser.figure_parser import vision_figure_parser_pdf_wrapper, vision_figure_parser_docx_wrapper
+from deepdoc.parser import DocxParser
 from docx import Document
 from api.db.joint_services.tenant_model_service import get_composite_model_name_by_id
-from rag.app.naive import by_plaintext, PARSERS
+from rag.app.naive import PARSERS
 from common.parser_config_utils import normalize_layout_recognizer
-
-
-class Pdf(PdfParser):
-    def __init__(self):
-        self.model_species = ParserType.MANUAL.value
-        super().__init__()
-
-    def __call__(self, filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, zoomin=3, callback=None):
-        from timeit import default_timer as timer
-
-        start = timer()
-        callback(msg="OCR started")
-        self.__images__(filename if not binary else binary, zoomin, from_page, to_page, callback)
-        callback(msg="OCR finished ({:.2f}s)".format(timer() - start))
-        logging.debug("OCR: {}".format(timer() - start))
-
-        start = timer()
-        self._layouts_rec(zoomin)
-        callback(0.65, "Layout analysis ({:.2f}s)".format(timer() - start))
-        logging.debug("layouts: {}".format(timer() - start))
-
-        start = timer()
-        self._table_transformer_job(zoomin)
-        callback(0.67, "Table analysis ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._text_merge()
-        tbls = self._extract_table_figure(True, zoomin, True, True)
-        self._concat_downward()
-        self._filter_forpages()
-        callback(0.68, "Text merged ({:.2f}s)".format(timer() - start))
-
-        # clean mess
-        for b in self.boxes:
-            b["text"] = re.sub(r"([\t 　]|\u3000){2,}", " ", b["text"].strip())
-
-        return [(b["text"], b.get("layoutno", ""), self.get_position(b, zoomin)) for i, b in enumerate(self.boxes)], tbls
 
 
 class Docx(DocxParser):
@@ -160,7 +121,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
         name = layout_recognizer.strip().lower()
-        pdf_parser = PARSERS.get(name, by_plaintext)
+        pdf_parser = PARSERS[name]
         callback(0.1, "Start to parse.")
 
         kwargs.pop("parse_method", None)
@@ -172,7 +133,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             to_page=to_page,
             lang=lang,
             callback=callback,
-            pdf_cls=Pdf,
+
             layout_recognizer=layout_recognizer,
             mineru_llm_name=parser_model_name,
             mistral_ocr_llm_name=parser_model_name,
@@ -240,12 +201,10 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             sec_ids.append(sid)
 
         sections = [(txt, sec_ids[i], poss) for i, (txt, _, poss) in enumerate(sections)]
-        if name != "mineru":
-            for (img, rows), poss in tbls:
-                if not rows:
-                    continue
-                sections.append((rows if isinstance(rows, str) else rows[0], -1, [(p[0] + 1 - from_page, p[1], p[2], p[3], p[4]) for p in poss]))
-
+        for (img, rows), poss in tbls:
+            if not rows:
+                continue
+            sections.append((rows if isinstance(rows, str) else rows[0], -1, [(p[0] + 1 - from_page, p[1], p[2], p[3], p[4]) for p in poss]))
         def tag(pn, left, right, top, bottom):
             if pn + left + right + top + bottom == 0:
                 return ""
@@ -269,14 +228,6 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             tk_cnt = num_tokens_from_string(txt)
             if sec_id > -1:
                 last_sid = sec_id
-        if name != "mineru":
-            tbls = vision_figure_parser_pdf_wrapper(
-                tbls=tbls,
-                sections=sections,
-                callback=callback,
-                lang=lang,
-                **kwargs,
-            )
         res = tokenize_table(tbls, doc, eng, language=lang)
         res.extend(tokenize_chunks(chunks, doc, eng, pdf_parser, language=lang))
         table_ctx = max(0, int(parser_config.get("table_context_size", 0) or 0))
@@ -293,13 +244,6 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
     elif re.search(r"\.docx$", filename, re.IGNORECASE):
         docx_parser = Docx()
         ti_list, tbls = docx_parser(filename, binary, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, callback=callback)
-        tbls = vision_figure_parser_docx_wrapper(
-            sections=ti_list,
-            tbls=tbls,
-            callback=callback,
-            lang=lang,
-            **kwargs,
-        )
         res = tokenize_table(tbls, doc, eng, language=lang)
         for text, image in ti_list:
             d = copy.deepcopy(doc)

@@ -13,20 +13,13 @@ import { HomeIcon } from '@/components/svg-icon';
 
 const PathMap = {
   [Routes.DocMind]: [Routes.DocMind],
-  [Routes.Datasets]: [Routes.Datasets, Routes.DatasetBase],
-  [Routes.Chats]: [Routes.Chats, Routes.Chat],
-  [Routes.Searches]: [Routes.Searches, Routes.Search],
-  [Routes.Agents]: [Routes.Agents, Routes.AgentTemplates],
-  [Routes.Memories]: [Routes.Memories, Routes.Memory, Routes.MemoryMessage],
-  [Routes.Files]: [Routes.Files],
 } as const;
 
-// Match on path-segment boundaries, not a loose substring, so e.g.
-// "/user-setting/chat-channel" does not match the "/chat" tab.
+// Match on path-segment boundaries so similarly named paths stay distinct.
 const matchesPath = (pathname: string, candidate: string) =>
   pathname === candidate || pathname.startsWith(`${candidate}/`);
 
-// Wrapper so dataset icon shares the same ComponentType<{ className? }>
+// Wrapper so the workspace icon shares the same ComponentType<{ className? }>
 // shape as Lucide icons in menuItems (avoids Element-vs-component union).
 const MenuItemsIcon = ({
   className,
@@ -34,7 +27,7 @@ const MenuItemsIcon = ({
 }: {
   className?: string;
   name?: string;
-}) => <HomeIcon imgClass={className} name={name || 'datasets'} width={20} />;
+}) => <HomeIcon imgClass={className} name={name || 'searches'} width={20} />;
 
 const menuItems = [
   { path: Routes.Root, name: 'header.home', icon: LucideHouse },
@@ -44,45 +37,7 @@ const menuItems = [
     icon: MenuItemsIcon,
     icon_name: 'searches',
   },
-  {
-    path: Routes.Datasets,
-    name: 'header.dataset',
-    icon: MenuItemsIcon,
-    icon_name: 'datasets',
-  },
-  {
-    path: Routes.Chats,
-    name: 'header.chat',
-    icon: MenuItemsIcon,
-    icon_name: 'chats',
-    'data-testid': 'nav-chat',
-  },
-  {
-    path: Routes.Searches,
-    name: 'header.search',
-    icon: MenuItemsIcon,
-    icon_name: 'searches',
-    'data-testid': 'nav-search',
-  },
-  {
-    path: Routes.Agents,
-    name: 'header.flow',
-    icon: MenuItemsIcon,
-    icon_name: 'agents',
-    'data-testid': 'nav-agent',
-  },
-  {
-    path: Routes.Memories,
-    name: 'header.memories',
-    icon: MenuItemsIcon,
-    icon_name: 'memory',
-  },
-  {
-    path: Routes.Files,
-    name: 'header.fileManager',
-    icon: MenuItemsIcon,
-    icon_name: 'file',
-  },
+
 ];
 
 function useActivePath() {

@@ -119,15 +119,6 @@ def test_litellm_preserves_thinking_param():
     assert cleaned["thinking"] == {"type": "enabled"}
 
 
-def test_litellm_preserves_provider_mapped_thinking_param():
-    """Provider-mapped ``thinking`` must survive the LiteLLM whitelist."""
-    cleaned = _make_litellm(
-        "kimi-k2.6-preview",
-        SupportedLiteLLMProvider.Moonshot,
-    )._clean_conf({"thinking": {"type": "enabled"}, "temperature": 1.0})
-    assert cleaned["thinking"] == {"type": "enabled"}
-
-
 def test_max_tokens_is_dropped_on_both_backends():
     assert "max_tokens" not in _make_litellm()._clean_conf({"max_tokens": 100, "temperature": 0.3})
     assert "max_tokens" not in _make_base()._clean_conf({"max_tokens": 100, "temperature": 0.3})

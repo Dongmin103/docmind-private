@@ -42,9 +42,6 @@ export default {
   // llm model
   listAllAddedModels: `${restAPIv1}/models`,
   defaultModel: `${restAPIv1}/models/default`,
-  // AIMLAPI agent-authorization (OAuth device grant) — obtain a key from the provider dialog
-  aimlapiAuthorizeStart: `${restAPIv1}/llm/aimlapi/authorize/start`,
-  aimlapiAuthorizePoll: `${restAPIv1}/llm/aimlapi/authorize/poll`,
   listProviders: `${restAPIv1}/providers`,
   addProvider: `${restAPIv1}/providers`,
   addProviderInstance: ({ llm_factory }: { llm_factory: string }) =>
@@ -124,172 +121,15 @@ export default {
   }) =>
     `${restAPIv1}/providers/${provider_name}/instances/${instance_name}/models`,
 
-  // data source
-  dataSourceUpdate: (id: string) => `${restAPIv1}/connectors/${id}`,
-  dataSourceSet: `${restAPIv1}/connectors`,
-  dataSourceList: `${restAPIv1}/connectors`,
-  dataSourceDel: (id: string) => `${restAPIv1}/connectors/${id}`,
-  dataSourceRebuild: (id: string) => `${restAPIv1}/connectors/${id}/rebuild`,
-  dataSourceLogs: (id: string) => `${restAPIv1}/connectors/${id}/logs`,
-  dataSourceDetail: (id: string) => `${restAPIv1}/connectors/${id}`,
-  dataSourceTest: (id: string) => `${restAPIv1}/connectors/${id}/test`,
-  googleWebAuthStart: (type: 'google-drive' | 'gmail') =>
-    `${restAPIv1}/connectors/google/oauth/web/start?type=${type}`,
-  googleWebAuthResult: (type: 'google-drive' | 'gmail') =>
-    `${restAPIv1}/connectors/google/oauth/web/result?type=${type}`,
-  boxWebAuthStart: () => `${restAPIv1}/connectors/box/oauth/web/start`,
-  boxWebAuthResult: () => `${restAPIv1}/connectors/box/oauth/web/result`,
-
-  // chat channel
-  chatChannelSet: `${restAPIv1}/chat-channels`,
-  chatChannelList: `${restAPIv1}/chat-channels`,
-  chatChannelDetail: (id: string) => `${restAPIv1}/chat-channels/${id}`,
-  chatChannelUpdate: (id: string) => `${restAPIv1}/chat-channels/${id}`,
-  chatChannelDel: (id: string) => `${restAPIv1}/chat-channels/${id}`,
-  chatChannelRuntime: (id: string) =>
-    `${restAPIv1}/chat-channels/${id}/runtime`,
-
-  // plugin
-  llmTools: `${restAPIv1}/plugin/tools`,
-
-  chatsTranscriptions: `${restAPIv1}/chat/audio/transcription`,
-
-  // knowledge base
-
-  checkEmbedding: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/embedding/check`,
-  kbList: `${restAPIv1}/datasets`,
-  datasetFilter: `${restAPIv1}/datasets?type=filter`,
-  createKb: `${restAPIv1}/datasets`,
-  updateKb: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
-  rmKb: `${restAPIv1}/datasets`,
-  getKbDetail: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
-  getKnowledgeGraph: (knowledgeId: string) =>
-    `${restAPIv1}/datasets/${knowledgeId}/graph`,
-  knowledgeGraph: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/graph`,
-  deleteKnowledgeGraph: (knowledgeId: string) =>
-    `${restAPIv1}/datasets/${knowledgeId}/graph`,
-  getMeta: `${restAPIv1}/datasets/metadata/flattened`,
-  getKnowledgeBasicInfo: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/ingestions/summary`,
-  artifactsList: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/artifacts`,
-  artifactsAlteration: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/artifacts/alteration`,
-  artifactsTopicList: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/artifacts/topics`,
-  getArtifactPage: (datasetId: string, pageType: string, slug: string) =>
-    `${restAPIv1}/datasets/${datasetId}/artifacts/${pageType}/${slug}`,
-  listWikiCommits: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/commits`,
-  getWikiCommit: (datasetId: string, commitId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/commits/${commitId}`,
-  getArtifactGraph: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/artifacts/graph`,
-  artifactsStructure: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/artifacts/structure`,
-  clearWiki: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/artifacts`,
-  getDatasetSkillTree: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/skills`,
-  getDatasetSkillPage: (datasetId: string, skillKwd: string) =>
-    `${restAPIv1}/datasets/${datasetId}/skills/${skillKwd
-      .split('/')
-      .map((s) => encodeURIComponent(s))
-      .join('/')}`,
-  deleteDatasetSkillTree: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/skills`,
-  deleteDatasetSkillPage: (datasetId: string, skillKwd: string) =>
-    `${restAPIv1}/datasets/${datasetId}/skills/${skillKwd
-      .split('/')
-      .map((s) => encodeURIComponent(s))
-      .join('/')}`,
-  getDatasetNav: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/navigation`,
-  getDatasetNavChildren: (datasetId: string, name: string) =>
-    `${restAPIv1}/datasets/${datasetId}/navigation/${name
-      .split('/')
-      .map((s) => encodeURIComponent(s))
-      .join('/')}/children`,
-  deleteDatasetNav: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/navigation`,
-  deleteDatasetNavNode: (datasetId: string, name: string) =>
-    `${restAPIv1}/datasets/${datasetId}/navigation/${name
-      .split('/')
-      .map((s) => encodeURIComponent(s))
-      .join('/')}`,
-  // data pipeline log
-  fetchDataPipelineLog: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/ingestions`,
-  getPipelineDetail: (datasetId: string, logId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/ingestions/${logId}`,
-  fetchPipelineDatasetLogs: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/ingestions`,
-  listPipelines: `${restAPIv1}/pipelines?type=builtin`,
-  runIndex: (datasetId: string, indexType: string) =>
-    `${restAPIv1}/datasets/${datasetId}/index?type=${indexType.toLowerCase()}`,
-  traceIndex: (datasetId: string, indexType: string) =>
-    `${restAPIv1}/datasets/${datasetId}/index?type=${indexType.toLowerCase()}`,
-  // Go scheduler compile-status contract.
-  compilationStatus: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/compilation/status`,
-  unbindPipelineTask: (datasetId: string, indexType: string, wipe?: boolean) =>
-    `${restAPIv1}/datasets/${datasetId}/${indexType.toLowerCase()}${wipe === false ? '?wipe=false' : ''}`,
-  pipelineRerun: `${restAPIv1}/agents/rerun`,
-  getMetaData: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/metadata/summary`,
-  updateDocumentsMetadata: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents/metadatas`,
-  kbUpdateMetaData: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/metadata/config`,
-  documentUpdateMetaDataConfig: (datasetId: string, documentId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/metadata/config`,
-
-  // tags
-  listTag: (knowledgeId: string) => `${restAPIv1}/datasets/${knowledgeId}/tags`,
-  listTagByKnowledgeIds: `${restAPIv1}/datasets/tags/aggregation`,
-  removeTag: (knowledgeId: string) =>
-    `${restAPIv1}/datasets/${knowledgeId}/tags`,
-  renameTag: (knowledgeId: string) =>
-    `${restAPIv1}/datasets/${knowledgeId}/tags`,
-
   // chunk
   chunkList: (datasetId: string, documentId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks`,
   chunkDetail: (datasetId: string, documentId: string, chunkId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks/${chunkId}`,
-  documentStructureGraph: (datasetId: string, documentId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/structure/graph`,
-  retrievalTest: `${restAPIv1}/datasets/search`,
-
   // document
-  getDocumentList: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents`,
-  documentChangeStatus: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents/batch-update-status`,
-  documentDelete: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents`,
-  documentRename: (datasetId: string, documentId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}`,
-  documentIngest: `${restAPIv1}/documents/ingest`,
-  documentCreate: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents?type=empty`,
-  documentChangeParser: (datasetId: string, documentId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}`,
-  getDatasetDocumentFileDownload: (datasetId: string, documentId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}`,
   documentThumbnails: `${restAPIv1}/thumbnails`,
   getDocumentFile: `${restAPIv1}/documents`,
-  documentUpload: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents`,
-  webCrawl: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents?type=web`,
   documentInfoUpload: `${restAPIv1}/documents/upload`,
-  setMeta: `${webAPI}/document/set_meta`,
-  getDatasetFilter: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/documents?type=filter`,
-
   // chat
   createChat: `${restAPIv1}/chats`,
   listChats: `${restAPIv1}/chats`,
@@ -310,24 +150,10 @@ export default {
   thumbup: (chatId: string, sessionId: string, msgId: string) =>
     `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/messages/${msgId}/feedback`,
   completionUrl: `${restAPIv1}/chat/completions`,
-  chatsTts: `${restAPIv1}/chat/audio/speech`,
-  searchCompletion: (searchId: string) =>
-    `${restAPIv1}/searches/${searchId}/completions`,
-  chatsMindmap: `${restAPIv1}/chat/mindmap`,
   chatsRelatedQuestions: `${restAPIv1}/chat/recommendation`,
 
-  // next chat
-  fetchExternalChatInfo: (id: string) => `${restAPIv1}/chatbots/${id}/info`,
-
   // file manager
-  listFile: `${restAPIv1}/files`,
-  uploadFile: `${restAPIv1}/files`,
-  removeFile: `${restAPIv1}/files`,
-  getAllParentFolder: `${restAPIv1}/files`,
-  createFolder: `${restAPIv1}/files`,
-  connectFileToKnowledge: `${restAPIv1}/files/link-to-datasets`,
   getFile: `${restAPIv1}/files`,
-  moveFile: `${restAPIv1}/files/move`,
 
   // system
   getSystemVersion: `${restAPIv1}/system/version`,
@@ -337,44 +163,7 @@ export default {
   getSystemConfig: `${restAPIv1}/system/config`,
   setLangfuseConfig: `${restAPIv1}/langfuse/api-key`,
 
-  // flow
-  listAgentTemplate: `${restAPIv1}/agents/templates`,
-  listAgents: `${restAPIv1}/agents`,
-  listAgentTags: `${restAPIv1}/agents/tags`,
-  updateAgentTags: (agentId: string) => `${restAPIv1}/agents/${agentId}/tags`,
-  createAgent: `${restAPIv1}/agents`,
-  updateAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}`,
-  deleteAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}`,
-  agentChatCompletion: `${restAPIv1}/agents/chat/completions`,
-  resetAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}/reset`,
-  testDbConnect: `${restAPIv1}/agents/test_db_connection`,
-  getInputElements: `${webAPI}/canvas/input_elements`,
-  debug: (agentId: string, componentId: string) =>
-    `${restAPIv1}/agents/${agentId}/components/${componentId}/debug`,
-  trace: (agentId: string, messageId: string) =>
-    `${restAPIv1}/agents/${agentId}/logs/${messageId}`,
-  sharedTrace: (sharedId: string, messageId: string) =>
-    `${restAPIv1}/agentbots/${sharedId}/logs/${messageId}`,
-  cancelCanvas: (taskId: string) => `${restAPIv1}/tasks/${taskId}/cancel`,
-  // agent
-  inputForm: (agentId: string, componentId: string) =>
-    `${restAPIv1}/agents/${agentId}/components/${componentId}/input-form`,
-  fetchVersionList: (id: string) => `${restAPIv1}/agents/${id}/versions`,
-  fetchVersion: (agentId: string, versionId: string) =>
-    `${restAPIv1}/agents/${agentId}/versions/${versionId}`,
-  getAgent: (id: string) => `${restAPIv1}/agents/${id}`,
-  uploadAgentFile: (id?: string) => `${restAPIv1}/agents/${id}/upload`,
-  createAgentSession: (agentId: string) =>
-    `${restAPIv1}/agents/${agentId}/sessions`,
-  fetchAgentLogs: (canvasId: string) => `${webAPI}/canvas/${canvasId}/sessions`,
-  fetchAgentSessions: (agentId: string) =>
-    `${restAPIv1}/agents/${agentId}/sessions`,
-  fetchAgentSessionById: (agentId: string, sessionId: string) =>
-    `${restAPIv1}/agents/${agentId}/sessions/${sessionId}`,
-  fetchExternalAgentInputs: (canvasId: string) =>
-    `${restAPIv1}/agentbots/${canvasId}/inputs`,
-  prompt: `${restAPIv1}/agents/prompts`,
-  cancelDataflow: (id: string) => `${restAPIv1}/tasks/${id}/cancel`,
+  // ordinary message attachments
   getAttachmentFileDownload: (docId: string) =>
     `${restAPIv1}/agents/attachments/${docId}/download`,
   getAttachmentFilePreview: ({
@@ -395,137 +184,4 @@ export default {
     const query = params.toString();
     return `${restAPIv1}/agents/attachments/${docId}/preview${query ? `?${query}` : ''}`;
   },
-  downloadFile: `${restAPIv1}/agents/download`,
-  testWebhook: (id: string) => `${restAPIv1}/agents/${id}/webhook/test`,
-  fetchWebhookTrace: (id: string) => `${restAPIv1}/agents/${id}/webhook/logs`,
-
-  // explore
-
-  // compilation templates
-  compilationTemplates: `${restAPIv1}/compilation-templates`,
-  compilationTemplate: (id: string) =>
-    `${restAPIv1}/compilation-templates/${id}`,
-  compilationTemplateGroups: `${restAPIv1}/compilation-template-groups`,
-  compilationTemplateGroup: (id: string) =>
-    `${restAPIv1}/compilation-template-groups/${id}`,
-  wikiPresets: `${restAPIv1}/compilation-templates/wiki-presets`,
-
-  // mcp server
-  listMcpServer: `${restAPIv1}/mcp/servers`,
-  getMcpServer: (id: string) => `${restAPIv1}/mcp/servers/${id}`,
-  createMcpServer: `${restAPIv1}/mcp/servers`,
-  updateMcpServer: (id: string) => `${restAPIv1}/mcp/servers/${id}`,
-  deleteMcpServer: (id: string) => `${restAPIv1}/mcp/servers/${id}`,
-  importMcpServer: `${restAPIv1}/mcp/servers/import`,
-  exportMcpServer: (id: string) =>
-    `${restAPIv1}/mcp/servers/${id}?mode=download`,
-  testMcpServer: (id: string) => `${restAPIv1}/mcp/servers/${id}/test`,
-
-  // next-search
-  createSearch: `${restAPIv1}/searches`,
-  getSearchList: `${restAPIv1}/searches`,
-  deleteSearch: (params: { search_id: string }) =>
-    `${restAPIv1}/searches/${params.search_id}`,
-  getSearchDetail: (params: { search_id: string }) =>
-    `${restAPIv1}/searches/${params.search_id}`,
-  getSearchDetailShare: `${restAPIv1}/searchbots/detail`,
-  updateSearchSetting: (params: { search_id: string }) =>
-    `${restAPIv1}/searches/${params.search_id}`,
-  askShare: `${restAPIv1}/searchbots/ask`,
-  mindmapShare: `${restAPIv1}/searchbots/mindmap`,
-  getRelatedQuestionsShare: `${restAPIv1}/searchbots/related_questions`,
-  retrievalTestShare: `${restAPIv1}/searchbots/retrieval_test`,
-
-  // memory
-  createMemory: `${restAPIv1}/memories`,
-  getMemoryList: `${restAPIv1}/memories`,
-  getMemoryConfig: (id: string) => `${restAPIv1}/memories/${id}/config`,
-  deleteMemory: (id: string) => `${restAPIv1}/memories/${id}`,
-  getMemoryDetail: (id: string) => `${restAPIv1}/memories/${id}`,
-  updateMemorySetting: (id: string) => `${restAPIv1}/memories/${id}`,
-  deleteMemoryMessage: (data: { memory_id: string; message_id: string }) =>
-    `${restAPIv1}/messages/${data.memory_id}:${data.message_id}`,
-  getMessageContent: (data: { memory_id: string; message_id: string }) =>
-    `${restAPIv1}/messages/${data.memory_id}:${data.message_id}/content`,
-  updateMessageState: (data: { memory_id: string; message_id: string }) =>
-    `${restAPIv1}/messages/${data.memory_id}:${data.message_id}`,
-
-  // data pipeline
-  fetchDataflow: (id: string) => `${webAPI}/dataflow/get/${id}`,
-  setDataflow: `${webAPI}/dataflow/set`,
-  removeDataflow: `${webAPI}/dataflow/rm`,
-  listDataflow: `${webAPI}/dataflow/list`,
-  runDataflow: `${webAPI}/dataflow/run`,
-  listBuiltinPipelines: `${restAPIv1}/pipelines`,
-  getBuiltinPipeline: (id: string) => `${restAPIv1}/pipelines/${id}`,
-
-  // admin
-  adminLogin: `${restAPIv1}/admin/login`,
-  adminLogout: `${restAPIv1}/admin/logout`,
-  adminListUsers: `${restAPIv1}/admin/users`,
-  adminCreateUser: `${restAPIv1}/admin/users`,
-  adminSetSuperuser: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/admin`,
-  adminGetUserDetails: (username: string) =>
-    `${restAPIv1}/admin/users/${username}`,
-  adminUpdateUserStatus: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/activate`,
-  adminUpdateUserPassword: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/password`,
-  adminDeleteUser: (username: string) => `${restAPIv1}/admin/users/${username}`,
-  adminListUserDatasets: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/datasets`,
-  adminListUserAgents: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/agents`,
-
-  adminListServices: `${restAPIv1}/admin/services`,
-  adminShowServiceDetails: (serviceId: string) =>
-    `${restAPIv1}/admin/services/${serviceId}`,
-
-  adminListRoles: `${restAPIv1}/admin/roles`,
-  adminListRolesWithPermission: `${restAPIv1}/admin/roles_with_permission`,
-  adminGetRolePermissions: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/permissions`,
-  adminAssignRolePermissions: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/permission`,
-  adminRevokeRolePermissions: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/permission`,
-  adminCreateRole: `${restAPIv1}/admin/roles`,
-  adminDeleteRole: (roleName: string) => `${restAPIv1}/admin/roles/${roleName}`,
-  adminUpdateRoleDescription: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}`,
-
-  adminUpdateUserRole: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/role`,
-  adminGetUserPermissions: (username: string) =>
-    `${restAPIv1}/admin/users/${username}/permissions`,
-
-  adminListResources: `${restAPIv1}/admin/roles/resource`,
-
-  adminListWhitelist: `${restAPIv1}/admin/whitelist`,
-  adminCreateWhitelistEntry: `${restAPIv1}/admin/whitelist/add`,
-  adminUpdateWhitelistEntry: (id: number) =>
-    `${restAPIv1}/admin/whitelist/${id}`,
-  adminDeleteWhitelistEntry: (email: string) =>
-    `${restAPIv1}/admin/whitelist/${email}`,
-  adminImportWhitelist: `${restAPIv1}/admin/whitelist/batch`,
-
-  adminGetSystemVersion: `${restAPIv1}/admin/version`,
-
-  // Sandbox settings
-  adminListSandboxProviders: `${restAPIv1}/admin/sandbox/providers`,
-  adminGetSandboxProviderSchema: (providerId: string) =>
-    `${restAPIv1}/admin/sandbox/providers/${providerId}/schema`,
-  adminGetSandboxConfig: `${restAPIv1}/admin/sandbox/config`,
-  adminSetSandboxConfig: `${restAPIv1}/admin/sandbox/config`,
-  adminTestSandboxConnection: `${restAPIv1}/admin/sandbox/test`,
-
-  // Skill spaces
-  skillSpaces: `${restAPIv1}/skills/spaces`,
-  skillSpace: (spaceId: string) => `${restAPIv1}/skills/spaces/${spaceId}`,
-  skillSpaceByFolder: `${restAPIv1}/skills/space/by-folder`,
-  skillConfig: `${restAPIv1}/skills/config`,
-  skillSearch: `${restAPIv1}/skills/search`,
-  skillIndex: `${restAPIv1}/skills/index`,
-  skillReindex: `${restAPIv1}/skills/reindex`,
 };

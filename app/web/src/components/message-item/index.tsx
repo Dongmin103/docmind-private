@@ -29,9 +29,9 @@ import { memo, useCallback, useMemo } from 'react';
 import { DocumentDownloadButton } from '../document-download-button';
 import { LoadingDots } from '../loading-dots';
 import MarkdownContent from '../markdown-content';
-import { ReferenceDocumentList } from '../next-message-item/reference-document-list';
-import { ReferenceImageList } from '../next-message-item/reference-image-list';
-import { UploadedMessageFiles } from '../next-message-item/uploaded-message-files';
+import { ReferenceDocumentList } from '../message-reference/reference-document-list';
+import { ReferenceImageList } from '../message-reference/reference-image-list';
+import { UploadedMessageFiles } from '../message-reference/uploaded-message-files';
 import { RAGFlowAvatar } from '../ragflow-avatar';
 import SvgIcon from '../svg-icon';
 import { useTheme } from '../theme-provider';
@@ -50,7 +50,6 @@ interface IProps extends Partial<IRemoveMessageById>, IRegenerateMessage {
   clickDocumentButton?: (documentId: string, chunk: IReferenceChunk) => void;
   index: number;
   showLikeButton?: boolean;
-  showLoudspeaker?: boolean;
   isLast?: boolean;
 }
 
@@ -66,7 +65,6 @@ const MessageItem = ({
   removeMessageById,
   regenerateMessage,
   showLikeButton = true,
-  showLoudspeaker = true,
   visibleAvatar = true,
   nickname,
   isLast = false,
@@ -141,8 +139,6 @@ const MessageItem = ({
                   content={messageContent}
                   prompt={item.prompt}
                   showLikeButton={showLikeButton}
-                  audioBinary={item.audio_binary}
-                  showLoudspeaker={showLoudspeaker}
                 ></AssistantGroupButton>
               )
             ) : (

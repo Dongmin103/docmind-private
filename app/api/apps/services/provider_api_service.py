@@ -21,13 +21,12 @@ from urllib.parse import urlparse, urlunparse
 
 from common.constants import LLMType, ActiveStatusEnum, ModelVerifyStatusEnum
 from common.settings import FACTORY_LLM_INFOS
-from api.db.db_models import DB
 from api.db.joint_services.tenant_model_service import resolve_model_config, delete_models_by_instance_ids, delete_instances_by_provider_ids
 from api.db.services.tenant_model_provider_service import TenantModelProviderService
 from api.db.services.tenant_model_instance_service import TenantModelInstanceService
 from api.db.services.tenant_model_service import TenantModelService
 from api.utils import model_utils
-from rag.llm import ChatModel, CvModel, EmbeddingModel, ModelMeta, OcrModel, RerankModel, Seq2txtModel, TTSModel
+from rag.llm import ChatModel, CvModel, EmbeddingModel, ModelMeta, RerankModel, validate_model_selection, SUPPORTED_MODEL_TYPES
 
 
 def _to_int(v, default=500):
@@ -43,11 +42,6 @@ def _factory_model_types(llm: dict) -> list[str]:
 
 
 def _normalize_provider_base_url(provider_name: str, base_url: str | None):
-    if provider_name != "VLLM" or not base_url:
-        return base_url
-    base_url = base_url.strip().rstrip("/")
-    if not base_url.endswith("/v1"):
-        base_url += "/v1"
     return base_url
 
 
@@ -99,43 +93,7 @@ def _scrub_url_secrets(text: str, url: str | None) -> str:
 
 
 def _normalize_provider_api_key(provider_name: str, api_key: str | dict | None):
-    if provider_name == "VLLM" and not api_key:
-        return "x"
     return api_key
-
-
-def _bedrock_api_key_config(api_key: str | dict | None) -> dict | None:
-    if isinstance(api_key, dict):
-        config = api_key
-    elif isinstance(api_key, str):
-        try:
-            config = json.loads(api_key)
-        except json.JSONDecodeError:
-            return None
-    else:
-        return None
-    if isinstance(config, dict) and config.get("auth_mode") == "bedrock_api_key":
-        return config
-    return None
-
-
-def _validate_bedrock_api_key_config(api_key: str | dict | None) -> dict[str, object] | None:
-    config = _bedrock_api_key_config(api_key)
-    if config is None:
-        return None
-
-    bedrock_api_key = config.get("bedrock_api_key")
-    if not isinstance(bedrock_api_key, str) or not bedrock_api_key.strip():
-        raise ValueError("Bedrock API key must be provided")
-    bedrock_region = config.get("bedrock_region")
-    if not isinstance(bedrock_region, str) or not bedrock_region.strip():
-        raise ValueError("AWS region must be provided")
-
-    return {
-        **config,
-        "bedrock_api_key": bedrock_api_key.strip(),
-        "bedrock_region": bedrock_region.strip(),
-    }
 
 
 def _factory_llm_name(llm: dict) -> str:
@@ -143,59 +101,22 @@ def _factory_llm_name(llm: dict) -> str:
 
 
 def list_providers(tenant_id: str, all_available: bool = False):
-    """
-    List providers for a tenant.
-
-    If available_only is True, list all system-wide providers (pool providers).
-    Otherwise, list providers that the tenant has configured, with a has_instance flag.
-
-    :param tenant_id: tenant ID
-    :param all_available: whether to list all available providers
-    :return: (success, result)
-    """
     if not FACTORY_LLM_INFOS:
         return False, []
-
-    factory_rank_mapping = {factory["name"]: -_to_int(factory.get("rank", "500")) for factory in FACTORY_LLM_INFOS}
-    factory_info_map = {f["name"]: f for f in FACTORY_LLM_INFOS}
-    if all_available:
-        providers = []
-        for factory_info in FACTORY_LLM_INFOS:
-            if factory_info["name"] in ["Youdao", "FastEmbed", "BAAI", "Builtin", "siliconflow_intl"]:
-                continue
-            model_types = sorted(set(model_type for llm in factory_info.get("llm", []) for model_type in _factory_model_types(llm))) if factory_info.get("llm", []) else []
-            if factory_info["name"] in ["MinerU", "PaddleOCR", "OpenDataLoader", "Mistral OCR"]:
-                model_types.append("ocr")
-            provider = {"model_types": model_types, "name": factory_info["name"], "url": {"default": factory_info.get("url", "")}}
-            if factory_info["name"].lower() == "siliconflow":
-                provider["url"]["intl"] = factory_info_map.get("siliconflow_intl", {}).get("url", "https://api.siliconflow.com/v1")
-            elif factory_info["name"] == "Tongyi-Qianwen":
-                provider["url"]["intl"] = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-            providers.append(provider)
-        providers.sort(key=lambda x: (factory_rank_mapping.get(x["name"]), x["name"]))
-        return True, providers
-
-    # List tenant-configured providers
-    factory_names = TenantModelProviderService.list_provider_names_by_tenant_id(tenant_id)
-
+    configured = None if all_available else set(TenantModelProviderService.list_provider_names_by_tenant_id(tenant_id))
     providers = []
-    factory_info_mapping = {f["name"]: f for f in FACTORY_LLM_INFOS}
-    for name in factory_names:
-        if name not in ["Youdao", "FastEmbed", "BAAI", "Builtin", "siliconflow_intl"] and factory_info_mapping.get(name):
-            factory_info = factory_info_mapping[name]
-            provider_obj = TenantModelProviderService.get_by_tenant_id_and_provider_name(tenant_id, name)
-            has_instance = bool(provider_obj and TenantModelInstanceService.get_all_by_provider_id(provider_obj.id))
-            model_types = sorted(set(model_type for llm in factory_info.get("llm", []) for model_type in _factory_model_types(llm))) if factory_info.get("llm", []) else []
-            if name in ["MinerU", "PaddleOCR", "OpenDataLoader", "Mistral OCR"]:
-                model_types.append("ocr")
-
-            provider = {"has_instance": has_instance, "model_types": model_types, "name": factory_info["name"], "url": {"default": factory_info.get("url", "")}}
-            if factory_info["name"].lower() == "siliconflow":
-                provider["url"]["intl"] = factory_info_map.get("siliconflow_intl", {}).get("url", "https://api.siliconflow.com/v1")
-            elif factory_info["name"] == "Tongyi-Qianwen":
-                provider["url"]["intl"] = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-            providers.append(provider)
-    providers.sort(key=lambda x: (factory_rank_mapping.get(x["name"]), x["name"]))
+    rank = {}
+    for factory in FACTORY_LLM_INFOS:
+        name = factory["name"]
+        if name not in SUPPORTED_MODEL_TYPES or (configured is not None and name not in configured):
+            continue
+        provider = {"name": name, "model_types": sorted(SUPPORTED_MODEL_TYPES[name]), "url": {"default": factory.get("url", "")}}
+        if configured is not None:
+            owner = TenantModelProviderService.get_by_tenant_id_and_provider_name(tenant_id, name)
+            provider["has_instance"] = bool(owner and TenantModelInstanceService.get_all_by_provider_id(owner.id))
+        providers.append(provider)
+        rank[name] = -_to_int(factory.get("rank", "500"))
+    providers.sort(key=lambda provider: (rank[provider["name"]], provider["name"]))
     return True, providers
 
 
@@ -295,36 +216,11 @@ async def list_provider_models(
 
     model_base_url = _normalize_provider_base_url(provider_name, base_url) or factory_info[0].get("url", "")
     remote_models = []
-    bedrock_api_key_config = _bedrock_api_key_config(api_key)
-    should_fetch_remote = provider_name in ModelMeta and (provider_name != "Bedrock" or bedrock_api_key_config is not None)
-    if should_fetch_remote:
-        try:
-            remote_models = await ModelMeta[provider_name](api_key, model_base_url).get_model_list()
-        except ValueError as error:
-            if provider_name == "Bedrock":
-                return False, str(error)
-            raise
-
-    if provider_name == "Bedrock" and bedrock_api_key_config is not None and not remote_models:
-        return False, "No Bedrock models were discovered"
-
-    if not static_llms and not remote_models:
-        return True, []
-
-    if provider_name == "Bedrock" and bedrock_api_key_config is not None:
-        static_models = {model["name"]: model for model in static_llms}
-        models = [
-            {
-                **model,
-                "max_tokens": static_models.get(model["name"], {}).get("max_tokens", model.get("max_tokens", 8192)),
-            }
-            for model in remote_models
-        ]
-    else:
-        # Merge static and remote models, preferring remote_models on name conflicts
-        merged = {m["name"]: m for m in static_llms}
-        merged.update({m["name"]: m for m in remote_models})
-        models = list(merged.values())
+    if provider_name in ModelMeta:
+        remote_models = await ModelMeta[provider_name](api_key, model_base_url).get_model_list()
+    merged = {m["name"]: m for m in static_llms}
+    merged.update({m["name"]: m for m in remote_models})
+    models = list(merged.values())
 
     models.sort(key=lambda x: x["name"])
     return True, models
@@ -406,6 +302,15 @@ async def update_provider_instance(
     if not provider_obj:
         return False, f"Provider '{provider_id_or_name}' does not exist"
 
+    if model_info:
+        try:
+            validate_model_selection(provider_obj.provider_name, [mt for model in (model_info or []) for mt in model_utils.normalize_model_types(model.get("model_type"))])
+        except ValueError as error:
+            return False, str(error)
+
+    elif provider_obj.provider_name not in SUPPORTED_MODEL_TYPES:
+        return False, f"Unsupported provider: {provider_obj.provider_name}"
+
     provider_name = provider_obj.provider_name
 
     # Find the instance
@@ -423,21 +328,13 @@ async def update_provider_instance(
     api_key = _normalize_provider_api_key(provider_name, api_key)
     region = (region or "").strip()
 
-    try:
-        bedrock_api_key_config = _validate_bedrock_api_key_config(api_key) if provider_name == "Bedrock" else None
-    except ValueError as error:
-        return False, str(error)
-    bedrock_api_key_auth = bedrock_api_key_config is not None
-    if bedrock_api_key_auth:
-        api_key = bedrock_api_key_config
-
     api_key_str = ""
     if api_key:
         api_key_str = api_key if isinstance(api_key, str) else json.dumps(api_key)
 
     # Verify api_key
     model_verify_result = {}
-    runtime_verify = verify and not bedrock_api_key_auth
+    runtime_verify = verify
     if runtime_verify:
         success, msg, model_verify_result = await verify_api_key(provider_name, api_key, base_url, region, model_info)
         if not success:
@@ -602,26 +499,13 @@ async def create_provider_instance(tenant_id: str, provider_id_or_name: str, ins
     if provider_name not in allowed_factories:
         return False, f"Provider '{provider_name}' is not allowed"
 
-    try:
-        bedrock_api_key_config = _validate_bedrock_api_key_config(api_key) if provider_name == "Bedrock" else None
-    except ValueError as error:
-        return False, str(error)
-    bedrock_api_key_auth = bedrock_api_key_config is not None
-    if bedrock_api_key_auth:
-        api_key = bedrock_api_key_config
-
     api_key_str = ""
     if api_key:
         api_key_str = api_key if isinstance(api_key, str) else json.dumps(api_key)
 
-    if bedrock_api_key_auth:
-        if not model_info:
-            return False, "At least one Bedrock model must be selected"
-        model_verify_result = {}
-    else:
-        success, verify_msg, model_verify_result = await verify_api_key(provider_name, api_key, base_url, region, model_info)
-        if not success:
-            return False, verify_msg
+    success, verify_msg, model_verify_result = await verify_api_key(provider_name, api_key, base_url, region, model_info)
+    if not success:
+        return False, verify_msg
 
     extra_fields = {}
     if base_url:
@@ -643,7 +527,7 @@ async def create_provider_instance(tenant_id: str, provider_id_or_name: str, ins
             return False, msg
     else:
         msg = ""
-        target_factory_name = "siliconflow_intl" if provider_name.lower() == "siliconflow" and region == "intl" else provider_name
+        target_factory_name = provider_name
         factory_info = [f for f in FACTORY_LLM_INFOS if f["name"] == target_factory_name]
         factory_llms = factory_info[0]["llm"]
         for llm in factory_llms:
@@ -782,10 +666,7 @@ async def verify_api_key(provider_id_or_name: str, api_key: str | dict, base_url
     base_url = _normalize_provider_base_url(provider_name, base_url)
     api_key = _normalize_provider_api_key(provider_name, api_key)
 
-    if region and region == "intl" and provider_name.lower() == "siliconflow":
-        target_factory_name = "siliconflow_intl"
-    else:
-        target_factory_name = provider_name
+    target_factory_name = provider_name
 
     factory_info = [f for f in FACTORY_LLM_INFOS if f["name"] == target_factory_name]
     if not factory_info:
@@ -833,6 +714,12 @@ async def verify_api_key(provider_id_or_name: str, api_key: str | dict, base_url
                 discovery_error = f" Discovery against {safe_url} failed: {reason}"
             if not factory_llms:
                 return False, f"No models found for provider '{provider_id_or_name}'.{discovery_error}", {}
+
+    try:
+        for model in factory_llms:
+            validate_model_selection(provider_name, _factory_model_types(model))
+    except ValueError as error:
+        return False, str(error), {}
 
     model_verify_result = {}
     # test if api key works
@@ -930,44 +817,6 @@ async def verify_api_key(provider_id_or_name: str, api_key: str | dict, base_url
                     continue
                 passed = True
 
-            elif mt_value == LLMType.OCR.value:
-                if provider_name not in OcrModel:
-                    msg += f"\nOCR model from {provider_name} is not supported yet."
-                    model_verify_result[llm["llm_name"]] = ModelVerifyStatusEnum.FAIL.value
-                    continue
-                mdl = OcrModel[provider_name](key=api_key_str, model_name=llm["llm_name"], base_url=base_url)
-                label = f"model({provider_name}/{llm['llm_name']})"
-                ok, result = await _run_verification(label, asyncio.to_thread(mdl.check_available), timeout_seconds)
-                if not ok:
-                    msg += result
-                    model_verify_result[llm["llm_name"]] = ModelVerifyStatusEnum.FAIL.value
-                    continue
-                ok2, reason = result
-                if not ok2:
-                    msg += f"\nFail to access {label}.{reason or 'Model not available'}"
-                    model_verify_result[llm["llm_name"]] = ModelVerifyStatusEnum.FAIL.value
-                    continue
-                passed = True
-
-            elif mt_value == LLMType.TTS.value:
-                if provider_name not in TTSModel:
-                    msg += f"\nTTS model from {provider_name} is not supported yet."
-                    model_verify_result[llm["llm_name"]] = ModelVerifyStatusEnum.FAIL.value
-                    continue
-                mdl = TTSModel[provider_name](key=api_key_str, model_name=llm["llm_name"], base_url=base_url)
-
-                def drain_tts():
-                    for _ in mdl.tts("Hello~ RAGFlower!"):
-                        pass
-
-                label = f"model({provider_name}/{llm['llm_name']})"
-                ok, result = await _run_verification(label, asyncio.to_thread(drain_tts), timeout_seconds)
-                if not ok:
-                    msg += result
-                    model_verify_result[llm["llm_name"]] = ModelVerifyStatusEnum.FAIL.value
-                    continue
-                passed = True
-
             elif mt_value == LLMType.VISION.value:
                 if provider_name not in CvModel:
                     msg += f"\nImage to text model from {provider_name} is not supported yet."
@@ -985,25 +834,6 @@ async def verify_api_key(provider_id_or_name: str, api_key: str | dict, base_url
                 m, tc = result
                 if not tc and m.find("**ERROR**:") >= 0:
                     msg += f"\nFail to access {label}.{m}"
-                    model_verify_result[llm["llm_name"]] = ModelVerifyStatusEnum.FAIL.value
-                    continue
-                passed = True
-
-            elif mt_value == LLMType.ASR.value:
-                if provider_name not in Seq2txtModel:
-                    msg += f"\nSpeech model from {provider_name} is not supported yet."
-                    model_verify_result[llm["llm_name"]] = ModelVerifyStatusEnum.FAIL.value
-                    continue
-                mdl = Seq2txtModel[provider_name](key=api_key_str, model_name=llm["llm_name"], base_url=base_url)
-                label = f"model({provider_name}/{llm['llm_name']})"
-                ok, result = await _run_verification(label, asyncio.to_thread(mdl.check_available), timeout_seconds)
-                if not ok:
-                    msg += result
-                    model_verify_result[llm["llm_name"]] = ModelVerifyStatusEnum.FAIL.value
-                    continue
-                ok2, reason = result
-                if not ok2:
-                    msg += f"\nFail to access {label}.{reason or 'Model not available'}"
                     model_verify_result[llm["llm_name"]] = ModelVerifyStatusEnum.FAIL.value
                     continue
                 passed = True
@@ -1110,79 +940,6 @@ def _public_factory_model(llm: dict) -> dict:
     }
 
 
-def _merge_nvidia_models(factory_info: dict, remote_models: list[dict]) -> list[dict]:
-    static_models = {_factory_llm_name(llm): _public_factory_model(llm) for llm in factory_info.get("llm", [])}
-    merged = []
-    seen = set()
-    for remote in remote_models:
-        model_name = str(remote.get("name", "")).strip()
-        if not model_name or model_name in seen:
-            continue
-        seen.add(model_name)
-        model = dict(remote)
-        model["name"] = model_name
-        if preset := static_models.get(model_name):
-            model = {**model, **preset}
-        if not model.get("model_types"):
-            model["model_types"] = [LLMType.CHAT.value]
-        model["max_tokens"] = _to_int(model.get("max_tokens"), 8192)
-        model.setdefault("features", [])
-        merged.append(model)
-    merged.sort(key=lambda model: model["name"])
-    return merged
-
-
-def _set_discovered_model_metadata(extra: dict, model: dict):
-    extra["max_tokens"] = _to_int(model.get("max_tokens"), 8192)
-    if model.get("max_dimension") is not None:
-        extra["max_dimension"] = model["max_dimension"]
-    if model.get("dimensions"):
-        extra["dimensions"] = model["dimensions"]
-    features = model.get("features") or []
-    extra["is_tools"] = "is_tools" in features
-    extra["thinking"] = "thinking" in features
-
-
-def _reconcile_nvidia_instance_models(provider_obj, instance_obj, remote_models: list[dict]):
-    normalized = []
-    seen = set()
-    for model in remote_models:
-        model_name = str(model.get("name", "")).strip()
-        if not model_name or model_name in seen:
-            continue
-        seen.add(model_name)
-        normalized.append({**model, "name": model_name})
-    if not normalized:
-        raise ValueError("NVIDIA model discovery returned no usable models")
-
-    with DB.atomic():
-        existing_models = TenantModelService.get_models_by_instance_id(instance_obj.id)
-        existing_by_name = {model.model_name: model for model in existing_models}
-
-        for model in normalized:
-            model_name = model["name"]
-            model_types = model.get("model_types") or [LLMType.CHAT.value]
-            model_type = model_utils.calculate_model_type(model_types)
-            if existing := existing_by_name.pop(model_name, None):
-                extra = json.loads(existing.extra or "{}")
-                _set_discovered_model_metadata(extra, model)
-                TenantModelService.update_model(existing.id, {"model_type": model_type, "extra": json.dumps(extra)})
-                continue
-
-            extra = {"verify": ModelVerifyStatusEnum.UNKNOWN.value}
-            _set_discovered_model_metadata(extra, model)
-            TenantModelService.insert(
-                model_name=model_name,
-                provider_id=provider_obj.id,
-                instance_id=instance_obj.id,
-                model_type=model_type,
-                status=ActiveStatusEnum.ACTIVE.value,
-                extra=json.dumps(extra),
-            )
-
-        TenantModelService.delete_by_ids([model.id for model in existing_by_name.values()])
-
-
 def _get_provider_instance(provider_obj, instance_id_or_name: str):
     instance_obj = None
     if instance_id_or_name:
@@ -1221,19 +978,6 @@ async def list_instance_models(tenant_id: str, provider_id_or_name: str, instanc
         if not factory_infos:
             return False, f"Provider '{provider_id_or_name}' not found"
         factory_info = factory_infos[0]
-
-        if provider_obj.provider_name == "NVIDIA":
-            instance_obj = _get_provider_instance(provider_obj, instance_id_or_name)
-            if not instance_obj:
-                return False, f"No instance found for provider '{provider_id_or_name}' and instance '{instance_id_or_name}'"
-            instance_extra = json.loads(instance_obj.extra or "{}")
-            base_url = instance_extra.get("base_url") or factory_info.get("url", "")
-            remote_models = await ModelMeta["NVIDIA"](instance_obj.api_key, base_url).get_model_list()
-            models = _merge_nvidia_models(factory_info, remote_models)
-            if not models:
-                return False, "NVIDIA model discovery returned no usable models"
-            _reconcile_nvidia_instance_models(provider_obj, instance_obj, models)
-            return True, models
 
         llms = factory_info.get("llm", [])
         models = [{"name": llm["llm_name"], "rank": _to_int(llm.get("rank", 500))} for llm in llms]
@@ -1282,6 +1026,10 @@ def update_instance_models(tenant_id: str, provider_id_or_name: str, instance_id
         provider_obj = TenantModelProviderService.get_by_tenant_id_and_provider_name(tenant_id, provider_id_or_name)
     if not provider_obj:
         return False, f"No provider found for provider '{provider_id_or_name}'"
+    try:
+        validate_model_selection(provider_obj.provider_name, model_types)
+    except ValueError as error:
+        return False, str(error)
     instance_obj = None
     if instance_id_or_name:
         _, instance_obj = TenantModelInstanceService.get_by_id(instance_id_or_name)
@@ -1311,6 +1059,11 @@ def add_model_to_instance(tenant_id: str, provider_id_or_name: str, instance_id_
         provider_obj = TenantModelProviderService.get_by_tenant_id_and_provider_name(tenant_id, provider_id_or_name)
     if not provider_obj:
         return False, f"No provider found for provider '{provider_id_or_name}'"
+    try:
+        validate_model_selection(provider_obj.provider_name, model_type)
+    except ValueError as error:
+        return False, str(error)
+
     instance_obj = None
     if instance_id_or_name:
         _, instance_obj = TenantModelInstanceService.get_by_id(instance_id_or_name)

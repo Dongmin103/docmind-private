@@ -29,7 +29,6 @@ import {
 } from 'react';
 import { useFetchInstanceNameSet, useHideWhenInstanceExists } from '../hooks';
 import { getProviderConfig } from '../provider-schema/field-config';
-import { BedrockInstanceCard } from './bedrock-instance-card';
 import { DraftModeCard } from './components/draft-mode-card';
 import { InstanceNameSection } from './components/instance-name-section';
 import { SavedModeCard } from './components/saved-mode-card';
@@ -296,15 +295,6 @@ export const ProviderInstanceCard = forwardRef<
   ProviderInstanceCardRef,
   ProviderInstanceCardProps
 >(function ProviderInstanceCard(props, ref) {
-  // AWS Bedrock has provider-specific fields (auth_mode, region, AK/SK,
-  // role ARN, model name, max_tokens) that don't fit the generic
-  // DynamicForm path. Render its own inline card instead.
-  //
-  // Dispatch BEFORE any hooks so each branch component has a stable
-  // hook-call order (Rules of Hooks).
-  if (props.providerName === 'Bedrock') {
-    return <BedrockInstanceCard {...props} ref={ref} />;
-  }
   return <GenericProviderInstanceCard {...props} ref={ref} />;
 });
 

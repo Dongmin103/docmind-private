@@ -20,45 +20,15 @@ from io import BytesIO
 
 from deepdoc.parser.utils import get_text
 from rag.app import naive
-from rag.app.naive import by_plaintext, PARSERS
+from rag.app.naive import PARSERS
 from api.db.joint_services.tenant_model_service import get_composite_model_name_by_id
 from common.constants import MAXIMUM_PAGE_NUMBER
 from common.parser_config_utils import normalize_layout_recognizer
 from rag.nlp import bullets_category, is_english, remove_contents_table, hierarchical_merge, make_colon_as_title, naive_merge, random_choices, tokenize_table, tokenize_chunks, attach_media_context
 from rag.nlp import rag_tokenizer
-from deepdoc.parser import PdfParser, HtmlParser
-from deepdoc.parser.figure_parser import vision_figure_parser_docx_wrapper
+from deepdoc.parser import HtmlParser
 from PIL import Image
 from rag.utils.lazy_image import LazyImage
-
-
-class Pdf(PdfParser):
-    def __call__(self, filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, zoomin=3, callback=None):
-        from timeit import default_timer as timer
-
-        start = timer()
-        callback(msg="OCR started")
-        self.__images__(filename if not binary else binary, zoomin, from_page, to_page, callback)
-        callback(msg="OCR finished ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._layouts_rec(zoomin)
-        callback(0.67, "Layout analysis ({:.2f}s)".format(timer() - start))
-        logging.debug("layouts: {}".format(timer() - start))
-
-        start = timer()
-        self._table_transformer_job(zoomin)
-        callback(0.68, "Table analysis ({:.2f}s)".format(timer() - start))
-
-        start = timer()
-        self._text_merge()
-        tbls = self._extract_table_figure(True, zoomin, True, True)
-        self._naive_vertical_merge()
-        self._filter_forpages()
-        self._merge_with_same_bullet()
-        callback(0.8, "Text extraction ({:.2f}s)".format(timer() - start))
-
-        return [(b["text"] + self._line_tag(b, zoomin), b.get("layoutno", "")) for b in self.boxes], tbls
 
 
 def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang="Chinese", callback=None, **kwargs):
@@ -86,7 +56,6 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
 
         remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
 
-        tbls = vision_figure_parser_docx_wrapper(sections=sections, tbls=tbls, callback=callback, lang=lang, **kwargs)
         # tbls = [((None, lns), None) for lns in tbls]
         sections = [(item[0], item[1] if item[1] is not None else "") for item in sections if not isinstance(item[1], (Image.Image, LazyImage))]
         callback(0.8, "Finish parsing.")
@@ -105,7 +74,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
         name = layout_recognizer.strip().lower()
-        parser = PARSERS.get(name, by_plaintext)
+        parser = PARSERS[name]
         callback(0.1, "Start to parse.")
 
         sections, tables, pdf_parser = parser(
@@ -115,7 +84,7 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
             to_page=to_page,
             lang=lang,
             callback=callback,
-            pdf_cls=Pdf,
+
             layout_recognizer=layout_recognizer,
             mineru_llm_name=parser_model_name,
             mistral_ocr_llm_name=parser_model_name,

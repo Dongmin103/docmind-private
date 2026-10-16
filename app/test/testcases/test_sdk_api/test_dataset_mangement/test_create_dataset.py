@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from operator import attrgetter
 
 import pytest
-from configs import DATASET_NAME_LIMIT, DEFAULT_PARSER_CONFIG, HOST_ADDRESS, INVALID_API_TOKEN, IS_GO_PROXY, SDK_UNAUTHORIZED_ERROR_MESSAGE
+from configs import DATASET_NAME_LIMIT, DEFAULT_PARSER_CONFIG, HOST_ADDRESS, INVALID_API_TOKEN, SDK_UNAUTHORIZED_ERROR_MESSAGE
 from hypothesis import example, given, settings
 from ragflow_sdk import DataSet, RAGFlow
 from utils import encode_avatar
@@ -90,13 +90,7 @@ class TestDatasetCreate:
     def test_name_invalid(self, client, name, expected_message):
         with pytest.raises(Exception) as exception_info:
             client.create_dataset(**{"name": name})
-        if IS_GO_PROXY:
-            if name == "":
-                expected_message = "failed on the 'required' tag"
-            elif isinstance(name, str) and not name.strip():
-                expected_message = "dataset name can't be empty"
-            elif isinstance(name, str):
-                expected_message = f"Dataset name length is {len(name)} which is large than {DATASET_NAME_LIMIT}"
+        pass
         assert expected_message in str(exception_info.value), str(exception_info.value)
 
     @pytest.mark.p3
@@ -244,13 +238,13 @@ class TestDatasetCreate:
     def test_embedding_model_unset(self, client):
         payload = {"name": "embedding_model_unset"}
         dataset = client.create_dataset(**payload)
-        assert dataset.embedding_model.startswith("BAAI/bge-small-en-v1.5@Local@Builtin") if IS_GO_PROXY else dataset.embedding_model == "BAAI/bge-small-en-v1.5@Local@Builtin", str(dataset)
+        assert dataset.embedding_model == "BAAI/bge-small-en-v1.5@Local@Builtin", str(dataset)
 
     @pytest.mark.p2
     def test_embedding_model_none(self, client):
         payload = {"name": "embedding_model_none", "embedding_model": None}
         dataset = client.create_dataset(**payload)
-        assert dataset.embedding_model.startswith("BAAI/bge-small-en-v1.5@Local@Builtin") if IS_GO_PROXY else dataset.embedding_model == "BAAI/bge-small-en-v1.5@Local@Builtin", str(dataset)
+        assert dataset.embedding_model == "BAAI/bge-small-en-v1.5@Local@Builtin", str(dataset)
 
     @pytest.mark.p2
     @pytest.mark.parametrize(
@@ -336,10 +330,7 @@ class TestDatasetCreate:
         with pytest.raises(Exception) as exception_info:
             client.create_dataset(**payload)
         error_message = str(exception_info.value)
-        if IS_GO_PROXY:
-            assert error_message.startswith("Input should be 'naive', 'book'") and error_message.endswith("or 'tag'"), error_message
-        else:
-            assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table', 'tag' or 'resume'" in error_message, error_message
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table', 'tag' or 'resume'" in error_message, error_message
 
     @pytest.mark.p2
     def test_chunk_method_unset(self, client):
@@ -384,28 +375,8 @@ class TestDatasetCreate:
             ("task_page_size_None", {"task_page_size": None}),
             ("pages", {"pages": [[1, 100]]}),
             ("pages_none", {"pages": None}),
-            ("graphrag_true", {"graphrag": {"use_graphrag": True}}),
-            ("graphrag_false", {"graphrag": {"use_graphrag": False}}),
-            ("graphrag_entity_types", {"graphrag": {"entity_types": ["age", "sex", "height", "weight"]}}),
-            ("graphrag_method_general", {"graphrag": {"method": "general"}}),
-            ("graphrag_method_light", {"graphrag": {"method": "light"}}),
-            ("graphrag_community_true", {"graphrag": {"community": True}}),
-            ("graphrag_community_false", {"graphrag": {"community": False}}),
-            ("graphrag_resolution_true", {"graphrag": {"resolution": True}}),
-            ("graphrag_resolution_false", {"graphrag": {"resolution": False}}),
-            ("raptor_true", {"raptor": {"use_raptor": True}}),
-            ("raptor_false", {"raptor": {"use_raptor": False}}),
-            ("raptor_prompt", {"raptor": {"prompt": "Who are you?"}}),
-            ("raptor_max_token_min", {"raptor": {"max_token": 512}}),
-            ("raptor_max_token_mid", {"raptor": {"max_token": 1024}}),
-            ("raptor_max_token_max", {"raptor": {"max_token": 2048}}),
-            ("raptor_clustering_threshold_min", {"raptor": {"clustering_threshold": 0.0}}),
-            ("raptor_clustering_threshold_mid", {"raptor": {"clustering_threshold": 0.5}}),
-            ("raptor_clustering_threshold_max", {"raptor": {"clustering_threshold": 1.0}}),
-            ("raptor_max_cluster_min", {"raptor": {"max_cluster": 1}}),
-            ("raptor_max_cluster_mid", {"raptor": {"max_cluster": 512}}),
-            ("raptor_max_cluster_max", {"raptor": {"max_cluster": 1024}}),
-            ("raptor_random_seed_min", {"raptor": {"random_seed": 0}}),
+
+
         ],
         ids=[
             "auto_keywords_min",
@@ -434,28 +405,8 @@ class TestDatasetCreate:
             "task_page_size_None",
             "pages",
             "pages_none",
-            "graphrag_true",
-            "graphrag_false",
-            "graphrag_entity_types",
-            "graphrag_method_general",
-            "graphrag_method_light",
-            "graphrag_community_true",
-            "graphrag_community_false",
-            "graphrag_resolution_true",
-            "graphrag_resolution_false",
-            "raptor_true",
-            "raptor_false",
-            "raptor_prompt",
-            "raptor_max_token_min",
-            "raptor_max_token_mid",
-            "raptor_max_token_max",
-            "raptor_clustering_threshold_min",
-            "raptor_clustering_threshold_mid",
-            "raptor_clustering_threshold_max",
-            "raptor_max_cluster_min",
-            "raptor_max_cluster_mid",
-            "raptor_max_cluster_max",
-            "raptor_random_seed_min",
+
+
         ],
     )
     def test_parser_config(self, client, name, parser_config):
@@ -502,28 +453,8 @@ class TestDatasetCreate:
             ("pages_not_list", {"pages": "1,2"}, "Input should be a valid list"),
             ("pages_not_list_in_list", {"pages": ["1,2"]}, "Input should be a valid list"),
             ("pages_not_int_list", {"pages": [["string1", "string2"]]}, "Input should be a valid integer"),
-            ("graphrag_type_invalid", {"graphrag": {"use_graphrag": "string"}}, "Input should be a valid boolean"),
-            ("graphrag_entity_types_not_list", {"graphrag": {"entity_types": "1,2"}}, "Input should be a valid list"),
-            ("graphrag_entity_types_not_str_in_list", {"graphrag": {"entity_types": [1, 2]}}, "nput should be a valid string"),
-            ("graphrag_method_unknown", {"graphrag": {"method": "unknown"}}, "Input should be 'light', 'general' or 'ner'"),
-            ("graphrag_method_none", {"graphrag": {"method": None}}, "Input should be 'light', 'general' or 'ner'"),
-            ("graphrag_community_type_invalid", {"graphrag": {"community": "string"}}, "Input should be a valid boolean"),
-            ("graphrag_resolution_type_invalid", {"graphrag": {"resolution": "string"}}, "Input should be a valid boolean"),
-            ("raptor_type_invalid", {"raptor": {"use_raptor": "string"}}, "Input should be a valid boolean"),
-            ("raptor_prompt_empty", {"raptor": {"prompt": ""}}, "String should have at least 1 character"),
-            ("raptor_prompt_space", {"raptor": {"prompt": " "}}, "String should have at least 1 character"),
-            ("raptor_max_token_max_limit", {"raptor": {"max_token": 2049}}, "Input should be less than or equal to 2048"),
-            ("raptor_max_token_type_invalid", {"raptor": {"max_token": "string"}}, "Input should be a valid integer"),
-            ("raptor_clustering_threshold_min_limit", {"raptor": {"clustering_threshold": -0.1}}, "Input should be greater than or equal to 0"),
-            ("raptor_clustering_threshold_max_limit", {"raptor": {"clustering_threshold": 1.1}}, "Input should be less than or equal to 1"),
-            ("raptor_clustering_threshold_type_invalid", {"raptor": {"clustering_threshold": "string"}}, "Input should be a valid number"),
-            ("raptor_max_cluster_min_limit", {"raptor": {"max_cluster": 0}}, "Input should be greater than or equal to 1"),
-            ("raptor_max_cluster_max_limit", {"raptor": {"max_cluster": 1025}}, "Input should be less than or equal to 1024"),
-            ("raptor_max_cluster_float_not_allowed", {"raptor": {"max_cluster": 3.14}}, "Input should be a valid integer"),
-            ("raptor_max_cluster_type_invalid", {"raptor": {"max_cluster": "string"}}, "Input should be a valid integer"),
-            ("raptor_random_seed_min_limit", {"raptor": {"random_seed": -1}}, "Input should be greater than or equal to 0"),
-            ("raptor_random_seed_float_not_allowed", {"raptor": {"random_seed": 3.14}}, "Input should be a valid integer"),
-            ("raptor_random_seed_type_invalid", {"raptor": {"random_seed": "string"}}, "Input should be a valid integer"),
+
+
             ("parser_config_type_invalid", {"delimiter": "a" * 65536}, "Parser config exceeds size limit (max 65,535 characters)"),
         ],
         ids=[
@@ -556,28 +487,8 @@ class TestDatasetCreate:
             "pages_not_list",
             "pages_not_list_in_list",
             "pages_not_int_list",
-            "graphrag_type_invalid",
-            "graphrag_entity_types_not_list",
-            "graphrag_entity_types_not_str_in_list",
-            "graphrag_method_unknown",
-            "graphrag_method_none",
-            "graphrag_community_type_invalid",
-            "graphrag_resolution_type_invalid",
-            "raptor_type_invalid",
-            "raptor_prompt_empty",
-            "raptor_prompt_space",
-            "raptor_max_token_max_limit",
-            "raptor_max_token_type_invalid",
-            "raptor_clustering_threshold_min_limit",
-            "raptor_clustering_threshold_max_limit",
-            "raptor_clustering_threshold_type_invalid",
-            "raptor_max_cluster_min_limit",
-            "raptor_max_cluster_max_limit",
-            "raptor_max_cluster_float_not_allowed",
-            "raptor_max_cluster_type_invalid",
-            "raptor_random_seed_min_limit",
-            "raptor_random_seed_float_not_allowed",
-            "raptor_random_seed_type_invalid",
+
+
             "parser_config_type_invalid",
         ],
     )
@@ -646,50 +557,7 @@ class TestDatasetCreate:
 
 @pytest.mark.usefixtures("clear_datasets")
 class TestParserConfigBugFix:
-    @pytest.mark.p1
-    def test_parser_config_missing_raptor_and_graphrag(self, client):
-        parser_config = DataSet.ParserConfig(client, {"chunk_token_num": 1024})
-        payload = {"name": "test_parser_config_missing_fields_sdk", "parser_config": parser_config}
-        dataset = client.create_dataset(**payload)
 
-        config = dataset.parser_config
-        assert hasattr(config, "raptor"), "raptor field should be present"
-        assert hasattr(config, "graphrag"), "graphrag field should be present"
-        assert config.raptor.use_raptor is False, "raptor.use_raptor should default to False"
-        assert config.graphrag.use_graphrag is False, "graphrag.use_graphrag should default to False"
-        assert config.chunk_token_num == 1024, "User-provided chunk_token_num should be preserved"
-
-    @pytest.mark.p1
-    def test_parser_config_with_only_raptor(self, client):
-        parser_config = DataSet.ParserConfig(client, {"chunk_token_num": 1024, "raptor": {"use_raptor": True}})
-        payload = {"name": "test_parser_config_only_raptor_sdk", "parser_config": parser_config}
-        dataset = client.create_dataset(**payload)
-
-        config = dataset.parser_config
-        assert config.raptor.use_raptor is True, "User-provided raptor.use_raptor should be preserved"
-        assert hasattr(config, "graphrag"), "graphrag field should be present"
-        assert config.graphrag.use_graphrag is False, "graphrag.use_graphrag should default to False"
-
-    @pytest.mark.p1
-    def test_parser_config_with_only_graphrag(self, client):
-        parser_config = DataSet.ParserConfig(client, {"chunk_token_num": 1024, "graphrag": {"use_graphrag": True}})
-        payload = {"name": "test_parser_config_only_graphrag_sdk", "parser_config": parser_config}
-        dataset = client.create_dataset(**payload)
-
-        config = dataset.parser_config
-        assert hasattr(config, "raptor"), "raptor field should be present"
-        assert config.raptor.use_raptor is False, "raptor.use_raptor should default to False"
-        assert config.graphrag.use_graphrag is True, "User-provided graphrag.use_graphrag should be preserved"
-
-    @pytest.mark.p1
-    def test_parser_config_with_both_fields(self, client):
-        parser_config = DataSet.ParserConfig(client, {"chunk_token_num": 1024, "raptor": {"use_raptor": True}, "graphrag": {"use_graphrag": True}})
-        payload = {"name": "test_parser_config_both_fields_sdk", "parser_config": parser_config}
-        dataset = client.create_dataset(**payload)
-
-        config = dataset.parser_config
-        assert config.raptor.use_raptor is True, "User-provided raptor.use_raptor should be preserved"
-        assert config.graphrag.use_graphrag is True, "User-provided graphrag.use_graphrag should be preserved"
 
     @pytest.mark.p2
     @pytest.mark.parametrize("chunk_method", ["qa", "manual", "paper", "book", "laws", "presentation"])

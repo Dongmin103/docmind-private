@@ -170,7 +170,7 @@ describe('addTenantParams — clearing model selections', () => {
           rerank_id: '',
           tenant_rerank_id: 'stale-tenant-model-id',
         },
-        '/api/v1/chats/chat-id',
+        '/api/v1/users/me/models',
       ),
     ).toEqual({
       rerank_id: '',
@@ -182,7 +182,7 @@ describe('addTenantParams — clearing model selections', () => {
     expect(
       addTenantParams(
         { tenant_rerank_id: 'existing-tenant-model-id' },
-        '/api/v1/chats/chat-id',
+        '/api/v1/users/me/models',
       ),
     ).toEqual({ tenant_rerank_id: 'existing-tenant-model-id' });
   });

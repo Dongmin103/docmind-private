@@ -88,7 +88,11 @@ def runtime_module(monkeypatch):
     schemas = types.ModuleType("rag.parser_platform.schemas")
     schemas.SourceFormat = SourceFormat
 
+    import common
+    settings = types.ModuleType("common.settings")
+    monkeypatch.setattr(common, "settings", settings, raising=False)
     modules = {
+        "common.settings": settings,
         service.__name__: service,
         db_models.__name__: db_models,
         activation.__name__: activation,

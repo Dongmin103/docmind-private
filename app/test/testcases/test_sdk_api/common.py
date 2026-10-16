@@ -16,8 +16,6 @@
 
 from pathlib import Path
 
-import pytest
-from configs import IS_GO_PROXY
 from ragflow_sdk import Chat, Chunk, DataSet, Document, RAGFlow, Session
 from utils.file_utils import create_txt_file
 
@@ -26,8 +24,7 @@ REST_API_MAX_PAGE_SIZE = 100
 
 
 def _skip_missing_go_document_metadata(error: Exception) -> None:
-    if IS_GO_PROXY and "Unknown column 'meta_fields'" in str(error):
-        pytest.skip("Go deployment database schema is missing document.meta_fields")
+    pass
 
 
 def list_all_documents(dataset: DataSet, *, limit: int | None = None, page_size: int = REST_API_MAX_PAGE_SIZE) -> list[Document]:

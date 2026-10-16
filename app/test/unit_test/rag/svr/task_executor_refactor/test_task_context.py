@@ -47,7 +47,6 @@ class TestTaskContextInit:
         minio_limiter = MagicMock()
         chunk_limiter = MagicMock()
         embed_limiter = MagicMock()
-        kg_limiter = MagicMock()
         write_interceptor = MagicMock()
         progress_callback = MagicMock()
         has_canceled_func = MagicMock()
@@ -59,7 +58,6 @@ class TestTaskContextInit:
                 minio=minio_limiter,
                 chunk=chunk_limiter,
                 embed=embed_limiter,
-                kg=kg_limiter,
             ),
             callbacks=TaskCallbacks(
                 progress=progress_callback,
@@ -72,7 +70,6 @@ class TestTaskContextInit:
         assert ctx.minio_limiter is minio_limiter
         assert ctx.chunk_limiter is chunk_limiter
         assert ctx.embed_limiter is embed_limiter
-        assert ctx.kg_limiter is kg_limiter
         assert ctx.write_interceptor is write_interceptor
         assert ctx.callbacks.progress is progress_callback
         assert ctx.has_canceled_func is has_canceled_func
@@ -295,17 +292,7 @@ class TestTaskContextTaskTypeAndRoutingProperties:
         ctx = _make_ctx(task=task)
         assert ctx.task_type == "raptor"
 
-    def test_dataflow_id_default(self):
-        """Test dataflow_id property defaults to empty string."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.dataflow_id == ""
 
-    def test_dataflow_id(self):
-        """Test dataflow_id property."""
-        task = {"id": "task_1", "tenant_id": "tenant_1", "dataflow_id": "flow_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.dataflow_id == "flow_1"
 
 
 class TestTaskContextAdditionalProperties:
@@ -323,58 +310,7 @@ class TestTaskContextAdditionalProperties:
         ctx = _make_ctx(task=task)
         assert ctx.pagerank == 10
 
-    def test_file_default(self):
-        """Test file property defaults to None."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.file is None
 
-    def test_file(self):
-        """Test file property."""
-        file_obj = MagicMock()
-        task = {"id": "task_1", "tenant_id": "tenant_1", "file": file_obj}
-        ctx = _make_ctx(task=task)
-        assert ctx.file is file_obj
-
-
-class TestTaskContextMemoryProperties:
-    """Tests for memory task properties."""
-
-    def test_memory_id_default(self):
-        """Test memory_id property defaults to empty string."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.memory_id == ""
-
-    def test_memory_id(self):
-        """Test memory_id property."""
-        task = {"id": "task_1", "tenant_id": "tenant_1", "memory_id": "mem_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.memory_id == "mem_1"
-
-    def test_source_id_default(self):
-        """Test source_id property defaults to empty string."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.source_id == ""
-
-    def test_source_id(self):
-        """Test source_id property."""
-        task = {"id": "task_1", "tenant_id": "tenant_1", "source_id": "src_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.source_id == "src_1"
-
-    def test_message_dict_default(self):
-        """Test message_dict property defaults to empty dict."""
-        task = {"id": "task_1", "tenant_id": "tenant_1"}
-        ctx = _make_ctx(task=task)
-        assert ctx.message_dict == {}
-
-    def test_message_dict(self):
-        """Test message_dict property."""
-        task = {"id": "task_1", "tenant_id": "tenant_1", "message_dict": {"key": "value"}}
-        ctx = _make_ctx(task=task)
-        assert ctx.message_dict == {"key": "value"}
 
 
 class TestTaskContextRawTask:

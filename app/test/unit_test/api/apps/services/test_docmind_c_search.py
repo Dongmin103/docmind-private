@@ -179,6 +179,16 @@ def test_rrf_applies_document_cap_then_global_cap():
     assert sum(row.chunk["doc_id"] == "doc-a" for row in merged) == 8
 
 
+def test_answer_only_rrf_refills_unused_capacity_without_changing_public_cap():
+    bm25 = [_candidate(f"a-{index:03}", "doc-1") for index in range(20)]
+    public = service._rrf_candidates(bm25, [])
+    answer = service._rrf_candidates(bm25, [], refill=True)
+
+    assert len(public) == 8
+    assert len(answer) == 20
+    assert [row.chunk["chunk_id"] for row in answer[:8]] == [row.chunk["chunk_id"] for row in public]
+
+
 def test_python_string_prefix_is_exactly_2400_characters_with_korean():
     text = "가" * 2399 + "끝" + "나" * 50
     bounded = service._bounded_text(text)
@@ -256,6 +266,30 @@ def test_search_runs_independent_lanes_with_identical_scope_and_deterministic_re
     assert result["chunks"][0]["rrf_score"] == pytest.approx(1 / 61)
     assert result["chunks"][2]["bm25_rank"] == 2
     assert result["chunks"][2]["dense_rank"] == 2
+
+
+def test_answer_only_search_uses_sixteen_named_rerank_without_changing_public_search(monkeypatch):
+    lane_chunks = {"bm25": [
+        {"chunk_id": f"c-{index}", "doc_id": "doc-1", "kb_id": "dataset-1",
+         "content": f"body {index}", "docnm_kwd": "guide.pdf"}
+        for index in range(6)
+    ], "dense": []}
+    reranker = _Reranker([1.0] * 6)
+    calls = _wire_search(monkeypatch, lane_chunks, reranker)
+
+    public = asyncio.run(service.search("tenant-1", "question", scope={"mode": "all"}))
+    assert len(public["chunks"]) == 5
+    assert public["caps"] == {"lane": 128, "candidates": 128, "per_document": 8, "results": 5}
+    assert reranker.calls[-1][1] == [f"body {index}" for index in range(6)]
+    assert all("use_kg" not in request for _, request, _ in calls)
+
+    reranker.calls.clear()
+    calls.clear()
+    answer = asyncio.run(service.search("tenant-1", "question", scope={"mode": "all"}, answer_mode=True))
+    assert len(answer["chunks"]) == 6
+    assert answer["caps"] == {"lane": 128, "candidates": 128, "per_document_first_pass": 8, "results": 16}
+    assert reranker.calls[-1][1] == [f"Document: guide.pdf\nbody {index}" for index in range(6)]
+    assert all(request["use_kg"] is False for _, request, _ in calls)
 
 
 def test_empty_folder_skips_both_retrieval_and_reranker(monkeypatch):

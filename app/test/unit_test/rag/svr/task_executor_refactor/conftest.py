@@ -118,24 +118,6 @@ def dataflow_task_dict() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def raptor_task_dict() -> Dict[str, Any]:
-    """Provide a task dict for RAPTOR tasks."""
-    task = standard_task_dict()
-    task["task_type"] = "raptor"
-    task["doc_ids"] = ["doc_1", "doc_2"]
-    return task
-
-
-@pytest.fixture
-def graphrag_task_dict() -> Dict[str, Any]:
-    """Provide a task dict for GraphRAG tasks."""
-    task = standard_task_dict()
-    task["task_type"] = "graphrag"
-    task["doc_ids"] = ["doc_1"]
-    return task
-
-
-@pytest.fixture
 def memory_task_dict() -> Dict[str, Any]:
     """Provide a task dict for memory tasks."""
     return {
@@ -162,7 +144,6 @@ def task_context(standard_task_dict, mock_limiter, recording_context):
             minio=mock_limiter,
             chunk=mock_limiter,
             embed=mock_limiter,
-            kg=mock_limiter,
         ),
         callbacks=TaskCallbacks(
             progress=MagicMock(),
@@ -183,7 +164,6 @@ def canceled_task_context(standard_task_dict, mock_limiter, recording_context):
             minio=mock_limiter,
             chunk=mock_limiter,
             embed=mock_limiter,
-            kg=mock_limiter,
         ),
         callbacks=TaskCallbacks(
             progress=MagicMock(),
@@ -545,7 +525,6 @@ def make_task_context(**overrides):
     ctx.chunk_limiter = limiter
     ctx.chat_limiter = limiter
     ctx.embed_limiter = limiter
-    ctx.kg_limiter = limiter
     ctx.minio_limiter = limiter
 
     # Apply remaining overrides
@@ -558,17 +537,6 @@ def make_task_context(**overrides):
 # =============================================================================
 # RaptorService Fixtures (kept for backward compatibility)
 # =============================================================================
-
-
-def create_mock_raptor_context():
-    """Create a mock TaskContext suitable for RaptorService tests."""
-    return make_task_context()
-
-
-@pytest.fixture
-def mock_raptor_context():
-    """Provide a mock TaskContext for RaptorService tests."""
-    return make_task_context()
 
 
 # =============================================================================
@@ -737,17 +705,6 @@ class patch_pipeline_mocks:
         ("task_handler", "ChunkService", False),
     ]
 
-    _RAPTOR = [
-        ("task_handler", "KnowledgebaseService", False),
-        ("task_handler", "RaptorService", False),
-        ("task_handler", "ChunkService", False),
-    ]
-
-    _GRAPH_RAG = [
-        ("task_handler", "KnowledgebaseService", False),
-        ("task_handler", "run_graphrag_for_kb", True),
-    ]
-
     def __init__(self, mode: str = "standard"):
         self._mode = mode
         self._stack = None
@@ -759,11 +716,6 @@ class patch_pipeline_mocks:
         prefixes = list(self._COMMON)
         if self._mode == "standard":
             prefixes += self._STANDARD
-        elif self._mode == "raptor":
-            prefixes += self._RAPTOR
-        elif self._mode == "graphrag":
-            prefixes += self._GRAPH_RAG
-
         mocks = MagicMock()
         ctx_managers = []
         for mod_key, attr, use_async in prefixes:

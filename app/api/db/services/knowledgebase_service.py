@@ -15,11 +15,11 @@
 #
 from datetime import datetime
 
-from peewee import JOIN, fn
+from peewee import fn
 
 from api.constants import DATASET_NAME_LIMIT
 from api.db import TenantPermission
-from api.db.db_models import DB, Document, Knowledgebase, User, UserCanvas
+from api.db.db_models import DB, Document, Knowledgebase, User
 from api.db.joint_services.tenant_model_service import get_composite_model_name_by_ids
 from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
@@ -337,39 +337,13 @@ class KnowledgebaseService(CommonService):
             cls.model.token_num,
             cls.model.chunk_num,
             cls.model.parser_id,
-            cls.model.pipeline_id,
-            UserCanvas.title.alias("pipeline_name"),
-            UserCanvas.avatar.alias("pipeline_avatar"),
             cls.model.parser_config,
             cls.model.pagerank,
-            cls.model.graphrag_task_id,
-            cls.model.graphrag_task_finish_at,
-            cls.model.raptor_task_id,
-            cls.model.raptor_task_finish_at,
-            cls.model.mindmap_task_id,
-            cls.model.mindmap_task_finish_at,
-            cls.model.wiki_task_id,
-            cls.model.wiki_task_finish_at,
-            cls.model.skill_task_id,
-            cls.model.skill_task_finish_at,
-            cls.model.structure_graph_task_id,
-            cls.model.structure_graph_task_finish_at,
-            cls.model.structure_mindmap_task_id,
-            cls.model.structure_mindmap_task_finish_at,
-            cls.model.timeline_task_id,
-            cls.model.timeline_task_finish_at,
-            cls.model.session_graph_task_id,
-            cls.model.session_graph_task_finish_at,
-            cls.model.session_essence_task_id,
-            cls.model.session_essence_task_finish_at,
-            cls.model.structure_task_id,
-            cls.model.structure_task_finish_at,
             cls.model.create_time,
             cls.model.update_time,
         ]
         kbs = (
             cls.model.select(*fields)
-            .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)
             .where((cls.model.id == kb_id), (cls.model.status == StatusEnum.VALID.value))
             .dicts()
         )

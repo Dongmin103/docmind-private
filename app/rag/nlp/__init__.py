@@ -827,7 +827,7 @@ def attach_media_context(chunks, table_context_size=0, image_context_size=0):
 
 
 def append_context2table_image4pdf(sections: list, tabls: list, table_context_size=0, return_context=False, section_page_offset: int = 0):
-    from deepdoc.parser import PdfParser
+    from common.pdf_utils import extract_positions
 
     if table_context_size <= 0:
         return [] if return_context else tabls
@@ -851,10 +851,10 @@ def append_context2table_image4pdf(sections: list, tabls: list, table_context_si
         elif isinstance(poss, str):
             if "@@" not in poss and isinstance(txt, str) and "@@" in txt:
                 poss = txt
-            poss = PdfParser.extract_positions(poss)
+            poss = extract_positions(poss)
         else:
             if isinstance(txt, str) and "@@" in txt:
-                poss = PdfParser.extract_positions(txt)
+                poss = extract_positions(txt)
             else:
                 poss = []
         if isinstance(txt, str) and "@@" in txt:
@@ -1205,9 +1205,10 @@ def _compute_overlap_prefix(prev_text, overlapped_percent):
 
     ``prev_text`` is treated as if HTML/PDF markup has been stripped, so the carve
     index is computed against the visible characters, matching the existing
-    behaviour of ``RAGFlowPdfParser.remove_tag`` callers above.
+    behaviour of the shared PDF position-tag helper.
     """
-    visible = re.sub(r"@@[\t0-9.-]+?##", "", prev_text or "")
+    from common.pdf_utils import remove_tag
+    visible = remove_tag(prev_text or "")
     if not visible:
         return "", 0
     overlap_start = int(len(visible) * (100 - overlapped_percent) / 100.0)

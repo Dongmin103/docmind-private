@@ -26,7 +26,6 @@ a single newline delimiter. The frontend already sends a real newline and the
 ``ParserConfig`` / ``ParentChildConfig`` defaults that did not.
 """
 
-from api.utils.api_utils import get_parser_config
 from api.utils.validation_utils import ParentChildConfig, ParserConfig
 from rag.nlp.delim import parse_delimiter_field
 
@@ -44,7 +43,3 @@ def test_parser_config_delimiter_default_is_real_newline():
 
 def test_parent_child_children_delimiter_default_is_real_newline():
     _assert_real_newline(ParentChildConfig().children_delimiter)
-
-
-def test_knowledge_graph_delimiter_default_is_real_newline():
-    _assert_real_newline(get_parser_config("knowledge_graph", None)["delimiter"])

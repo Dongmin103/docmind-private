@@ -94,7 +94,6 @@ def _load_dify_retrieval_module(monkeypatch):
 
     common_settings_mod = ModuleType("common.settings")
     common_settings_mod.retriever = None
-    common_settings_mod.kg_retriever = None
     monkeypatch.setitem(sys.modules, "common.settings", common_settings_mod)
 
     common_metadata_utils_mod = ModuleType("common.metadata_utils")
@@ -299,57 +298,6 @@ def _set_request_json(monkeypatch, module, payload):
 
 
 @pytest.mark.p3
-def test_retrieval_success_with_metadata_and_kg(monkeypatch):
-    module = _load_dify_retrieval_module(monkeypatch)
-    _set_request_json(
-        monkeypatch,
-        module,
-        {
-            "knowledge_id": "kb-1",
-            "query": "hello",
-            "use_kg": True,
-            "retrieval_setting": {"score_threshold": 0.1, "top_k": 3},
-            "metadata_condition": {"conditions": [{"name": "author", "comparison_operator": "is", "value": "alice"}], "logic": "and"},
-        },
-    )
-
-    monkeypatch.setattr(module, "jsonify", lambda payload: payload)
-    monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kbs: [{"doc_id": "doc-1"}])
-    monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
-    monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda _kb_id, _tenant_id: True)
-    monkeypatch.setattr(module, "convert_conditions", lambda cond: cond.get("conditions", []))
-    monkeypatch.setattr(module, "meta_filter", lambda *_args, **_kwargs: [])
-
-    retriever = _DummyRetriever()
-    monkeypatch.setattr(module.settings, "retriever", retriever)
-
-    class _DummyKgRetriever:
-        async def retrieval(self, *_args, **_kwargs):
-            return {
-                "doc_id": "doc-2",
-                "content_with_weight": "kg-content",
-                "similarity": 0.9,
-                "docnm_kwd": "kg-title",
-            }
-
-    monkeypatch.setattr(module.settings, "kg_retriever", _DummyKgRetriever())
-    monkeypatch.setattr(
-        module.DocumentService,
-        "get_by_ids",
-        lambda doc_ids, cols=None: [SimpleNamespace(id=doc_id, meta_fields={"origin": f"meta-{doc_id}"}) for doc_id in doc_ids],
-    )
-    monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
-
-    res = _run(inspect.unwrap(module.retrieval)("tenant-1"))
-    assert "records" in res, res
-    assert len(res["records"]) == 2, res
-    top = res["records"][0]
-    assert top["title"] == "kg-title", res
-    assert top["metadata"]["doc_id"] == "doc-2", res
-    assert "score" in top, res
-
-
-@pytest.mark.p3
 def test_retrieval_kb_not_found(monkeypatch):
     module = _load_dify_retrieval_module(monkeypatch)
     _set_request_json(monkeypatch, module, {"knowledge_id": "kb-missing", "query": "hello"})
@@ -413,7 +361,6 @@ def test_read_retrieval_request_from_get_args(monkeypatch):
             args={
                 "knowledge_id": "kb-1",
                 "query": "hello",
-                "use_kg": "true",
                 "top_k": "12",
                 "score_threshold": "0.66",
             },
@@ -423,7 +370,6 @@ def test_read_retrieval_request_from_get_args(monkeypatch):
     req = _run(module._read_retrieval_request())
     assert req["knowledge_id"] == "kb-1", req
     assert req["query"] == "hello", req
-    assert req["use_kg"] is True, req
     assert req["retrieval_setting"]["top_k"] == 12, req
     assert req["retrieval_setting"]["score_threshold"] == 0.66, req
 

@@ -142,7 +142,7 @@ def apply_download_file_response_headers(
     return response
 
 
-def agent_attachment_preview_path(attachment_id: str, *, ext: str | None = None, mime_type: str | None = None) -> str:
+def attachment_preview_path(attachment_id: str, *, ext: str | None = None, mime_type: str | None = None) -> str:
     query: dict[str, str] = {}
     if ext:
         query["ext"] = ext

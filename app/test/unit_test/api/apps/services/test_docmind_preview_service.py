@@ -134,6 +134,53 @@ def _create(key="tab-a"):
     )
 
 
+def test_validate_worker_lease_is_read_only(preview_db):
+    created = _create()
+    job = service.claim("worker-1")
+    before = dict(DocmindPreviewSession.get_by_id(created["preview_id"]).__data__)
+    result = service.validate_worker_lease(created["preview_id"], worker_id="worker-1", version_id="version-1", fencing_token=job["fencing_token"])
+    assert result == {"valid": True, "lease_expires_at": job["lease_expires_at"]}
+    assert result["lease_expires_at"].endswith("+00:00")
+    assert DocmindPreviewSession.get_by_id(created["preview_id"]).__data__ == before
+    assert list(preview_db[1].iterdir()) == []
+
+
+def test_worker_lease_survives_mysql_datetime_precision(preview_db, monkeypatch):
+    now = service._now().replace(microsecond=789123)
+    monkeypatch.setattr(service, "_now", lambda: now)
+    created = _create()
+    job = service.claim("worker-1")
+    row = DocmindPreviewSession.get_by_id(created["preview_id"])
+    # MySQL DATETIME without fractional precision truncates microseconds.
+    DocmindPreviewSession.update(lease_expires_at=row.lease_expires_at.replace(microsecond=0)).where(DocmindPreviewSession.id == row.id).execute()
+    result = service.validate_worker_lease(row.id, worker_id="worker-1", version_id="version-1", fencing_token=job["fencing_token"])
+    assert result["lease_expires_at"] == job["lease_expires_at"]
+
+
+@pytest.mark.parametrize("change", ["owner", "fence", "version", "expired", "CANCELLED", "READY", "PROCESSING", "source_replaced", "source_deleted", "revoked"])
+def test_validate_worker_rejects_invalidated_lease_without_writes(preview_db, monkeypatch, change):
+    created = _create()
+    job = service.claim("worker-1")
+    kwargs = dict(worker_id="worker-1", version_id="version-1", fencing_token=job["fencing_token"])
+    if change in {"owner", "fence", "version"}:
+        kwargs[{"owner": "worker_id", "fence": "fencing_token", "version": "version_id"}[change]] = 999 if change == "fence" else "other"
+    elif change == "expired":
+        DocmindPreviewSession.update(lease_expires_at=service._now() - timedelta(seconds=1)).execute()
+    elif change in {"CANCELLED", "READY", "PROCESSING"}:
+        DocmindPreviewSession.update(lifecycle_state=change).execute()
+    elif change == "source_replaced":
+        DocmindSourceDocument.update(observed_ciphertext_sha256="c" * 64).execute()
+    elif change == "source_deleted":
+        DocmindSourceDocument.delete().execute()
+    else:
+        monkeypatch.setattr(service.KnowledgebaseService, "accessible", lambda *_args: False)
+    before = dict(DocmindPreviewSession.get_by_id(created["preview_id"]).__data__)
+    with pytest.raises(service.PreviewError):
+        service.validate_worker_lease(created["preview_id"], **kwargs)
+    assert DocmindPreviewSession.get_by_id(created["preview_id"]).__data__ == before
+    assert list(preview_db[1].iterdir()) == []
+
+
 def test_create_token_hash_owner_and_idempotency(preview_db):
     first = _create()
     assert first["status"] == "QUEUED"

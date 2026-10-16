@@ -22,12 +22,11 @@ it('offers a real consent choice and leaves the document unchanged when deferred
   expect(onConfirm.mock.calls[0].slice(0, 2)).toEqual(['document-1', 'version-1']);
 });
 
-it('offers OCR for partially indexed images but never for unrelated failures', () => {
+it('hides OCR for already searchable images and unrelated failures', () => {
   const onConfirm = jest.fn();
   const { rerender } = render(<PdfOcrChoice node={{ ...node, index_state: 'INDEXED', index_pdf_ocr_option: 'partial_images' }} onConfirm={onConfirm} />);
-  fireEvent.click(screen.getByRole('button', { name: 'OCR 선택' }));
-  expect(screen.getByText(/일반 글자는 이미 검색 가능합니다/)).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: '나중에' }));
+  expect(screen.queryByRole('button', { name: 'OCR 선택' })).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
   rerender(<PdfOcrChoice node={{ ...node, index_pdf_ocr_option: null }} onConfirm={onConfirm} />);
   expect(screen.queryByRole('button', { name: 'OCR 선택' })).not.toBeInTheDocument();
   expect(onConfirm).not.toHaveBeenCalled();

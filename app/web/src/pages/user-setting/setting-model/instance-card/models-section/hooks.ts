@@ -14,29 +14,13 @@
  *  limitations under the License.
  */
 
-import { LLMFactory } from '@/constants/llm';
+
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  LlmKeys,
-  useAddInstanceModel,
-  useDeleteInstanceModels,
-  useListProviderModels,
-  usePatchInstanceModel,
-  useUpdateProviderInstance,
-  useVerifyProviderConnection,
-} from '@/hooks/use-llm-request';
+import { LlmKeys, useAddInstanceModel, useDeleteInstanceModels, useListProviderModels, usePatchInstanceModel, useUpdateProviderInstance, useVerifyProviderConnection } from '@/hooks/use-llm-request';
 import { IInstanceModel, IProviderInstance } from '@/interfaces/database/llm';
 import { IModelInfo, IProviderModelItem } from '@/interfaces/request/llm';
 import llmService from '@/services/llm-service';
-import {
-  Dispatch,
-  SetStateAction,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sortModelTypes } from '../available-models';
 import { useCustomModelFields } from '../use-custom-model-fields';
 import { ModelsSectionProps, VerifyStatus } from './interface';
@@ -206,10 +190,6 @@ export function useModelsCatalog({
   // the union of catalog + instance models.
   const handleListModels = async () => {
     const { apiKey, baseUrl } = resolveCreds();
-    if (providerName === LLMFactory.VolcEngine && !apiKey) {
-      setHasFetched(true);
-      return;
-    }
     setManualListLoading(true);
     try {
       const ret = await listProviderModels({
@@ -248,33 +228,10 @@ export function useModelsCatalog({
     if (hasAutoFetchedRef.current) return;
     if (hideActions) return;
     if (!providerName) return;
-    if (
-      providerName === LLMFactory.Bedrock &&
-      instanceName === DRAFT_INSTANCE_SENTINEL
-    )
-      return;
 
     const creds = resolveCreds();
-    const apiKeyConfig =
-      typeof creds.apiKey === 'object' && creds.apiKey !== null
-        ? (creds.apiKey as Record<string, unknown>)
-        : undefined;
-    const requiresApiKey =
-      providerName === LLMFactory.VolcEngine ||
-      (providerName === LLMFactory.Bedrock &&
-        apiKeyConfig?.auth_mode === 'bedrock_api_key');
-    const hasApiKey =
-      providerName === LLMFactory.Bedrock && requiresApiKey
-        ? Boolean(apiKeyConfig?.bedrock_api_key && apiKeyConfig?.bedrock_region)
-        : Boolean(creds.apiKey);
-    const waitingForInstanceDetails =
-      providerName === LLMFactory.Bedrock &&
-      instanceName !== DRAFT_INSTANCE_SENTINEL &&
-      !instanceDetailsLoaded;
     const hasBaseUrlField = creds.baseUrl !== undefined;
     const ready =
-      !waitingForInstanceDetails &&
-      (!requiresApiKey || hasApiKey) &&
       (!hasBaseUrlField || !!creds.baseUrl);
     if (!ready) return;
     hasAutoFetchedRef.current = true;

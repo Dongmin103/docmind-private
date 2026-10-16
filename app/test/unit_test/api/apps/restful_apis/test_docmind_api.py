@@ -1,10 +1,74 @@
 import asyncio
+from contextlib import contextmanager
+import threading
 from types import SimpleNamespace
 
 import pytest
 from werkzeug.datastructures import MultiDict
 
 from api.apps.restful_apis import docmind_api
+
+
+@pytest.mark.parametrize("reject", [False, True])
+def test_worker_auth_keeps_loop_responsive_and_closes_worker_connection(monkeypatch, reject):
+    loop_thread = threading.get_ident()
+    connections = []
+    release = threading.Event()
+
+    @contextmanager
+    def connection_context():
+        connections.append(("open", threading.get_ident()))
+        try:
+            yield
+        finally:
+            connections.append(("close", threading.get_ident()))
+
+    def verify(**kwargs):
+        assert threading.get_ident() != loop_thread
+        if not connections:
+            connections.append(("open", threading.get_ident()))
+        assert connections == [("open", threading.get_ident())]
+        assert release.wait(1), "authentication blocked the event loop"
+        assert kwargs == dict(method="POST", path_and_query="/claim?source=x", body=b"signed",
+                              key_id="key", timestamp="123", nonce="nonce",
+                              content_sha256="abc", signature="def")
+        if reject:
+            raise docmind_api.docmind_worker_auth.WorkerAuthenticationError("WORKER_AUTH_REPLAYED")
+
+    monkeypatch.setattr(docmind_api.DocmindIngestionJob._meta, "database",
+                        SimpleNamespace(connection_context=connection_context,
+                                        close=lambda: connections.append(("close", threading.get_ident()))))
+    monkeypatch.setattr(docmind_api.docmind_worker_auth, "verify", verify)
+    monkeypatch.setattr(docmind_api, "request", SimpleNamespace(
+        method="POST", path="/claim", query_string=b"source=x", headers={
+            "X-DocMind-Key-Id": "key", "X-DocMind-Timestamp": "123",
+            "X-DocMind-Nonce": "nonce", "X-DocMind-Content-SHA256": "ABC",
+            "X-DocMind-Signature": "DEF"}))
+
+    async def run():
+        asyncio.get_running_loop().call_later(.01, release.set)
+        if reject:
+            with pytest.raises(docmind_api.docmind_worker_auth.WorkerAuthenticationError, match="WORKER_AUTH_REPLAYED"):
+                await docmind_api._authenticate_worker(b"signed")
+        else:
+            assert await docmind_api._authenticate_worker(b"signed") == "key"
+    asyncio.run(run())
+    assert len(connections) == 2
+    assert connections[0][1] == connections[1][1] != loop_thread
+    assert [state for state, _ in connections] == ["open", "close"]
+
+
+def test_rejected_auth_does_not_acquire_database_connection(monkeypatch):
+    def reject(**_kwargs):
+        raise docmind_api.docmind_worker_auth.WorkerAuthenticationError("WORKER_AUTH_HEADER_INVALID")
+    monkeypatch.setattr(docmind_api.docmind_worker_auth, "verify", reject)
+    closed = []
+    monkeypatch.setattr(docmind_api.DocmindIngestionJob._meta, "database", SimpleNamespace(
+        connection_context=lambda: pytest.fail("unauthenticated request acquired DB connection"),
+        close=lambda: closed.append(True)))
+    with pytest.raises(docmind_api.docmind_worker_auth.WorkerAuthenticationError, match="WORKER_AUTH_HEADER_INVALID"):
+        docmind_api._verify_worker_in_thread()
+    assert closed == [True]
 
 
 def test_artifact_page_cap_is_opt_in_and_bounded():
@@ -50,16 +114,20 @@ def test_exact_claim_route_rejects_missing_or_invalid_single_claim(monkeypatch, 
     assert (status, payload) == (409, {"error": "DOCMIND_INGESTION_REQUEST_INVALID"})
 
 
-def test_exact_claim_route_forwards_signed_job_id(monkeypatch):
+@pytest.mark.parametrize('pool_size', [None, 2])
+def test_exact_claim_route_forwards_signed_job_id(monkeypatch, pool_size):
     target = "a" * 32
 
     async def get_data():
         return b"signed-request"
 
     async def get_json(*_args, **_kwargs):
-        return {"worker_id": "worker-1", "protocol_version": 1,
+        request_body = {"worker_id": "worker-1", "protocol_version": 1,
                 "claim_source_id": "dept-2-e2e", "allowed_formats": ["pptx"],
                 "skip_retries": True, "claim_job_id": target, "single_claim": True}
+        if pool_size is not None:
+            request_body['ingestion_pool_size'] = pool_size
+        return request_body
 
     async def authenticate(_body):
         return "worker-key-1"
@@ -72,7 +140,8 @@ def test_exact_claim_route_forwards_signed_job_id(monkeypatch):
 
     status, payload = asyncio.run(docmind_api.claim_cloud_sync_job())
     assert (status, payload) == (200, {"job": None})
-    assert seen == [("worker-1", 300, ["pptx"], True, "dept-2-e2e", target)]
+    expected = ("worker-1", 300, ["pptx"], True, "dept-2-e2e", target)
+    assert seen == [expected if pool_size is None else (*expected, pool_size)]
 
 
 @pytest.mark.parametrize(

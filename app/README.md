@@ -280,28 +280,12 @@ Updates to the above configurations require a reboot of all containers to take e
 > docker compose -f docker-compose.yml up -d
 > ```
 
-### Switch doc engine from Elasticsearch to Infinity
+### Supported runtime
 
-RAGFlow uses Elasticsearch by default for storing full text and vectors. To switch to [Infinity](https://github.com/infiniflow/infinity/), follow these steps:
-
-1. Stop all running containers:
-
-   ```bash
-   docker compose -f docker/docker-compose.yml down -v
-   ```
-
-> [!WARNING]
-> `-v` will delete the docker container volumes, and the existing data will be cleared.
-
-2. Set `DOC_ENGINE` in **docker/.env** to `infinity`.
-3. Start the containers:
-
-   ```bash
-   docker compose -f docker/docker-compose.yml up -d
-   ```
-
-> [!WARNING]
-> Switching to Infinity on a Linux/arm64 machine is not yet officially supported.
+DocMind uses Python with MySQL, Elasticsearch, MinIO, and Redis.
+Unset backend selectors use these defaults; explicit unsupported selections fail before initialization.
+The Elasticsearch query/chunk tokenizer still uses `infinity-sdk` and its dictionary resources;
+this does not enable an Infinity database service.
 
 ## 🔧 Build a Docker Image
 
@@ -352,7 +336,7 @@ docker build --platform linux/amd64 \
    Add the following line to `/etc/hosts` to resolve all hosts specified in **docker/.env** to `127.0.0.1`:
 
    ```text
-   127.0.0.1       es01 infinity mysql minio redis sandbox-executor-manager
+   127.0.0.1       es01 mysql minio redis
    ```
 4. If you cannot access HuggingFace, set the `HF_ENDPOINT` environment variable to use a mirror site:
 

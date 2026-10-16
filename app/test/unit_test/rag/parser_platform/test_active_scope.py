@@ -92,14 +92,14 @@ def test_filter_truth_table_hides_staging_and_stale_sets() -> None:
     assert [expression.matches(chunk) for chunk, _ in cases] == [expected for _, expected in cases]
 
 
-def test_four_translators_preserve_kb_active_and_legacy_missing_semantics() -> None:
+def test_es_translator_preserves_kb_active_and_legacy_missing_semantics() -> None:
     expression = ActiveChunkSetFilterExpr(
         kb_ids=("kb-1", "kb-2"),
         active_chunk_set_ids=("set-a", "set-b"),
         legacy_doc_ids=("legacy-a",),
     )
     snapshot = json.loads(translator_snapshot(expression))
-    for backend in ("elasticsearch", "opensearch"):
+    for backend in ("elasticsearch",):
         translated = snapshot[backend]
         serialized = json.dumps(translated, sort_keys=True)
         assert '"kb_id"' in serialized
@@ -107,26 +107,14 @@ def test_four_translators_preserve_kb_active_and_legacy_missing_semantics() -> N
         assert '"doc_id"' in serialized
         assert '"exists"' in serialized
         assert '"minimum_should_match": 1' in serialized
-    assert snapshot["infinity"]["where"] == "kb_id IN (?, ?) AND (chunk_set_id IN (?, ?) OR (doc_id IN (?) AND chunk_set_id IS NULL))"
-    assert snapshot["oceanbase"]["where"] == "kb_id IN (%s, %s) AND (chunk_set_id IN (%s, %s) OR (doc_id IN (%s) AND chunk_set_id IS NULL))"
-    assert snapshot["infinity"]["rendered_where"] == "kb_id IN ('kb-1', 'kb-2') AND (chunk_set_id IN ('set-a', 'set-b') OR (doc_id IN ('legacy-a') AND chunk_set_id IS NULL))"
-    assert snapshot["infinity"]["params"] == ["kb-1", "kb-2", "set-a", "set-b", "legacy-a"]
 
     empty = ActiveChunkSetFilterExpr(kb_ids=(), match_none=True)
     assert active_chunk_filter_translator("elasticsearch").translate(empty) == {"match_none": {}}
-    assert active_chunk_filter_translator("infinity").translate(empty) == {
-        "where": "1 = 0",
-        "rendered_where": "1 = 0",
-        "params": [],
-    }
 
 
 def test_connector_modules_expose_the_same_translation_contract() -> None:
     expected = {
         "rag/utils/es_conn.py": "ElasticsearchActiveChunkFilterTranslator",
-        "rag/utils/opensearch_conn.py": "OpenSearchActiveChunkFilterTranslator",
-        "rag/utils/infinity_conn.py": "InfinityActiveChunkFilterTranslator",
-        "rag/utils/ob_conn.py": "OceanBaseActiveChunkFilterTranslator",
     }
     for relative_path, translator in expected.items():
         source = (ROOT / relative_path).read_text(encoding="utf-8")
@@ -134,7 +122,7 @@ def test_connector_modules_expose_the_same_translation_contract() -> None:
         assert translator in source
 
 
-@pytest.mark.parametrize("backend", ["elasticsearch", "opensearch", "infinity", "oceanbase"])
+@pytest.mark.parametrize("backend", ["elasticsearch"])
 def test_cardinality_overflow_and_unknown_connector_fail_closed(backend: str) -> None:
     expression = ActiveChunkSetFilterExpr(kb_ids=("kb",), active_chunk_set_ids=("a", "b", "c"))
     with pytest.raises(ParserPlatformError) as too_large:

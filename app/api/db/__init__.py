@@ -17,8 +17,6 @@
 from enum import IntEnum
 from enum import StrEnum
 
-from common.constants import PipelineTaskType
-
 
 class UserTenantRole(StrEnum):
     OWNER = "owner"
@@ -55,47 +53,6 @@ class InputType(StrEnum):
     POLL = "poll"  # e.g. calling an API to get all documents in the last hour
     EVENT = "event"  # e.g. registered an endpoint as a listener, and processing connector events
     SLIM_RETRIEVAL = "slim_retrieval"
-
-
-class CanvasCategory(StrEnum):
-    Agent = "agent_canvas"
-    DataFlow = "dataflow_canvas"
-
-
-VALID_PIPELINE_TASK_TYPES = {
-    PipelineTaskType.PARSE,
-    PipelineTaskType.DOWNLOAD,
-    PipelineTaskType.RAPTOR,
-    PipelineTaskType.GRAPH_RAG,
-    PipelineTaskType.MINDMAP,
-    PipelineTaskType.ARTIFACT,
-    PipelineTaskType.SKILL,
-}
-
-
-# KB-level fan-out task types: their Task row uses GRAPH_RAPTOR_FAKE_DOC_ID as a
-# sentinel doc_id, and ``task_executor.collect_task`` substitutes the first real
-# doc_id from ``msg["doc_ids"]`` before re-running ``TaskService.get_task`` so
-# the join through Document → Knowledgebase → Tenant resolves and tenant_id /
-# kb_id / language are hydrated onto the task dict. Add new fan-out task types
-# here or TaskContext will raise "Task must contain 'tenant_id'".
-PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES = {
-    PipelineTaskType.RAPTOR.lower(),
-    PipelineTaskType.GRAPH_RAG.lower(),
-    PipelineTaskType.MINDMAP.lower(),
-    PipelineTaskType.ARTIFACT.lower(),
-    PipelineTaskType.SKILL.lower(),
-    # Structure-graph merge fan-out task types. These are the raw task_type
-    # strings (== the index type), which — unlike the types above — do not equal
-    # their PipelineTaskType value lowercased (e.g. "structure_graph" vs
-    # "structuregraph"), so they are listed literally.
-    "structure_graph",
-    "structure_mindmap",
-    "timeline",
-    "session_graph",
-    "session_essence",
-    "structure",
-}
 
 
 KNOWLEDGEBASE_FOLDER_NAME = ".knowledgebase"

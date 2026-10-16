@@ -17,7 +17,6 @@ import os
 import json
 import secrets
 import logging
-import re
 from datetime import date
 
 from common.constants import RAG_FLOW_SERVICE_NAME
@@ -26,27 +25,6 @@ from common.config_utils import get_base_config, decrypt_database_config
 from common.misc_utils import pip_install_torch
 from common.constants import SVR_QUEUE_NAME, Storage
 
-import rag.utils
-import rag.utils.es_conn
-import rag.utils.infinity_conn
-import rag.utils.ob_conn
-import rag.utils.opensearch_conn
-import rag.utils.gaussdb_conn
-from rag.utils.azure_sas_conn import RAGFlowAzureSasBlob
-from rag.utils.azure_spn_conn import RAGFlowAzureSpnBlob
-from rag.utils.gcs_conn import RAGFlowGCS
-from rag.utils.minio_conn import RAGFlowMinio
-from rag.utils.opendal_conn import OpenDALStorage
-from rag.utils.redis_conn import REDIS_CONN
-from rag.utils.s3_conn import RAGFlowS3
-from rag.utils.oss_conn import RAGFlowOSS
-
-from rag.nlp import search
-
-import memory.utils.es_conn as memory_es_conn
-import memory.utils.infinity_conn as memory_infinity_conn
-import memory.utils.ob_conn as memory_ob_conn
-import memory.utils.gaussdb_conn as memory_gaussdb_conn
 
 TIMEZONE = os.getenv("TZ", "Asia/Shanghai")
 
@@ -56,14 +34,12 @@ LLM_BASE_URL = None
 CHAT_MDL = ""
 EMBEDDING_MDL = ""
 RERANK_MDL = ""
-ASR_MDL = ""
 VISION_MDL = ""
 
 
 CHAT_CFG = ""
 EMBEDDING_CFG = ""
 RERANK_CFG = ""
-ASR_CFG = ""
 VISION_CFG = ""
 API_KEY = None
 PARSERS = None
@@ -73,89 +49,29 @@ SECRET_KEY = None
 FACTORY_LLM_INFOS = None
 ALLOWED_LLM_FACTORIES = None
 
-# The metadata database and DocEngine/Memory Store may all use GaussDB while
-# targeting different databases, schemas, compatibility modes, or credentials.
-# The metadata database therefore reads only GAUSSDB_METADATA_*. The gaussdb
-# section in service_conf.yaml remains exclusive to DOC_ENGINE=gaussdb.
-GAUSSDB_ENV_DEFAULTS = {
-    "name": "rag_flow",
-    "user": "rag_flow",
-    "password": "infini_rag_flow",
-    "host": "gaussdb",
-    "port": 8000,
-    "schema": "public",
-    "max_connections": 100,
-    "stale_timeout": 30,
-    "options": "-c client_encoding=UTF8 -c default_transaction_read_only=off",
-}
-_GAUSSDB_SCHEMA_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+def _supported_backend(name: str, value: str | None, supported: str) -> str:
+    normalized = supported.lower() if value is None else value.strip().lower()
+    if normalized != supported.lower():
+        raise ValueError(f"Unsupported {name}: {value!r}; only {supported} is supported")
+    return supported
 
 
 def normalize_database_type(database_type: str | None = None) -> str:
-    # Only normalize the new GaussDB values. Existing database names retain
-    # their upstream spelling and lookup behavior.
-    raw_value = database_type or "mysql"
-    normalized = raw_value.strip().lower()
-    if normalized in {"gaussdb", "gauss"}:
-        return "gaussdb"
-    return raw_value
-
-
-def _get_int_env(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
-
-
-def _normalize_gaussdb_metadata_schema(value: str | None = None) -> str:
-    # The schema is interpolated into search_path in the libpq options. Restrict
-    # it to a plain SQL identifier so quotes, semicolons, or extra options cannot
-    # be injected. The metadata database currently accepts one schema only.
-    schema = (value or GAUSSDB_ENV_DEFAULTS["schema"]).strip() or GAUSSDB_ENV_DEFAULTS["schema"]
-    if not _GAUSSDB_SCHEMA_PATTERN.match(schema):
-        raise ValueError(f"invalid GAUSSDB_METADATA_SCHEMA: {schema}")
-    return schema
-
-
-def _gaussdb_metadata_options(schema: str) -> str:
-    explicit_options = os.environ.get("GAUSSDB_METADATA_OPTIONS")
-    if explicit_options is not None:
-        # An explicit value replaces the complete options string. Advanced
-        # deployments can control search_path, encoding, read-only behavior,
-        # and other libpq options, but must also include any required defaults.
-        return explicit_options
-    return f"-c search_path={schema} {GAUSSDB_ENV_DEFAULTS['options']}"
-
-
-def _gaussdb_env_config() -> dict:
-    # Read only GAUSSDB_METADATA_* so the metadata database does not share
-    # connection parameters with DOC_ENGINE=gaussdb.
-    schema = _normalize_gaussdb_metadata_schema(os.environ.get("GAUSSDB_METADATA_SCHEMA"))
-    return {
-        "name": os.environ.get("GAUSSDB_METADATA_DBNAME", GAUSSDB_ENV_DEFAULTS["name"]),
-        "user": os.environ.get("GAUSSDB_METADATA_USER", GAUSSDB_ENV_DEFAULTS["user"]),
-        "password": os.environ.get("GAUSSDB_METADATA_PASSWORD", GAUSSDB_ENV_DEFAULTS["password"]),
-        "host": os.environ.get("GAUSSDB_METADATA_HOST", GAUSSDB_ENV_DEFAULTS["host"]),
-        "port": _get_int_env("GAUSSDB_METADATA_PORT", GAUSSDB_ENV_DEFAULTS["port"]),
-        "max_connections": _get_int_env("GAUSSDB_METADATA_MAX_CONNECTIONS", GAUSSDB_ENV_DEFAULTS["max_connections"]),
-        "stale_timeout": _get_int_env("GAUSSDB_METADATA_STALE_TIMEOUT", GAUSSDB_ENV_DEFAULTS["stale_timeout"]),
-        "options": _gaussdb_metadata_options(schema),
-    }
+    return _supported_backend("DB_TYPE", database_type, "mysql")
 
 
 def load_database_config(database_type: str) -> dict:
-    database_type = normalize_database_type(database_type)
-    if database_type == "gaussdb":
-        # Always build DB_TYPE=gaussdb from GAUSSDB_METADATA_* so the metadata
-        # connection remains isolated from the gaussdb section used by
-        # DOC_ENGINE=gaussdb.
-        return decrypt_database_config(database=_gaussdb_env_config())
-    return decrypt_database_config(name=database_type)
+    return decrypt_database_config(name=normalize_database_type(database_type))
 
 
-DATABASE_TYPE = normalize_database_type(os.getenv("DB_TYPE", "mysql"))
+# Validate every backend choice before reading credentials or connecting.
+DATABASE_TYPE = normalize_database_type(os.getenv("DB_TYPE"))
+DOC_ENGINE = _supported_backend("DOC_ENGINE", os.getenv("DOC_ENGINE"), "elasticsearch")
+STORAGE_IMPL_TYPE = _supported_backend("STORAGE_IMPL", os.getenv("STORAGE_IMPL"), "MINIO")
 DATABASE = load_database_config(DATABASE_TYPE)
+
+from rag.utils.redis_conn import REDIS_CONN  # noqa: E402
+from rag.nlp import search  # noqa: E402
 
 # authentication
 AUTHENTICATION_CONF = None
@@ -166,18 +82,11 @@ HTTP_APP_KEY = None
 GITHUB_OAUTH = None
 FEISHU_OAUTH = None
 OAUTH_CONFIG = None
-DOC_ENGINE = os.getenv("DOC_ENGINE", "elasticsearch")
-DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
-DOC_ENGINE_OCEANBASE = DOC_ENGINE.lower() == "oceanbase"
-DOC_ENGINE_GAUSSDB = DOC_ENGINE.lower() == "gaussdb"
-DOC_ENGINE_SERENEDB = DOC_ENGINE.lower() == "serenedb"
 
 
 docStoreConn = None
-msgStoreConn = None
 
 retriever = None
-kg_retriever = None
 
 # user registration switch
 REGISTER_ENABLED = 1
@@ -201,16 +110,7 @@ MAIL_FRONTEND_URL = ""
 
 # move from rag.settings
 ES = {}
-INFINITY = {}
-AZURE = {}
-S3 = {}
 MINIO = {}
-OB = {}
-OSS = {}
-OS = {}
-GCS = {}
-GAUSSDB = {}
-SERENEDB = {}
 
 DOC_MAXIMUM_SIZE: int = 128 * 1024 * 1024
 DOC_BULK_SIZE: int = 32
@@ -238,7 +138,6 @@ def _embedding_throughput_options():
 
 PARALLEL_DEVICES: int = 0
 
-STORAGE_IMPL_TYPE = os.getenv("STORAGE_IMPL", "MINIO")
 STORAGE_IMPL = None
 
 
@@ -248,7 +147,7 @@ def get_svr_queue_name(priority: int, suffix: str = "common") -> str:
 
     Args:
         priority: Task priority (0=low, 1=high)
-        suffix: Task type suffix (common/resume/graphrag/raptor/mindmap)
+        suffix: Task type suffix (common/resume)
                Currently only "common" is used, other suffixes are reserved.
 
     Returns:
@@ -309,24 +208,20 @@ def _get_or_create_secret_key():
 
 
 class StorageFactory:
-    storage_mapping = {
-        Storage.MINIO: RAGFlowMinio,
-        Storage.AZURE_SPN: RAGFlowAzureSpnBlob,
-        Storage.AZURE_SAS: RAGFlowAzureSasBlob,
-        Storage.AWS_S3: RAGFlowS3,
-        Storage.OSS: RAGFlowOSS,
-        Storage.OPENDAL: OpenDALStorage,
-        Storage.GCS: RAGFlowGCS,
-    }
-
     @classmethod
     def create(cls, storage: Storage):
-        return cls.storage_mapping[storage]()
+        if storage != Storage.MINIO:
+            raise ValueError("Unsupported STORAGE_IMPL; only MINIO is supported")
+        from rag.utils.minio_conn import RAGFlowMinio
+
+        return RAGFlowMinio()
 
 
 def init_settings():
-    global DATABASE_TYPE, DATABASE
-    DATABASE_TYPE = normalize_database_type(os.getenv("DB_TYPE", "mysql"))
+    global DATABASE_TYPE, DATABASE, DOC_ENGINE, STORAGE_IMPL_TYPE
+    DATABASE_TYPE = normalize_database_type(os.getenv("DB_TYPE"))
+    DOC_ENGINE = _supported_backend("DOC_ENGINE", os.getenv("DOC_ENGINE"), "elasticsearch")
+    STORAGE_IMPL_TYPE = _supported_backend("STORAGE_IMPL", os.getenv("STORAGE_IMPL"), "MINIO")
     DATABASE = load_database_config(DATABASE_TYPE)
 
     global ALLOWED_LLM_FACTORIES, LLM_FACTORY, LLM_BASE_URL
@@ -365,30 +260,24 @@ def init_settings():
 
     global PARSERS
     PARSERS = llm_settings.get(
-        "parsers", "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag"
+        "parsers", "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,email:Email,tag:Tag"
     )
 
-    global CHAT_MDL, EMBEDDING_MDL, RERANK_MDL, ASR_MDL, VISION_MDL
+    global CHAT_MDL, EMBEDDING_MDL, RERANK_MDL, VISION_MDL
     chat_entry = _parse_model_entry(llm_default_models.get("chat_model", CHAT_MDL))
     embedding_entry = _parse_model_entry(llm_default_models.get("embedding_model", EMBEDDING_MDL))
     rerank_entry = _parse_model_entry(llm_default_models.get("rerank_model", RERANK_MDL))
-    asr_entry = _parse_model_entry(llm_default_models.get("asr_model", ASR_MDL))
     vision_entry = _parse_model_entry(llm_default_models.get("vision_model", VISION_MDL))
 
-    global CHAT_CFG, EMBEDDING_CFG, RERANK_CFG, ASR_CFG, VISION_CFG
+    global CHAT_CFG, EMBEDDING_CFG, RERANK_CFG, VISION_CFG
     CHAT_CFG = _resolve_per_model_config(chat_entry, LLM_FACTORY, API_KEY, LLM_BASE_URL)
     EMBEDDING_CFG = _resolve_per_model_config(embedding_entry, LLM_FACTORY, API_KEY, LLM_BASE_URL)
     RERANK_CFG = _resolve_per_model_config(rerank_entry, LLM_FACTORY, API_KEY, LLM_BASE_URL)
-    ASR_CFG = _resolve_per_model_config(asr_entry, LLM_FACTORY, API_KEY, LLM_BASE_URL)
     VISION_CFG = _resolve_per_model_config(vision_entry, LLM_FACTORY, API_KEY, LLM_BASE_URL)
 
     CHAT_MDL = CHAT_CFG.get("model", "") or ""
     EMBEDDING_MDL = EMBEDDING_CFG.get("model", "") or ""
-    compose_profiles = os.getenv("COMPOSE_PROFILES", "")
-    if "tei-" in compose_profiles:
-        EMBEDDING_MDL = os.getenv("TEI_MODEL", EMBEDDING_MDL or "BAAI/bge-small-en-v1.5")
     RERANK_MDL = RERANK_CFG.get("model", "") or ""
-    ASR_MDL = ASR_CFG.get("model", "") or ""
     VISION_MDL = VISION_CFG.get("model", "") or ""
 
     global HOST_IP, HOST_PORT
@@ -409,67 +298,12 @@ def init_settings():
     FEISHU_OAUTH = get_base_config("oauth", {}).get("feishu")
     OAUTH_CONFIG = get_base_config("oauth", {})
 
-    global DOC_ENGINE, DOC_ENGINE_INFINITY, DOC_ENGINE_OCEANBASE, DOC_ENGINE_GAUSSDB, DOC_ENGINE_SERENEDB, docStoreConn, ES, OB, OS, INFINITY, GAUSSDB, SERENEDB
-    DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch").strip()
-    DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
-    DOC_ENGINE_OCEANBASE = DOC_ENGINE.lower() == "oceanbase"
-    DOC_ENGINE_GAUSSDB = DOC_ENGINE.lower() == "gaussdb"
-    DOC_ENGINE_SERENEDB = DOC_ENGINE.lower() == "serenedb"
-    lower_case_doc_engine = DOC_ENGINE.lower()
-    if lower_case_doc_engine == "elasticsearch":
-        ES = get_base_config("es", {})
-        docStoreConn = rag.utils.es_conn.ESConnection()
-    elif lower_case_doc_engine == "infinity":
-        INFINITY = get_base_config("infinity", {"uri": "infinity:23817", "postgres_port": 5432, "db_name": "default_db"})
-        docStoreConn = rag.utils.infinity_conn.InfinityConnection()
-    elif lower_case_doc_engine == "opensearch":
-        OS = get_base_config("os", {})
-        docStoreConn = rag.utils.opensearch_conn.OSConnection()
-    elif lower_case_doc_engine == "oceanbase":
-        OB = get_base_config("oceanbase", {})
-        docStoreConn = rag.utils.ob_conn.OBConnection()
-    elif lower_case_doc_engine == "seekdb":
-        OB = get_base_config("seekdb", {})
-        docStoreConn = rag.utils.ob_conn.OBConnection()
-    elif lower_case_doc_engine == "gaussdb":
-        GAUSSDB = get_base_config("gaussdb", {})
-        docStoreConn = rag.utils.gaussdb_conn.GaussDBConnection()
-    elif lower_case_doc_engine == "serenedb":
-        SERENEDB = get_base_config("serenedb", {})
-        # Imported lazily so psycopg2/SereneDB is only touched when selected.
-        from rag.utils import serenedb_conn
+    global docStoreConn, ES, MINIO
+    from rag.utils.es_conn import ESConnection
 
-        docStoreConn = serenedb_conn.SereneDBConnection()
-    else:
-        raise Exception(f"Not supported doc engine: {DOC_ENGINE}")
-
-    global msgStoreConn
-    # use the same engine for message store
-    if DOC_ENGINE == "elasticsearch":
-        ES = get_base_config("es", {})
-        msgStoreConn = memory_es_conn.ESConnection()
-    elif DOC_ENGINE == "infinity":
-        INFINITY = get_base_config("infinity", {"uri": "infinity:23817", "postgres_port": 5432, "db_name": "default_db"})
-        msgStoreConn = memory_infinity_conn.InfinityConnection()
-    elif lower_case_doc_engine in ["oceanbase", "seekdb"]:
-        msgStoreConn = memory_ob_conn.OBConnection()
-    elif lower_case_doc_engine == "gaussdb":
-        # Memory Store uses a dedicated adapter for message tables. It reads the
-        # same GaussDB configuration and shares the lazy connection pool with
-        # docStoreConn, but keeps its own table layout and query semantics.
-        msgStoreConn = memory_gaussdb_conn.GaussDBMemoryConnection()
-
-    global AZURE, S3, MINIO, OSS, GCS
-    if STORAGE_IMPL_TYPE in ["AZURE_SPN", "AZURE_SAS"]:
-        AZURE = get_base_config("azure", {})
-    elif STORAGE_IMPL_TYPE == "AWS_S3":
-        S3 = get_base_config("s3", {})
-    elif STORAGE_IMPL_TYPE == "MINIO":
-        MINIO = decrypt_database_config(name="minio")
-    elif STORAGE_IMPL_TYPE == "OSS":
-        OSS = get_base_config("oss", {})
-    elif STORAGE_IMPL_TYPE == "GCS":
-        GCS = get_base_config("gcs", {})
+    ES = get_base_config("es", {})
+    docStoreConn = ESConnection()
+    MINIO = decrypt_database_config(name="minio")
 
     global STORAGE_IMPL
     storage_impl = StorageFactory.create(Storage[STORAGE_IMPL_TYPE])
@@ -498,11 +332,9 @@ def init_settings():
 
         STORAGE_IMPL = StorageAttemptAudit(STORAGE_IMPL, audit_root)
 
-    global retriever, kg_retriever
+    global retriever
     retriever = search.Dealer(docStoreConn)
-    from rag.graphrag import search as kg_search
 
-    kg_retriever = kg_search.KGSearch(docStoreConn)
 
     global SANDBOX_HOST
     if int(os.environ.get("SANDBOX_ENABLED", "0")):
