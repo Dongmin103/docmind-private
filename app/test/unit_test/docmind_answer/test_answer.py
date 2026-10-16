@@ -219,6 +219,7 @@ def pipeline(service, monkeypatch):
         "generation_calls": 0,
         "no_hits": False,
         "output": {"status": "answered", "answer": "합성 답변 [1]", "citations": [1]},
+        "responses": [],
         "on_generate": lambda: None,
     }
 
@@ -242,6 +243,8 @@ def pipeline(service, monkeypatch):
     def respond(_request):
         state["generation_calls"] += 1
         state["on_generate"]()
+        if state["responses"]:
+            return httpx.Response(200, json=state["responses"].pop(0))
         return httpx.Response(200, json={"done": True, "message": {"content": json.dumps(state["output"], ensure_ascii=False)}})
 
     async def generate(*args):
@@ -277,7 +280,7 @@ def test_pipeline_reuses_c_search_and_emits_only_cited_evidence(service, pipelin
 def test_generation_race_never_returns_stale_evidence(service, pipeline, status, mutation):
     state, stored, _ = pipeline
     if status == "insufficient":
-        state["output"] = {"status": status, "answer": "근거 없음", "citations": []}
+        state["output"] = {"status": status, "answer": "", "citations": []}
 
     def mutate():
         if mutation == "version":
@@ -309,13 +312,13 @@ def test_changed_seed_is_not_sent_to_model(service, pipeline):
         (
             "달의 지름은?",
             "합성 절차 담당자는 민수입니다.",
-            {"status": "insufficient", "answer": "무관한 문서입니다.", "citations": []},
+            {"status": "insufficient", "answer": "", "citations": []},
             "선택한 문서에서 질문의 전제나 답을 뒷받침할 근거를 찾지 못했습니다.",
         ),
         (
             "민수가 절차를 폐지한 이유는?",
             "합성 절차 담당자는 민수입니다.",
-            {"status": "insufficient", "answer": "폐지했다는 전제가 근거에 없습니다.", "citations": []},
+            {"status": "insufficient", "answer": "", "citations": []},
             "선택한 문서에서 질문의 전제나 답을 뒷받침할 근거를 찾지 못했습니다.",
         ),
         (
@@ -352,3 +355,56 @@ def test_empty_search_skips_generation_and_returns_server_owned_insufficient_ans
         "context": {"seed_count": 0, "expanded_count": 0, "used_count": 0, "neighbor_window": 2},
     }
     assert state["generation_calls"] == 0
+
+
+@pytest.mark.parametrize(
+    "bad_response,code",
+    [
+        ({"done": True, "message": {"content": "not json"}}, "RESPONSE_INVALID"),
+        ({"done": True, "message": {"content": json.dumps({"status": "answered", "answer": "인용 누락", "citations": [1]})}}, "CITATIONS_INVALID"),
+        ({"done": True, "done_reason": "length", "message": {"content": "unfinished"}}, "OUTPUT_TRUNCATED"),
+    ],
+)
+def test_pipeline_recovers_one_format_failure_with_the_same_context(service, pipeline, bad_response, code):
+    state, _, _ = pipeline
+    state["responses"] = [bad_response]
+    result = asyncio.run(service.answer("tenant", "질문", scope={"mode": "all"}))
+    assert result["answer_status"] == "answered"
+    assert result["answer"] == "합성 답변 [1]"
+    assert state["generation_calls"] == 2
+    assert len(state["calls"]) == 1
+
+
+def test_pipeline_stops_after_two_invalid_generations_without_insufficient_fallback(service, pipeline):
+    state, _, _ = pipeline
+    state["responses"] = [
+        {"done": True, "message": {"content": "not json"}},
+        {"done": True, "message": {"content": "still not json"}},
+    ]
+    with pytest.raises(service.AnswerError, match="^DOCMIND_LLM_RESPONSE_INVALID$"):
+        asyncio.run(service.answer("tenant", "질문", scope={"mode": "all"}))
+    assert state["generation_calls"] == 2
+
+
+def test_pipeline_rechecks_source_before_format_recovery(service, pipeline):
+    state, stored, _ = pipeline
+    state["responses"] = [{"done": True, "message": {"content": "not json"}}]
+    state["on_generate"] = lambda: stored["doc-3"].update(content_with_weight="changed")
+    with pytest.raises(service.AnswerError, match="^DOCMIND_SOURCE_CHANGED$"):
+        asyncio.run(service.answer("tenant", "질문", scope={"mode": "all"}))
+    assert state["generation_calls"] == 1
+
+
+@pytest.mark.parametrize("error_code", ["DOCMIND_LLM_AUTH_FAILED", "DOCMIND_LLM_UNAVAILABLE", "DOCMIND_LLM_TIMEOUT", "DOCMIND_ANSWER_CONFIG_INVALID", "DOCMIND_SOURCE_CHANGED"])
+def test_pipeline_does_not_retry_non_format_failures(service, pipeline, monkeypatch, error_code):
+    calls = 0
+
+    async def fail_auth(*_args):
+        nonlocal calls
+        calls += 1
+        raise service.AnswerError(error_code)
+
+    monkeypatch.setattr(service, "generate", fail_auth)
+    with pytest.raises(service.AnswerError, match=f"^{error_code}$"):
+        asyncio.run(service.answer("tenant", "질문", scope={"mode": "all"}))
+    assert calls == 1

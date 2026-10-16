@@ -138,7 +138,7 @@ it('only generates on request and shows cited evidence safely', async () => {
   );
   fireEvent.click(screen.getByRole('button', { name: '근거 1 확인' }));
   expect(document.querySelector('script')).toBeNull();
-  expect(MockAnswer).toHaveBeenCalledWith({ ...Request, neighborWindow: 5 });
+  expect(MockAnswer).toHaveBeenCalledWith({ ...Request, neighborWindow: 2 });
   expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   expect(
     screen.getByText(/입력 한도에 맞춰 주변 청크 일부 제외/),
@@ -340,8 +340,10 @@ it('keeps technical context inside details while preserving the answer notice', 
   renderPanel();
   const instructions = screen.getByText('답변 생성 안내').closest('details');
   expect(instructions).not.toHaveAttribute('open');
-  expect(screen.queryByText('선택한 범위 · 앞뒤 5개 청크')).not.toBeInTheDocument();
-  expect(instructions).toHaveTextContent('앞뒤 5개 청크');
+  expect(
+    screen.queryByText('선택한 범위 · 앞뒤 5개 청크'),
+  ).not.toBeInTheDocument();
+  expect(instructions).toHaveTextContent('앞뒤 2개 청크');
   fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
   await screen.findByLabelText('AI 답변');
   expect(
@@ -584,16 +586,17 @@ it('reveals the same evidence again from the same or another inline reference af
 
 it.each([
   ['DOCMIND_LLM_UNAVAILABLE', '연결'],
+  ['DOCMIND_LLM_TIMEOUT', '응답이 지연'],
   ['DOCMIND_LLM_AUTH_FAILED', '인증'],
   ['DOCMIND_LLM_CREDITS_REQUIRED', '잔액'],
   ['DOCMIND_LLM_RATE_LIMITED', '요청 한도'],
   [
     'DOCMIND_LLM_RESPONSE_INVALID',
-    '모델의 응답 형식을 확인할 수 없어 답변을 표시하지 않았습니다.',
+    '응답을 정리하는 과정에서 문제가 생겼습니다.',
   ],
   [
     'DOCMIND_LLM_CITATIONS_INVALID',
-    '모델이 올바른 근거 번호를 제시하지 않아 답변을 표시하지 않았습니다.',
+    '응답을 정리하는 과정에서 문제가 생겼습니다.',
   ],
 ])('keeps search usable and explains %s', async (message, explanation) => {
   MockAnswer.mockResolvedValue({
@@ -601,10 +604,242 @@ it.each([
   });
   renderPanel();
   fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(explanation);
+  const role =
+    message === 'DOCMIND_LLM_RESPONSE_INVALID' ||
+    message === 'DOCMIND_LLM_CITATIONS_INVALID'
+      ? 'status'
+      : 'alert';
+  await waitFor(() =>
+    expect(screen.getByRole(role)).toHaveTextContent(explanation),
+  );
+  if (role === 'status') {
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/모델의 응답 형식|근거 번호/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('근거 부족')).not.toBeInTheDocument();
+  }
   await waitFor(() =>
     expect(screen.getByRole('button', { name: '질문하기' })).not.toBeDisabled(),
   );
+});
+
+it('retries a recoverable answer error with the same submitted question and scope only once per click', async () => {
+  let finishRetry: (value: unknown) => void = () => {};
+  MockAnswer.mockResolvedValueOnce({
+    data: { code: 100, message: 'DOCMIND_LLM_RESPONSE_INVALID' },
+  }).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRetry = resolve;
+      }),
+  );
+  const scoped = {
+    question: '원래 질문?',
+    scope: { mode: 'documents' as const, documentIds: ['doc-a'] },
+  };
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <AnswerPanel request={scoped} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  const retry = await screen.findByRole('button', {
+    name: '같은 질문 다시 시도',
+  });
+  fireEvent.click(retry);
+  fireEvent.click(retry);
+  await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(2));
+  expect(MockAnswer).toHaveBeenNthCalledWith(1, {
+    ...scoped,
+    neighborWindow: 2,
+  });
+  expect(MockAnswer).toHaveBeenNthCalledWith(2, {
+    ...scoped,
+    neighborWindow: 2,
+  });
+  await act(async () =>
+    finishRetry({
+      data: { code: 100, message: 'DOCMIND_LLM_RESPONSE_INVALID' },
+    }),
+  );
+});
+
+it('removes the recovery action when the question or scope changes', async () => {
+  MockAnswer.mockResolvedValue({
+    data: { code: 100, message: 'DOCMIND_LLM_CITATIONS_INVALID' },
+  });
+  const client = new QueryClient();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <AnswerPanel request={Request} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  expect(
+    await screen.findByRole('button', { name: '같은 질문 다시 시도' }),
+  ).toBeInTheDocument();
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <AnswerPanel
+        request={{
+          ...Request,
+          scope: { mode: 'documents', documentIds: ['another'] },
+        }}
+      />
+    </QueryClientProvider>,
+  );
+  expect(
+    screen.queryByRole('button', { name: '같은 질문 다시 시도' }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('keeps the new request pending when an older request settles after a scope change', async () => {
+  let settleOld: (value: unknown) => void = () => {};
+  let settleNew: (value: unknown) => void = () => {};
+  MockAnswer.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        settleOld = resolve;
+      }),
+  ).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        settleNew = resolve;
+      }),
+  );
+  const pendingRef = { current: false };
+  const client = new QueryClient();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <AnswerPanel request={Request} pendingRef={pendingRef} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(1));
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <AnswerPanel
+        request={{
+          ...Request,
+          scope: { mode: 'documents', documentIds: ['new-doc'] },
+        }}
+        pendingRef={pendingRef}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(2));
+  await act(async () =>
+    settleOld({ data: { code: 100, message: 'DOCMIND_LLM_RESPONSE_INVALID' } }),
+  );
+  expect(pendingRef.current).toBe(true);
+  expect(screen.getByRole('button', { name: '질문하기' })).toBeDisabled();
+  expect(
+    screen.queryByRole('button', { name: '같은 질문 다시 시도' }),
+  ).not.toBeInTheDocument();
+  await act(async () =>
+    settleNew({ data: { code: 100, message: 'DOCMIND_LLM_RESPONSE_INVALID' } }),
+  );
+  expect(pendingRef.current).toBe(false);
+});
+
+it('does not let an unmounted panel release the pending state of its replacement', async () => {
+  let settleOld: (value: unknown) => void = () => {};
+  let settleNew: (value: unknown) => void = () => {};
+  MockAnswer.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        settleOld = resolve;
+      }),
+  ).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        settleNew = resolve;
+      }),
+  );
+  const pendingRef = { current: false };
+  const client = new QueryClient();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <AnswerPanel key="old" request={Request} pendingRef={pendingRef} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(1));
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <AnswerPanel
+        key="new"
+        request={{ ...Request, question: '새 질문?' }}
+        pendingRef={pendingRef}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(2));
+  await act(async () =>
+    settleOld({ data: { code: 100, message: 'DOCMIND_LLM_RESPONSE_INVALID' } }),
+  );
+  expect(pendingRef.current).toBe(true);
+  expect(
+    screen.queryByRole('button', { name: '같은 질문 다시 시도' }),
+  ).not.toBeInTheDocument();
+  await act(async () =>
+    settleNew({ data: { code: 100, message: 'DOCMIND_LLM_RESPONSE_INVALID' } }),
+  );
+});
+
+it('keeps one shared request in flight across a same-question remount', async () => {
+  let settleFirst: (value: unknown) => void = () => {};
+  MockAnswer.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        settleFirst = resolve;
+      }),
+  ).mockResolvedValueOnce({
+    data: { code: 100, message: 'DOCMIND_LLM_RESPONSE_INVALID' },
+  });
+  const pendingRef = { current: false };
+  const client = new QueryClient();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <AnswerPanel key="first" request={Request} pendingRef={pendingRef} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(1));
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <AnswerPanel key="second" request={Request} pendingRef={pendingRef} />
+    </QueryClientProvider>,
+  );
+  expect(pendingRef.current).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  expect(MockAnswer).toHaveBeenCalledTimes(1);
+  await act(async () =>
+    settleFirst({
+      data: { code: 100, message: 'DOCMIND_LLM_RESPONSE_INVALID' },
+    }),
+  );
+  await waitFor(() => expect(pendingRef.current).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(2));
+});
+
+it.each([
+  'DOCMIND_LLM_AUTH_FAILED',
+  'DOCMIND_SOURCE_CHANGED',
+  'DOCMIND_ANSWER_CONFIG_INVALID',
+])('does not offer recovery for %s', async (message) => {
+  MockAnswer.mockResolvedValue({ data: { code: 100, message } });
+  renderPanel();
+  fireEvent.click(screen.getByRole('button', { name: '질문하기' }));
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: '같은 질문 다시 시도' }),
+  ).not.toBeInTheDocument();
 });
 
 it.each([

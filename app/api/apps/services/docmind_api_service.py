@@ -29,6 +29,8 @@ _DOCUMENT_CANDIDATE_LIMIT = 8
 _RERANK_CANDIDATE_LIMIT = 128
 _RERANK_TEXT_LIMIT = 2400
 _FINAL_RESULT_LIMIT = 5
+_ANSWER_RESULT_LIMIT = 16
+_RERANK_DOCUMENT_NAME_LIMIT = 256
 _DENSE_K = 2048
 _DENSE_NUM_CANDIDATES = 4096
 _DENSE_SIMILARITY = 0.0
@@ -368,6 +370,11 @@ def _bounded_text(value: object) -> str:
     return str(value or "")[:_RERANK_TEXT_LIMIT]
 
 
+def _answer_rerank_input(candidate: Candidate) -> str:
+    name = str(candidate.chunk.get("docnm_kwd") or "")[:_RERANK_DOCUMENT_NAME_LIMIT]
+    return f"Document: {name}\n{candidate.rerank_text}" if name else candidate.rerank_text
+
+
 def _enrich_parser_platform_chunk(chunk: dict[str, Any]) -> dict[str, Any]:
     metadata = chunk.get("metadata")
     if isinstance(metadata, str):
@@ -418,6 +425,7 @@ async def _lane_candidates(
     resolved_scope: ResolvedScope,
     *,
     candidate_mode: str,
+    answer_mode: bool = False,
 ) -> list[Candidate]:
     request = {
         "dataset_ids": [catalog.dataset_id],
@@ -432,6 +440,8 @@ async def _lane_candidates(
         "keyword": False,
         "cross_languages": [],
     }
+    if answer_mode:
+        request["use_kg"] = False
     success, result = await dataset_api_service.search_datasets(
         tenant_id,
         request,
@@ -474,6 +484,7 @@ def _rrf_candidates(
     *,
     document_limit: int = _DOCUMENT_CANDIDATE_LIMIT,
     candidate_limit: int = _RERANK_CANDIDATE_LIMIT,
+    refill: bool = False,
 ) -> list[Candidate]:
     merged: dict[str, dict[str, Any]] = {}
     for lane, lane_candidates in (("bm25", bm25_candidates), ("dense", dense_candidates)):
@@ -494,9 +505,12 @@ def _rrf_candidates(
     ordered = sorted(merged.items(), key=lambda item: (-item[1]["rrf_score"], item[0]))
     per_document: dict[str, int] = {}
     result: list[Candidate] = []
+    deferred: list[tuple[str, dict[str, Any]]] = []
     for _chunk_id, state in ordered:
         doc_id = state["doc_id"]
         if per_document.get(doc_id, 0) >= document_limit:
+            if refill:
+                deferred.append((_chunk_id, state))
             continue
         base = state["candidate"]
         per_document[doc_id] = per_document.get(doc_id, 0) + 1
@@ -512,6 +526,18 @@ def _rrf_candidates(
         )
         if len(result) == candidate_limit:
             break
+    if refill and len(result) < candidate_limit:
+        for _chunk_id, state in deferred[: candidate_limit - len(result)]:
+            base = state["candidate"]
+            result.append(Candidate(
+                folder_id=base.folder_id,
+                chunk=base.chunk,
+                rerank_text=base.rerank_text,
+                rrf_score=state["rrf_score"],
+                bm25_rank=state["bm25_rank"],
+                dense_rank=state["dense_rank"],
+            ))
+        result.sort(key=lambda candidate: (-candidate.rrf_score, str(candidate.chunk.get("chunk_id") or candidate.chunk.get("id"))))
     return result
 
 
@@ -563,7 +589,7 @@ def _generationless_jina_api_key() -> str:
         return ""
 
 
-def _empty_result(catalog: Catalog, resolved_scope: ResolvedScope, trace_id: str, started_at: float) -> dict[str, Any]:
+def _empty_result(catalog: Catalog, resolved_scope: ResolvedScope, trace_id: str, started_at: float, *, answer_mode: bool = False) -> dict[str, Any]:
     return {
         "dataset_id": catalog.dataset_id,
         "project_id": catalog.dataset_id,
@@ -581,7 +607,8 @@ def _empty_result(catalog: Catalog, resolved_scope: ResolvedScope, trace_id: str
         "lane_counts": {"bm25": 0, "dense": 0},
         "trace_id": trace_id,
         "timings_ms": {"recall": 0.0, "rerank": 0.0, "total": round((time.monotonic() - started_at) * 1000, 2)},
-        "caps": {"lane": _LANE_LIMIT, "candidates": _RERANK_CANDIDATE_LIMIT, "per_document": _DOCUMENT_CANDIDATE_LIMIT, "results": _FINAL_RESULT_LIMIT},
+        "caps": ({"lane": _LANE_LIMIT, "candidates": _RERANK_CANDIDATE_LIMIT, "per_document_first_pass": _DOCUMENT_CANDIDATE_LIMIT, "results": _ANSWER_RESULT_LIMIT}
+                 if answer_mode else {"lane": _LANE_LIMIT, "candidates": _RERANK_CANDIDATE_LIMIT, "per_document": _DOCUMENT_CANDIDATE_LIMIT, "results": _FINAL_RESULT_LIMIT}),
     }
 
 
@@ -591,7 +618,10 @@ async def search(
     *,
     project_id: str | None = None,
     scope: object,
+    answer_mode: bool = False,
 ) -> dict[str, Any]:
+    if type(answer_mode) is not bool:
+        raise ValueError("DOCMIND_INVALID_ANSWER_MODE")
     catalog = _load_serving_catalog(tenant_id)
     if not KnowledgebaseService.accessible(catalog.dataset_id, tenant_id):
         raise PermissionError("DocMind catalog dataset is not accessible")
@@ -605,23 +635,23 @@ async def search(
     trace_id = str(uuid4())
     started_at = time.monotonic()
     if not resolved_scope.document_ids:
-        return _empty_result(catalog, resolved_scope, trace_id, started_at)
+        return _empty_result(catalog, resolved_scope, trace_id, started_at, answer_mode=answer_mode)
 
     recall_started_at = time.monotonic()
     try:
         bm25_candidates, dense_candidates = await asyncio.wait_for(
             asyncio.gather(
-                _lane_candidates(tenant_id, question, catalog, resolved_scope, candidate_mode="bm25"),
-                _lane_candidates(tenant_id, question, catalog, resolved_scope, candidate_mode="dense"),
+                _lane_candidates(tenant_id, question, catalog, resolved_scope, candidate_mode="bm25", answer_mode=answer_mode),
+                _lane_candidates(tenant_id, question, catalog, resolved_scope, candidate_mode="dense", answer_mode=answer_mode),
             ),
             timeout=_RECALL_TIMEOUT_SECONDS,
         )
     except TimeoutError as error:
         raise RuntimeError("DOCMIND_RECALL_TIMEOUT") from error
     recalled_at = time.monotonic()
-    candidates = _rrf_candidates(bm25_candidates, dense_candidates)
+    candidates = _rrf_candidates(bm25_candidates, dense_candidates, refill=answer_mode)
     if not candidates:
-        result = _empty_result(catalog, resolved_scope, trace_id, started_at)
+        result = _empty_result(catalog, resolved_scope, trace_id, started_at, answer_mode=answer_mode)
         result["lane_counts"] = {"bm25": len(bm25_candidates), "dense": len(dense_candidates)}
         result["timings_ms"]["recall"] = round((recalled_at - recall_started_at) * 1000, 2)
         result["timings_ms"]["total"] = round((recalled_at - started_at) * 1000, 2)
@@ -636,7 +666,7 @@ async def search(
     reranker = _rerank_model(catalog)
     try:
         scores, used_tokens = await asyncio.wait_for(
-            asyncio.to_thread(reranker.similarity, question, [candidate.rerank_text for candidate in rerank_candidates]),
+            asyncio.to_thread(reranker.similarity, question, [_answer_rerank_input(candidate) for candidate in rerank_candidates] if answer_mode else [candidate.rerank_text for candidate in rerank_candidates]),
             timeout=_RERANK_TIMEOUT_SECONDS,
         )
     except TimeoutError as error:
@@ -663,7 +693,7 @@ async def search(
         )
     )
     ranked_chunks: list[dict[str, Any]] = []
-    for candidate, score in scored[:_FINAL_RESULT_LIMIT]:
+    for candidate, score in scored[:_ANSWER_RESULT_LIMIT if answer_mode else _FINAL_RESULT_LIMIT]:
         chunk = _enrich_parser_platform_chunk(dict(candidate.chunk))
         chunk["similarity"] = score
         chunk["rerank_score"] = score
@@ -727,5 +757,6 @@ async def search(
         "trace_id": trace_id,
         "timings_ms": timings_ms,
         "rerank_used_tokens": used_tokens,
-        "caps": {"lane": _LANE_LIMIT, "candidates": _RERANK_CANDIDATE_LIMIT, "per_document": _DOCUMENT_CANDIDATE_LIMIT, "results": _FINAL_RESULT_LIMIT},
+        "caps": ({"lane": _LANE_LIMIT, "candidates": _RERANK_CANDIDATE_LIMIT, "per_document_first_pass": _DOCUMENT_CANDIDATE_LIMIT, "results": _ANSWER_RESULT_LIMIT}
+                 if answer_mode else {"lane": _LANE_LIMIT, "candidates": _RERANK_CANDIDATE_LIMIT, "per_document": _DOCUMENT_CANDIDATE_LIMIT, "results": _FINAL_RESULT_LIMIT}),
     }

@@ -26,18 +26,24 @@ class AnswerConfig:
     provider: str
     api_key: str = field(default="", repr=False)
     upstream_provider: str = ""
+    pipeline: str = "legacy"
 
     @classmethod
     def from_env(cls):
         if os.getenv("DOCMIND_ANSWER_ENABLED") != "1":
             raise AnswerError("DOCMIND_ANSWER_DISABLED")
         try:
+            pipeline = os.getenv("DOCMIND_ANSWER_PIPELINE", "legacy").strip()
+            if pipeline not in {"legacy", "reviewed_v1"}:
+                raise ValueError
             provider = os.getenv("DOCMIND_ANSWER_PROVIDER", "openai")
             default_model = {"openai": "qwen3.8-flash-next", "openrouter": "qwen/qwen3.8-27b"}.get(provider, "")
             model = os.getenv("DOCMIND_ANSWER_MODEL", default_model).strip()
             context = int(os.getenv("DOCMIND_ANSWER_CONTEXT_TOKENS", "32768"))
             output = int(os.getenv("DOCMIND_ANSWER_OUTPUT_TOKENS", "1024"))
             if not model or not 4096 <= context <= 131072 or not 256 <= output <= 4096 or output + 2048 >= context:
+                raise ValueError
+            if pipeline == "reviewed_v1" and (provider != "openai" or context != 32768 or output != 2048 or model != "qwen3.8-flash-next"):
                 raise ValueError
             if provider == "openrouter":
                 if os.getenv("DOCMIND_ANSWER_EXTERNAL_ALLOWED") != "1":
@@ -49,7 +55,7 @@ class AnswerConfig:
                 if not re.fullmatch(r"sk-or-v1-[A-Za-z0-9_-]{1,4000}", key):
                     raise ValueError
                 upstream = os.getenv("DOCMIND_OPENROUTER_PROVIDER", "").strip()
-                return cls(base_url, model, context, output, provider, key, upstream)
+                return cls(base_url, model, context, output, provider, key, upstream, pipeline)
             if provider not in {"ollama", "openai"}:
                 raise ValueError
             if provider == "openai":
@@ -68,8 +74,13 @@ class AnswerConfig:
                 and not parsed.fragment
             ):
                 raise ValueError
+            if pipeline == "reviewed_v1":
+                # Activation pins the sole approved local server. A changed host fails closed.
+                pinned_base = os.getenv("DOCMIND_REVIEWED_ALLOWED_BASE_URL", "").rstrip("/")
+                if not pinned_base or base_url != pinned_base:
+                    raise ValueError
             # Do not even read the external key in local mode.
-            return cls(base_url, model, context, output, provider)
+            return cls(base_url, model, context, output, provider, pipeline=pipeline)
         except (ValueError, OSError, KeyError):
             raise AnswerError("DOCMIND_ANSWER_CONFIG_INVALID") from None
 
@@ -199,6 +210,8 @@ def _validate_generated_answer(content, citation_count):
     if status == "insufficient":
         if references:
             raise AnswerError("DOCMIND_LLM_CITATIONS_INVALID")
+        if answer_text.strip():
+            raise AnswerError("DOCMIND_LLM_RESPONSE_INVALID")
         return _GeneratedAnswer(status, _INSUFFICIENT_NOTICE, ())
     answer_text = answer_text.strip()
     if not answer_text:
@@ -207,6 +220,31 @@ def _validate_generated_answer(content, citation_count):
     if not references or len(set(references)) != len(references) or any(not 1 <= value <= citation_count for value in references) or inline_references != set(references):
         raise AnswerError("DOCMIND_LLM_CITATIONS_INVALID")
     return _GeneratedAnswer(status, answer_text, tuple(references))
+
+
+def _generation_response_format(citation_count):
+    if type(citation_count) is not int or citation_count < 1:
+        raise ValueError("citation_count must be a positive integer")
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "grounded_answer",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["answered", "partial", "insufficient"]},
+                    "answer": {"type": "string"},
+                    "citations": {
+                        "type": "array",
+                        "items": {"type": "integer", "minimum": 1, "maximum": citation_count},
+                    },
+                },
+                "required": ["status", "answer", "citations"],
+                "additionalProperties": False,
+            },
+        },
+    }
 
 
 def _messages(question, chunks):
@@ -255,7 +293,10 @@ async def generate(config, messages, citation_count, *, client=None):
         payload["options"] = {"num_ctx": config.context_tokens, "num_predict": config.output_tokens, "temperature": 0}
     elif config.provider == "openai":
         url = f"{config.base_url}/chat/completions"
-        payload.update(max_tokens=config.output_tokens, temperature=0, response_format={"type": "json_object"}, chat_template_kwargs={"enable_thinking": False})
+        payload.update(max_tokens=config.output_tokens, temperature=0, response_format=_generation_response_format(citation_count), chat_template_kwargs={"enable_thinking": False})
+        if config.pipeline == "reviewed_v1":
+            payload.update(cache_prompt=False, reasoning_effort="low", reasoning_budget_tokens=256,
+                           reasoning_format="deepseek", chat_template_kwargs={"enable_thinking": True, "reasoning_effort": "low"})
     else:
         raise AnswerError("DOCMIND_ANSWER_CONFIG_INVALID")
 
@@ -271,6 +312,8 @@ async def generate(config, messages, citation_count, *, client=None):
                 code = {401: "DOCMIND_LLM_AUTH_FAILED", 402: "DOCMIND_LLM_CREDITS_REQUIRED", 429: "DOCMIND_LLM_RATE_LIMITED"}.get(response.status_code)
                 if code:
                     raise AnswerError(code)
+            if config.pipeline == "reviewed_v1" and response.status_code in {400, 422}:
+                raise AnswerError("DOCMIND_ANSWER_CONFIG_INVALID")
             response.raise_for_status()
             body = bytearray()
             async for data in response.aiter_bytes():
@@ -379,11 +422,11 @@ def _fresh_catalog(search_service, tenant_id, result, scope):
     return catalog
 
 
-def _load_context(search_service, tenant_id, result, scope, window):
+def _load_context(search_service, tenant_id, result, scope, window, seed_limit=5):
     catalog = _fresh_catalog(search_service, tenant_id, result, scope)
     seeds = []
     neighbors = []
-    for hit in result["chunks"][:5]:
+    for hit in result["chunks"][:seed_limit]:
         if hit["doc_id"] not in result["scope_doc_ids"]:
             raise AnswerError("DOCMIND_CONTEXT_SCOPE_INVALID")
         rows = _query_chunks(tenant_id, catalog.dataset_id, hit["doc_id"], ids=[hit["chunk_id"]])
@@ -424,6 +467,11 @@ async def answer(tenant_id, question, *, project_id=None, scope, neighbor_window
         raise ValueError("neighbor_window must be 0, 2 or 5")
     if not isinstance(question, str) or not question.strip() or len(question.encode("utf-8")) > 4096:
         raise ValueError("question must contain 1 to 4096 UTF-8 bytes")
+    if config.pipeline == "reviewed_v1":
+        from api.apps.services.docmind_review_pipeline import reviewed_answer
+
+        return await reviewed_answer(tenant_id, question.strip(), project_id=project_id,
+                                     scope=scope, neighbor_window=neighbor_window, config=config)
     started = time.monotonic()
     result = await search_service.search(tenant_id, question.strip(), project_id=project_id, scope=scope)
     if not result["chunks"]:
@@ -438,8 +486,26 @@ async def answer(tenant_id, question, *, project_id=None, scope, neighbor_window
         seeds, expanded = await asyncio.wait_for(asyncio.to_thread(_load_context, search_service, tenant_id, result, scope, neighbor_window), 20)
         packed, messages = pack_context(question.strip(), seeds, expanded, config.context_tokens - config.output_tokens - 1024)
         await asyncio.wait_for(asyncio.to_thread(_verify_context, search_service, tenant_id, result, scope, packed), 20)
-        generated = await generate(config, messages, len(packed))
-        await asyncio.wait_for(asyncio.to_thread(_verify_context, search_service, tenant_id, result, scope, packed), 20)
+        generation_deadline = time.monotonic() + 90
+        for attempt in range(2):
+            remaining = generation_deadline - time.monotonic()
+            if remaining <= 0:
+                raise AnswerError("DOCMIND_LLM_TIMEOUT")
+            try:
+                generated = await asyncio.wait_for(generate(config, messages, len(packed)), remaining)
+            except TimeoutError:
+                raise AnswerError("DOCMIND_LLM_TIMEOUT") from None
+            except AnswerError as error:
+                if attempt or str(error) not in {
+                    "DOCMIND_LLM_RESPONSE_INVALID",
+                    "DOCMIND_LLM_CITATIONS_INVALID",
+                    "DOCMIND_LLM_OUTPUT_TRUNCATED",
+                }:
+                    raise
+                await asyncio.wait_for(asyncio.to_thread(_verify_context, search_service, tenant_id, result, scope, packed), 20)
+            else:
+                await asyncio.wait_for(asyncio.to_thread(_verify_context, search_service, tenant_id, result, scope, packed), 20)
+                break
     except TimeoutError:
         raise AnswerError("DOCMIND_CONTEXT_TIMEOUT") from None
     references = set(generated.references)

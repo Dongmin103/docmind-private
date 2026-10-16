@@ -216,7 +216,6 @@ def test_external_response_size_is_bounded(service, external_env):
     [
         ("answered", "  합성 사실 [1], 확인 [1]  ", [1], "합성 사실 [1], 확인 [1]", (1,)),
         ("partial", "합성 담당자는 민수입니다 [1]. 시행일은 확인할 수 없습니다.", [1], "합성 담당자는 민수입니다 [1]. 시행일은 확인할 수 없습니다.", (1,)),
-        ("insufficient", "질문의 전제에 근거가 없습니다. 꾸며낸 사실 [999]", [], "선택한 문서에서 질문의 전제나 답을 뒷받침할 근거를 찾지 못했습니다.", ()),
         ("insufficient", "", [], "선택한 문서에서 질문의 전제나 답을 뒷받침할 근거를 찾지 못했습니다.", ()),
     ],
 )
@@ -269,6 +268,7 @@ def test_generated_states_use_one_call_and_server_owned_insufficient_answer(serv
         (generated(answer="private [1]", citations=[2]), "CITATIONS_INVALID"),
         (generated("partial", "private", [1]), "CITATIONS_INVALID"),
         (generated("insufficient", "private", [1]), "CITATIONS_INVALID"),
+        (generated("insufficient", "private", []), "RESPONSE_INVALID"),
     ],
 )
 def test_content_schema_and_citation_integrity_fail_closed(service, provider, content, code):
@@ -338,7 +338,23 @@ def test_default_local_openai_call_does_not_read_or_send_external_credentials(se
             "stream": False,
             "max_tokens": 1024,
             "temperature": 0,
-            "response_format": {"type": "json_object"},
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "grounded_answer",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "status": {"type": "string", "enum": ["answered", "partial", "insufficient"]},
+                            "answer": {"type": "string"},
+                            "citations": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 1}},
+                        },
+                        "required": ["status", "answer", "citations"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
             "chat_template_kwargs": {"enable_thinking": False},
         }
         return httpx.Response(200, json=completion())
