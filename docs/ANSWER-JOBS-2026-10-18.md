@@ -70,3 +70,36 @@ not delete the additive job tables or existing source/index data.
 Runtime deployment evidence and sanitized smoke results are kept in the ignored
 `.local/answer-jobs-20261018` release directory. Operational source text and
 provider credentials must not be copied into Git or diagnostic output.
+
+## Deployment verification
+
+Deployed code commit: `c8004bfa73baef982baed34c06795e3be6cf2ec7`.
+Final image: `docmind-ragflow:answer-jobs-long-20261018`,
+`sha256:9eef1c3326b1c27d8e5a61548f189787b9abc9937a3aab61e0842334d3f6579f`.
+All 288 Python files were checked, preserving the 284 original files outside
+the four answer files. Existing documents/indexes, configuration apart from
+the declared output allowance, and original host tasks were verified unchanged.
+The existing folder catalog remained available with source synchronization enabled.
+
+The original broad smart-factory question completed through the public site in
+53.28 seconds, with `partial` coverage, 11 cited passages and 9 distinct document
+IDs (some document names are duplicated). Acceptance returned HTTP 202 in 0.203
+seconds. Repeated authorized result retrieval returned the same answer, replaying
+a completed receipt reused its job, and unauthenticated retrieval returned 401.
+This is a bounded smoke test, not a new semantic accuracy score.
+
+A separate installation question demonstrated recovery across a real connectivity
+interruption: answer processing took 34.673 seconds and the stored result was eventually
+retrieved at 321.68 seconds after 10 transient polling failures. It was not
+regenerated. The final broad-question test had no transient polling errors.
+
+During rollout the previous temporary Cloudflare connection returned 530/1033.
+The existing temporary-tunnel task was reprovisioned using HTTP/2, retaining its
+other settings, and both Vercel API rewrites were updated after direct health
+verification. Local and public frontend entrypoints and answer assets match the
+built package; database, document engine, Redis and storage health all report OK.
+No fixed domain was purchased or provisioned by this change.
+
+An obsolete `context-attempt1` staging folder (36,802,972 bytes) remains because
+automatic approval review rejected its deletion with `blocked by policy`.
+It is not mounted into the running service. No deletion workaround was attempted.
