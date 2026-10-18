@@ -43,7 +43,7 @@ class AnswerConfig:
             output = int(os.getenv("DOCMIND_ANSWER_OUTPUT_TOKENS", "1024"))
             if not model or not 4096 <= context <= 131072 or not 256 <= output <= 4096 or output + 2048 >= context:
                 raise ValueError
-            if pipeline == "reviewed_v1" and (provider != "openai" or context != 32768 or output != 2048 or model != "qwen3.8-flash-next"):
+            if pipeline == "reviewed_v1" and (provider != "openai" or context != 32768 or output not in {2048, 4096} or model != "qwen3.8-flash-next"):
                 raise ValueError
             if provider == "openrouter":
                 if os.getenv("DOCMIND_ANSWER_EXTERNAL_ALLOWED") != "1":

@@ -32,8 +32,12 @@ consumer. Polling does not extend retention.
 
 Generation and review share a 600-second budget, including their bounded repair
 attempt. The entire answer operation is capped at 720 seconds. Context limits,
-output tokens, provider/model pinning, source checks, citation validation and
-the maximum three model calls remain unchanged. Source/catalog authority is
+provider/model pinning, source checks, citation validation and
+the maximum three model calls remain unchanged. Generation and review allow an
+output limit of 2048 or 4096 tokens; the deployed setting uses 4096 because the
+original broad demo question exhausted the previous 2048-token output limit.
+Both model calls use the same configured limit, and template/slot input budgeting
+reserves the actual output allowance. Source/catalog authority is
 checked before execution, after execution and when retrieving a completed result;
 the cited active chunks are also rechecked before delivery.
 
@@ -47,7 +51,7 @@ a full page reload.
 
 Validation before rollout:
 
-- 270 backend tests, including isolated SQLite lease recovery and cancellation.
+- 271 backend tests, including isolated SQLite lease recovery and cancellation.
 - Isolated MySQL schema: two simultaneous claimants produce one claim, duplicate
   acceptance reuses the job, stale publication is blocked, and result columns
   are LONGTEXT. The temporary schema was removed; operational tables were untouched.

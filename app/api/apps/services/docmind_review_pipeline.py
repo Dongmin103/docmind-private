@@ -97,7 +97,7 @@ def _check_review_tokens(config, messages, budget):
 
 async def _review_once(config, messages, draft, citation_count):
     payload = {
-        "model": config.model, "messages": messages, "stream": False, "max_tokens": 2048,
+        "model": config.model, "messages": messages, "stream": False, "max_tokens": config.output_tokens,
         "temperature": 0, "cache_prompt": True, "reasoning_effort": "low",
         "reasoning_budget_tokens": 256, "reasoning_format": "deepseek",
         "chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": "low"},
@@ -151,7 +151,7 @@ async def _review_once(config, messages, draft, citation_count):
 
 
 async def reviewed_answer(tenant_id, question, *, project_id, scope, neighbor_window, config):
-    if config.provider != "openai" or config.pipeline != "reviewed_v1" or config.output_tokens != 2048:
+    if config.provider != "openai" or config.pipeline != "reviewed_v1" or config.output_tokens not in {2048, 4096}:
         raise answer_service.AnswerError("DOCMIND_ANSWER_CONFIG_INVALID")
     start = time.monotonic()
     try:

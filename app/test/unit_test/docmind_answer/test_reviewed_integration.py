@@ -183,8 +183,10 @@ def test_reviewed_mode_rejects_unpinned_or_changed_server(service, reviewed, mon
         service.AnswerConfig.from_env()
 
 
-def test_generation_and_review_wire_match_frozen_reasoning_schema(service, reviewed, monkeypatch):
+@pytest.mark.parametrize("output", [2048, 4096])
+def test_generation_and_review_wire_match_frozen_reasoning_schema(service, reviewed, monkeypatch, output):
     state, pipeline = reviewed
+    monkeypatch.setenv("DOCMIND_ANSWER_OUTPUT_TOKENS", str(output))
     config = service.AnswerConfig.from_env()
     requests = []
     original_client = httpx.AsyncClient
@@ -216,7 +218,7 @@ def test_generation_and_review_wire_match_frozen_reasoning_schema(service, revie
         {"status": "answered", "answer": "synthetic answer [1]", "citations": [1]}, 1)
     for payload, cache in ((generation, False), (inspection, True)):
         assert payload["cache_prompt"] is cache
-        assert payload["max_tokens"] == 2048 and payload["temperature"] == 0
+        assert payload["max_tokens"] == output and payload["temperature"] == 0
         assert payload["reasoning_effort"] == "low" and payload["reasoning_budget_tokens"] == 256
         assert payload["reasoning_format"] == "deepseek"
         assert payload["chat_template_kwargs"] == {"enable_thinking": True, "reasoning_effort": "low"}
