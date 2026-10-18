@@ -11,6 +11,7 @@ from quart import Response, request
 from api.apps import current_user, login_required, login_user
 from api.apps.services import (
     docmind_answer_service,
+    docmind_answer_jobs,
     docmind_api_service,
     docmind_bootstrap_service,
     docmind_catalog_admin_service,
@@ -782,12 +783,12 @@ async def folders(tenant_id: str):
         return get_error_data_result(message=str(error))
 
 
-@manager.route("/docmind/answer", methods=["POST"])  # noqa: F821
+@manager.route("/docmind/answer/jobs", methods=["POST"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
-async def answer(tenant_id: str):
+async def submit_answer_job(tenant_id: str):
     req = await request.get_json(silent=True)
-    if not isinstance(req, dict) or set(req) - {"question", "project_id", "scope", "neighbor_window"}:
+    if not isinstance(req, dict) or set(req) - {"question", "project_id", "scope", "neighbor_window", "request_id"}:
         return get_error_argument_result("invalid answer request")
     try:
         question = req.get("question")
@@ -796,12 +797,19 @@ async def answer(tenant_id: str):
         project_id = req.get("project_id")
         if "project_id" in req and (not isinstance(project_id, str) or not project_id.strip()):
             raise ValueError("project_id must be a non-empty string")
-        result = await docmind_answer_service.answer(
-            tenant_id, question.strip(), project_id=project_id.strip() if project_id else None,
-            scope=_parse_search_scope(req.get("scope")), neighbor_window=req.get("neighbor_window", 2),
+        if len(question.strip().encode("utf-8")) > 4096:
+            raise ValueError("question exceeds 4096 UTF-8 bytes")
+        neighbor_window = req.get("neighbor_window", 2)
+        if type(neighbor_window) is not int or neighbor_window not in {0, 2, 5}:
+            raise ValueError("neighbor_window must be 0, 2 or 5")
+        docmind_answer_service.AnswerConfig.from_env()
+        result = await asyncio.to_thread(
+            docmind_answer_jobs.submit, tenant_id, str(current_user.id), req.get("request_id"),
+            {"question": question.strip(), "project_id": project_id.strip() if project_id else None,
+             "scope": _parse_search_scope(req.get("scope")), "neighbor_window": neighbor_window},
         )
-        return get_result(data=result)
-    except (docmind_answer_service.AnswerError, docmind_api_service.DocmindCatalogNotInitializedError) as error:
+        return _preview_json({"code": 0, "data": result}, 202)
+    except (docmind_answer_service.AnswerError, docmind_answer_jobs.JobError, docmind_api_service.DocmindCatalogNotInitializedError) as error:
         return get_error_data_result(message=str(error))
     except ValueError as error:
         return get_error_argument_result(str(error))
@@ -809,6 +817,28 @@ async def answer(tenant_id: str):
         # Do not expose exception bodies that may contain source text/provider data.
         logger.warning("DocMind answer failed")
         return get_error_data_result(message="DOCMIND_ANSWER_FAILED")
+
+
+@manager.before_app_serving  # noqa: F821
+async def start_answer_worker():
+    from quart import current_app
+
+    await asyncio.to_thread(docmind_answer_jobs.initialize)
+    current_app.add_background_task(docmind_answer_jobs.run_worker)
+
+
+@manager.route("/docmind/answer/jobs/<job_id>", methods=["GET"])  # noqa: F821
+@login_required
+@add_tenant_id_to_kwargs
+async def get_answer_job(tenant_id: str, job_id: str):
+    try:
+        result = await asyncio.to_thread(docmind_answer_jobs.get, tenant_id, str(current_user.id), job_id)
+        return _preview_json({"code": 0, "data": result})
+    except docmind_answer_jobs.JobError as error:
+        return _preview_json({"code": 102, "message": str(error)}, 404 if str(error) == "DOCMIND_ANSWER_JOB_NOT_FOUND" else 409)
+    except Exception:
+        logger.warning("DocMind answer job retrieval failed")
+        return _preview_json({"code": 102, "message": "DOCMIND_ANSWER_FAILED"}, 503)
 
 
 @manager.route("/docmind/search", methods=["POST"])  # noqa: F821

@@ -136,9 +136,9 @@ def test_source_change_blocks_retry_and_answer(service, reviewed):
     assert (state["generate"], state["review"]) == (1, 0)
 
 
-def test_generation_and_review_share_one_ninety_second_deadline(service, reviewed, monkeypatch):
+def test_generation_and_review_share_one_ten_minute_deadline(service, reviewed, monkeypatch):
     state, pipeline = reviewed
-    assert pipeline.MODEL_DEADLINE_SECONDS == 90
+    assert pipeline.MODEL_DEADLINE_SECONDS == 600
     monkeypatch.setattr(pipeline, "MODEL_DEADLINE_SECONDS", 0.01)
 
     async def slow_generate(*_args, **_kwargs):

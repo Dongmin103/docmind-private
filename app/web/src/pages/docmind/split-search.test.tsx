@@ -398,7 +398,7 @@ it('exposes both tabs before submitting and keeps existing search free of genera
 });
 
 it.each(['all', 'folders', 'documents'] as const)(
-  'submits AI directly once with %s scope and five surrounding neighbors',
+  'submits AI directly once with %s scope and two surrounding neighbors',
   async (mode) => {
     await start();
     ai();
@@ -423,17 +423,20 @@ it.each(['all', 'folders', 'documents'] as const)(
       '합성 답변 [1]',
     );
     expect(MockAnswer).toHaveBeenCalledTimes(1);
-    expect(MockAnswer).toHaveBeenCalledWith({
-      question: '시험 질문',
-      projectId: 'project-1',
-      scope:
-        mode === 'all'
-          ? { mode }
-          : mode === 'folders'
-            ? { mode, folderIds: ['folder-1'] }
-            : { mode, documentIds: ['document-1'] },
-      neighborWindow: 5,
-    });
+    expect(MockAnswer).toHaveBeenCalledWith(
+      {
+        question: '시험 질문',
+        projectId: 'project-1',
+        scope:
+          mode === 'all'
+            ? { mode }
+            : mode === 'folders'
+              ? { mode, folderIds: ['folder-1'] }
+              : { mode, documentIds: ['document-1'] },
+        neighborWindow: 2,
+      },
+      expect.any(Function),
+    );
     expect(MockSearch).not.toHaveBeenCalled();
     expect(
       screen.getByText(/검색 근거 1개 · 문맥 확장 5개 · 실제 입력 5개/),
@@ -526,7 +529,44 @@ it('allows an explicit repeat of the same question and clears a completed answer
   expect(MockAnswer).toHaveBeenCalledTimes(2);
 });
 
-it.each(['tab', 'query', 'scope'] as const)(
+it.each(['query', 'scope'] as const)(
+  'allows an explicit replacement after a pending %s changes and ignores the old answer',
+  async (change) => {
+    let resolve: (value: unknown) => void = () => {};
+    MockAnswer.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    await start();
+    ai();
+    question();
+    submit();
+    await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(1));
+    if (change === 'query') question('다른 질문');
+    if (change === 'scope') {
+      fireEvent.click(screen.getByText('전체 문서'));
+      fireEvent.click(screen.getByLabelText('선택 문서'));
+      fireEvent.click(screen.getByLabelText('품질/protocol.pdf'));
+    }
+    expect(MockAnswer).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '질문하기' })).not.toBeDisabled();
+    submit();
+    await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(2));
+    await screen.findByLabelText('AI 답변');
+    await act(async () =>
+      resolve({
+        data: { code: 0, data: { ...Answer.data.data, answer: '오래된 답변' } },
+      }),
+    );
+    expect(screen.getByLabelText('AI 답변')).not.toHaveTextContent(
+      '오래된 답변',
+    );
+  },
+);
+
+it.each(['tab'] as const)(
   'keeps an unresolved request guarded after restoring its %s',
   async (change) => {
     let resolve: (value: unknown) => void = () => {};
@@ -545,15 +585,6 @@ it.each(['tab', 'query', 'scope'] as const)(
       fireEvent.click(screen.getByRole('tab', { name: '문서 검색' }));
       ai();
     }
-    if (change === 'query') {
-      question('다른 질문');
-      question();
-    }
-    if (change === 'scope') {
-      fireEvent.click(screen.getByText('전체 문서'));
-      fireEvent.click(screen.getByLabelText('선택 문서'));
-      fireEvent.click(screen.getByLabelText('전체 문서'));
-    }
     expect(screen.getByRole('button', { name: '질문하기' })).toBeDisabled();
     fireEvent.submit(screen.getByRole('form', { name: 'AI 질문 작성' }));
     expect(MockAnswer).toHaveBeenCalledTimes(1);
@@ -569,18 +600,26 @@ it.each(['tab', 'query', 'scope'] as const)(
       '합성 답변 [1]',
     );
     expect(MockAnswer).toHaveBeenCalledTimes(2);
-    expect(MockAnswer).toHaveBeenNthCalledWith(1, {
-      question: '시험 질문',
-      projectId: 'project-1',
-      scope: { mode: 'all' },
-      neighborWindow: 5,
-    });
-    expect(MockAnswer).toHaveBeenNthCalledWith(2, {
-      question: '시험 질문',
-      projectId: 'project-1',
-      scope: { mode: 'all' },
-      neighborWindow: 5,
-    });
+    expect(MockAnswer).toHaveBeenNthCalledWith(
+      1,
+      {
+        question: '시험 질문',
+        projectId: 'project-1',
+        scope: { mode: 'all' },
+        neighborWindow: 2,
+      },
+      expect.any(Function),
+    );
+    expect(MockAnswer).toHaveBeenNthCalledWith(
+      2,
+      {
+        question: '시험 질문',
+        projectId: 'project-1',
+        scope: { mode: 'all' },
+        neighborWindow: 2,
+      },
+      expect.any(Function),
+    );
   },
 );
 

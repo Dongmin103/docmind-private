@@ -11,7 +11,7 @@ from api.apps.services import docmind_answer_review as review
 from api.apps.services import docmind_answer_service as answer_service
 from api.apps.services import docmind_api_service as search_service
 
-MODEL_DEADLINE_SECONDS = 90
+MODEL_DEADLINE_SECONDS = 600
 
 
 def _local_root(base_url):
@@ -105,7 +105,7 @@ async def _review_once(config, messages, draft, citation_count):
     }
     try:
         async with (
-            httpx.AsyncClient(timeout=httpx.Timeout(85, connect=5), trust_env=False, follow_redirects=False) as client,
+            httpx.AsyncClient(timeout=httpx.Timeout(MODEL_DEADLINE_SECONDS, connect=5), trust_env=False, follow_redirects=False) as client,
             client.stream("POST", f"{config.base_url}/chat/completions", json=payload, follow_redirects=False) as response,
         ):
                 if response.status_code in {400, 422}:
@@ -206,7 +206,7 @@ async def reviewed_answer(tenant_id, question, *, project_id, scope, neighbor_wi
         mark = time.monotonic()
         try:
             try:
-                generated = await within_deadline(lambda: answer_service.generate(config, generation_messages, len(packed)))
+                generated = await within_deadline(lambda: answer_service.generate(config, generation_messages, len(packed), timeout_seconds=MODEL_DEADLINE_SECONDS))
             except answer_service.AnswerError as error:
                 if str(error) in {"DOCMIND_LLM_RESPONSE_INVALID", "DOCMIND_LLM_CITATIONS_INVALID", "DOCMIND_LLM_OUTPUT_TRUNCATED"}:
                     raise review.RecoverableOutput(str(error)) from None

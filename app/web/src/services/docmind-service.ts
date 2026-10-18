@@ -1,3 +1,8 @@
+import {
+  AnswerJobError,
+  waitForAnswerJob,
+  type AnswerJobProgress,
+} from './docmind-answer-job';
 import type { ITestingChunk } from '@/interfaces/database/chunk';
 import request from '@/utils/request';
 
@@ -100,7 +105,15 @@ export interface DocMindParserRun {
   chunk_set_id: string;
   active_chunk_set_id?: string;
   active: boolean;
-  source_format: 'pdf' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'pptx' | 'hwp' | 'hwpx';
+  source_format:
+    | 'pdf'
+    | 'doc'
+    | 'docx'
+    | 'xls'
+    | 'xlsx'
+    | 'pptx'
+    | 'hwp'
+    | 'hwpx';
   selection_reason: string;
   parser_name: string;
   parser_version: string;
@@ -250,10 +263,34 @@ const searchRequestData = ({
 export const searchDocMind = (input: DocMindSearchRequest) =>
   request.post('/api/v1/docmind/search', { data: searchRequestData(input) });
 
-export const answerDocMind = (input: DocMindAnswerRequest) =>
-  request.post('/api/v1/docmind/answer', {
-    data: { ...searchRequestData(input), neighbor_window: input.neighborWindow },
-  });
+export const answerDocMind = async (
+  input: DocMindAnswerRequest,
+  progress?: (state: AnswerJobProgress) => void,
+) => {
+  const payload = {
+    ...searchRequestData(input),
+    neighbor_window: input.neighborWindow,
+  };
+  try {
+    const result = await waitForAnswerJob(
+      payload,
+      {
+        submit: (id) =>
+          request.post('/api/v1/docmind/answer/jobs', {
+            data: { ...payload, request_id: id },
+            timeout: 15000,
+          }),
+        get: (id) =>
+          request.get(`/api/v1/docmind/answer/jobs/${id}`, { timeout: 15000 }),
+      },
+      progress,
+    );
+    return { data: { code: 0, data: result, message: '' } };
+  } catch (error) {
+    if (!(error instanceof AnswerJobError)) throw error;
+    return { data: { code: 102, data: undefined, message: error.message } };
+  }
+};
 
 export const registerDocMindDocuments = (folderId: string, files: File[]) => {
   const data = new FormData();
@@ -274,10 +311,14 @@ export const requestDocMindPdfOcr = (
   documentId: string,
   expectedSourceVersionId: string,
   idempotencyKey: string,
-) => request.post(`/api/v1/docmind/documents/${documentId}/pdf-ocr`, {
-  data: { expected_source_version_id: expectedSourceVersionId, consent: true },
-  headers: { 'Idempotency-Key': idempotencyKey },
-});
+) =>
+  request.post(`/api/v1/docmind/documents/${documentId}/pdf-ocr`, {
+    data: {
+      expected_source_version_id: expectedSourceVersionId,
+      consent: true,
+    },
+    headers: { 'Idempotency-Key': idempotencyKey },
+  });
 
 export const getDocMindImportJobs = () =>
   request.get('/api/v1/docmind/admin/hierarchy/imports');

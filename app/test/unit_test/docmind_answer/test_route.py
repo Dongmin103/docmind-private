@@ -34,6 +34,15 @@ def route_app(monkeypatch, service):
 
     services = types.ModuleType("api.apps.services")
     services.docmind_answer_service = service
+    async def worker():
+        pass
+    services.docmind_answer_jobs = types.SimpleNamespace(
+        JobError=type('JobError', (RuntimeError,), {}), run_worker=worker, initialize=lambda: None,
+        submit=lambda *args: {"job_id": args[2], "status": "queued"},
+        get=lambda *args: {"job_id": args[2], "status": "running"},
+    )
+    app.jobs = services.docmind_answer_jobs
+    monkeypatch.setattr(service.AnswerConfig, 'from_env', lambda: object())
     services.docmind_api_service = types.SimpleNamespace(DocmindCatalogNotInitializedError=RuntimeError)
     for name in (
         "docmind_bootstrap_service",
@@ -47,7 +56,7 @@ def route_app(monkeypatch, service):
     ):
         setattr(services, name, types.SimpleNamespace(PreviewError=RuntimeError))
     modules = {
-        "api.apps": types.SimpleNamespace(current_user=None, login_required=login_required, login_user=None),
+        "api.apps": types.SimpleNamespace(current_user=types.SimpleNamespace(id="user"), login_required=login_required, login_user=None),
         "api.apps.services": services,
         "api.db.db_models": types.SimpleNamespace(DocmindIngestionJob=None, DocmindPreviewSession=None),
         "api.db.services.document_service": types.SimpleNamespace(DocmindProtectedEvidenceError=RuntimeError),
@@ -70,67 +79,51 @@ def route_app(monkeypatch, service):
     return app
 
 
-def test_route_passes_authenticated_caller_and_scope(route_app, service, monkeypatch):
+def test_route_accepts_without_waiting_for_model(route_app, service, monkeypatch):
     calls = []
-
-    async def answer(*args, **kwargs):
-        calls.append((args, kwargs))
-        return {"answer": "synthetic [1]", "answer_status": "partial", "citations": []}
-
-    monkeypatch.setattr(service, "answer", answer)
-
+    def submit(*args):
+        calls.append(args)
+        return {"job_id": args[2], "status": "queued"}
+    monkeypatch.setattr(route_app.jobs, 'submit', submit)
     async def run():
-        response = await route_app.test_client().post(
-            "/api/v1/docmind/answer",
-            headers={"X-Test-User": "member"},
-            json={"question": " question ", "project_id": " kb ", "scope": {"mode": "documents", "document_ids": ["doc"]}, "neighbor_window": 5},
-        )
+        response = await route_app.test_client().post('/api/v1/docmind/answer/jobs',
+            headers={"X-Test-User": "member"}, json={"request_id": "a"*32, "question": " question ",
+            "project_id": " kb ", "scope": {"mode": "documents", "document_ids": ["doc"]}, "neighbor_window": 5})
+        assert response.status_code == 202
+        assert response.headers['Cache-Control'] == 'no-store'
         return await response.get_json()
-
-    result = asyncio.run(run())
-    assert result["code"] == 0
-    assert result["data"] == {"answer": "synthetic [1]", "answer_status": "partial", "citations": []}
-    assert calls == [(("member", "question"), {"project_id": "kb", "scope": {"mode": "documents", "document_ids": ["doc"]}, "neighbor_window": 5})]
+    assert asyncio.run(run())["data"]["status"] == "queued"
+    assert calls == [("member", "user", "a"*32, {"question": "question", "project_id": "kb", "scope": {"mode": "documents", "document_ids": ["doc"]}, "neighbor_window": 5})]
 
 
-@pytest.mark.parametrize("extra", [{"chunks": []}, {"model": "bad"}, {"base_url": "http://untrusted"}, {"tenant_id": "other"}])
+@pytest.mark.parametrize('extra', [{"chunks": []}, {"model": "bad"}, {"base_url": "http://untrusted"}, {"tenant_id": "other"}])
 def test_route_rejects_client_evidence_and_configuration(route_app, extra):
     async def run():
-        response = await route_app.test_client().post("/api/v1/docmind/answer", headers={"X-Test-User": "member"}, json={"question": "question", "scope": {"mode": "all"}, **extra})
+        response = await route_app.test_client().post('/api/v1/docmind/answer/jobs', headers={"X-Test-User": "member"}, json={"question": "question", "scope": {"mode": "all"}, **extra})
         return await response.get_json()
-
     assert asyncio.run(run()) == {"code": 400, "message": "invalid answer request"}
 
 
-def test_route_requires_authentication(route_app):
+@pytest.mark.parametrize('method,path', [('post', '/api/v1/docmind/answer/jobs'), ('get', '/api/v1/docmind/answer/jobs/'+'a'*32)])
+def test_route_requires_authentication(route_app, method, path):
     async def run():
-        return await route_app.test_client().post("/api/v1/docmind/answer", json={"question": "q", "scope": {"mode": "all"}})
-
+        return await getattr(route_app.test_client(), method)(path)
     assert asyncio.run(run()).status_code == 401
 
 
-def test_route_sanitizes_unknown_exceptions(route_app, service, monkeypatch):
-    async def fail(*_args, **_kwargs):
-        raise OSError("PRIVATE PROVIDER DATA")
-
-    monkeypatch.setattr(service, "answer", fail)
-
+def test_route_sanitizes_unknown_exceptions(route_app, monkeypatch):
+    def fail(*args):
+        raise OSError('PRIVATE PROVIDER DATA')
+    monkeypatch.setattr(route_app.jobs, 'submit', fail)
     async def run():
-        response = await route_app.test_client().post("/api/v1/docmind/answer", headers={"X-Test-User": "member"}, json={"question": "q", "scope": {"mode": "all"}})
+        response = await route_app.test_client().post('/api/v1/docmind/answer/jobs', headers={"X-Test-User": "member"}, json={"request_id": "a"*32, "question": "q", "scope": {"mode": "all"}})
         return await response.get_json()
-
     assert asyncio.run(run()) == {"code": 500, "message": "DOCMIND_ANSWER_FAILED"}
 
 
-@pytest.mark.parametrize("code", ["DOCMIND_LLM_RESPONSE_INVALID", "DOCMIND_LLM_CITATIONS_INVALID"])
-def test_route_preserves_distinct_format_and_citation_errors(route_app, service, monkeypatch, code):
-    async def fail(*_args, **_kwargs):
-        raise service.AnswerError(code)
-
-    monkeypatch.setattr(service, "answer", fail)
-
+def test_poll_is_authenticated_and_not_cached(route_app):
     async def run():
-        response = await route_app.test_client().post("/api/v1/docmind/answer", headers={"X-Test-User": "member"}, json={"question": "q", "scope": {"mode": "all"}})
+        response = await route_app.test_client().get('/api/v1/docmind/answer/jobs/'+'a'*32, headers={"X-Test-User": "member"})
+        assert response.headers['Cache-Control'] == 'no-store'
         return await response.get_json()
-
-    assert asyncio.run(run()) == {"code": 500, "message": code}
+    assert asyncio.run(run())["data"]["status"] == "running"

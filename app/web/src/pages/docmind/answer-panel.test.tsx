@@ -138,7 +138,10 @@ it('only generates on request and shows cited evidence safely', async () => {
   );
   fireEvent.click(screen.getByRole('button', { name: '근거 1 확인' }));
   expect(document.querySelector('script')).toBeNull();
-  expect(MockAnswer).toHaveBeenCalledWith({ ...Request, neighborWindow: 2 });
+  expect(MockAnswer).toHaveBeenCalledWith(
+    { ...Request, neighborWindow: 2 },
+    expect.any(Function),
+  );
   expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   expect(
     screen.getByText(/입력 한도에 맞춰 주변 청크 일부 제외/),
@@ -650,14 +653,22 @@ it('retries a recoverable answer error with the same submitted question and scop
   fireEvent.click(retry);
   fireEvent.click(retry);
   await waitFor(() => expect(MockAnswer).toHaveBeenCalledTimes(2));
-  expect(MockAnswer).toHaveBeenNthCalledWith(1, {
-    ...scoped,
-    neighborWindow: 2,
-  });
-  expect(MockAnswer).toHaveBeenNthCalledWith(2, {
-    ...scoped,
-    neighborWindow: 2,
-  });
+  expect(MockAnswer).toHaveBeenNthCalledWith(
+    1,
+    {
+      ...scoped,
+      neighborWindow: 2,
+    },
+    expect.any(Function),
+  );
+  expect(MockAnswer).toHaveBeenNthCalledWith(
+    2,
+    {
+      ...scoped,
+      neighborWindow: 2,
+    },
+    expect.any(Function),
+  );
   await act(async () =>
     finishRetry({
       data: { code: 100, message: 'DOCMIND_LLM_RESPONSE_INVALID' },

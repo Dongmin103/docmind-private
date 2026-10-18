@@ -4,6 +4,7 @@ import {
   type DocMindAnswerResult,
   type DocMindSearchRequest,
 } from '@/services/docmind-service';
+import type { AnswerJobProgress } from '@/services/docmind-answer-job';
 import { useMutation } from '@tanstack/react-query';
 import {
   type FormEvent,
@@ -20,6 +21,16 @@ import AnswerEvidence from './answer-evidence';
 import './answer-panel.less';
 
 const ErrorMessages: Record<string, string> = {
+  DOCMIND_ANSWER_QUEUE_FULL:
+    '현재 답변 요청이 많습니다. 잠시 후 다시 시도해 주세요.',
+  DOCMIND_ANSWER_JOB_EXPIRED:
+    '대기 시간이 만료되었습니다. 같은 질문을 다시 접수해 주세요.',
+  DOCMIND_ANSWER_JOB_NOT_FOUND:
+    '답변 작업의 보관 기간이 지났습니다. 질문을 다시 접수해 주세요.',
+  DOCMIND_ANSWER_JOB_INTERRUPTED:
+    '서버 재시작으로 답변 작업을 완료하지 못했습니다. 다시 시도해 주세요.',
+  DOCMIND_ANSWER_AUTH_REQUIRED: '로그인을 확인한 뒤 질문을 다시 접수해 주세요.',
+
   DOCMIND_ANSWER_DISABLED:
     'LLM 답변 기능이 아직 활성화되지 않았습니다. 검색은 계속 사용할 수 있습니다.',
   DOCMIND_ANSWER_CONFIG_INVALID:
@@ -89,6 +100,7 @@ export default function AnswerPanel({
   const localSubmitting = useRef(false);
   const submitting = pendingRef ?? localSubmitting;
   const [localPending, setLocalPending] = useState(false);
+  const [jobProgress, setJobProgress] = useState<AnswerJobProgress>('queued');
   const isPending = pending || localPending;
   const requestKey = JSON.stringify(request);
   const displayKey = JSON.stringify([requestKey, invalidationKey]);
@@ -117,10 +129,14 @@ export default function AnswerPanel({
     Error,
     { payload: DocMindAnswerRequest; localToken: number; ownerToken: symbol }
   >({
-    mutationFn: async ({ payload, ownerToken }) => {
+    mutationFn: async ({ payload, ownerToken, localToken }) => {
       try {
-        const { data } = await answerDocMind(payload);
+        const { data } = await answerDocMind(payload, (state) => {
+          if (mounted.current && localToken === activeSubmission.current)
+            setJobProgress(state);
+        });
         if (data.code !== 0) throw new AnswerRequestError(data.message);
+        if (!data.data) throw new AnswerRequestError('DOCMIND_ANSWER_FAILED');
         return data.data;
       } finally {
         if (pendingOwners.get(submitting)?.token === ownerToken) {
@@ -238,6 +254,7 @@ export default function AnswerPanel({
     const ownerToken = Symbol('docmind-answer-request');
     pendingOwners.set(submitting, { key, token: ownerToken });
     setLocalPending(true);
+    setJobProgress('queued');
     onPendingChange?.(true);
     followAnswer.current = true;
     setSelectedEvidence(undefined);
@@ -362,7 +379,13 @@ export default function AnswerPanel({
               <div role="status" className="docmind-answer-state">
                 <span className="docmind-search-pulse" aria-hidden="true" />
                 <h2>문서에서 답변을 준비하고 있습니다</h2>
-                <p>선택한 범위의 근거를 확인하고 있습니다.</p>
+                <p>
+                  {jobProgress === 'reconnecting'
+                    ? '연결을 다시 확인하고 있습니다. 접수된 작업의 결과를 계속 조회합니다.'
+                    : jobProgress === 'queued'
+                      ? '질문을 접수하고 있습니다. 순서가 되면 답변 생성을 시작합니다.'
+                      : '선택한 범위의 근거를 확인하고 있습니다. 오래 걸려도 완료될 때까지 결과를 조회합니다.'}
+                </p>
               </div>
             )}
             {currentError && (

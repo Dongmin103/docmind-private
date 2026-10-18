@@ -278,7 +278,7 @@ def pack_context(question, seeds, expanded, byte_budget):
     return packed, _messages(question, packed)
 
 
-async def generate(config, messages, citation_count, *, client=None):
+async def generate(config, messages, citation_count, *, client=None, timeout_seconds=90):
     payload = {"model": config.model, "messages": messages, "stream": False}
     headers = {}
     if config.provider == "openrouter":
@@ -345,11 +345,11 @@ async def generate(config, messages, citation_count, *, client=None):
         return _validate_generated_answer(content, citation_count)
 
     try:
-        async with asyncio.timeout(90):
+        async with asyncio.timeout(timeout_seconds):
             if client is not None:
                 return await send(client)
             # No proxy, redirects, retries, provider fallback, prompt logging or tools.
-            async with httpx.AsyncClient(timeout=httpx.Timeout(85, connect=5), trust_env=False, follow_redirects=False) as owned:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5), trust_env=False, follow_redirects=False) as owned:
                 return await send(owned)
     except httpx.ConnectTimeout:
         raise AnswerError("DOCMIND_LLM_UNAVAILABLE") from None
