@@ -51,7 +51,7 @@ Validation before rollout:
 - Isolated MySQL schema: two simultaneous claimants produce one claim, duplicate
   acceptance reuses the job, stale publication is blocked, and result columns
   are LONGTEXT. The temporary schema was removed; operational tables were untouched.
-- 168 frontend tests, including synthetic polling beyond 90 seconds, lost ACK,
+- 169 frontend tests, including synthetic polling beyond 90 seconds, lost ACK,
   reconnect, terminal error, scope changes and stale-response suppression.
 - Offline production frontend build; targeted lint and whitespace checks.
 - Full TypeScript checking has 29 pre-existing errors, identical to the captured

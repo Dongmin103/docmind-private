@@ -74,3 +74,15 @@ it('surfaces a terminal server error instead of showing an unchecked draft', asy
     waitForAnswerJob({}, { submit, get: jest.fn() }),
   ).rejects.toThrow('DOCMIND_SOURCE_CHANGED');
 });
+
+it('retrieves a completed job after its acceptance response was lost', async () => {
+  const submit = jest.fn().mockResolvedValue(envelope('completed'));
+  const get = jest
+    .fn()
+    .mockResolvedValue(
+      envelope('completed', { result: { answer: 'resumed' } }),
+    );
+  expect((await waitForAnswerJob({}, { submit, get })).answer).toBe('resumed');
+  expect(submit).toHaveBeenCalledTimes(1);
+  expect(get).toHaveBeenCalledTimes(1);
+});

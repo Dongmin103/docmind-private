@@ -97,6 +97,7 @@ export async function waitForAnswerJob(
       await pause(Math.min(10_000, 2000 * failures));
       continue;
     }
+    const wasAccepted = accepted;
     accepted = true;
     const job = response.data.data;
     if (job.status === 'failed') {
@@ -107,6 +108,9 @@ export async function waitForAnswerJob(
       clearRemembered(id);
       return job.result;
     }
+    // A repeated POST can acknowledge an already completed job. Only GET
+    // delivers its result after the server rechecks the cited documents.
+    if (job.status === 'completed' && !wasAccepted) continue;
     if (job.status !== 'queued' && job.status !== 'running')
       throw new AnswerJobError('DOCMIND_ANSWER_FAILED');
     progress?.(job.status);
