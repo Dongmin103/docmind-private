@@ -3,9 +3,9 @@ from __future__ import annotations
 import io
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from rag.parser_platform.config import ParserPlatformConfig
+from rag.parser_platform.config import HWPX_HIGH_RATIO_IMAGE_BUDGET_BYTES, ParserPlatformConfig
 from rag.parser_platform.errors import parser_error
 from rag.parser_platform.schemas import SourceFormat
 
@@ -24,6 +24,7 @@ OOXML_ROOTS = {
 }
 HWP_MIMES = {"application/x-hwp", "application/haansofthwp", "application/vnd.hancom.hwp"}
 HWPX_MIMES = {"application/hwp+zip", "application/vnd.hancom.hwpx"}
+HWPX_RASTER_IMAGE_SUFFIXES = frozenset({".bmp", ".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff", ".webp"})
 GENERIC_BINARY_MIME = "application/octet-stream"
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
@@ -181,6 +182,7 @@ class FormatDispatcher:
                 if not any(name.startswith("Contents/") and name.lower().endswith((".hpf", ".xml")) for name in names):
                     raise parser_error("PARSER_HWP_INVALID", detail="HWPX content root is missing")
                 expanded = 0
+                high_ratio_image_bytes = 0
                 for info in infos:
                     lower = info.filename.lower()
                     if lower.endswith((".zip", ".7z", ".rar", ".tar", ".gz")):
@@ -189,6 +191,15 @@ class FormatDispatcher:
                     if expanded > self.config.max_zip_expanded_bytes:
                         raise parser_error("PARSER_HWP_INVALID", detail="expanded size limit exceeded")
                     if info.file_size / max(info.compress_size, 1) > self.config.max_zip_compression_ratio:
-                        raise parser_error("PARSER_HWP_INVALID", detail="compression ratio limit exceeded")
+                        path = PurePosixPath(info.filename)
+                        # Repetitive pixels can compress well in small cover images.
+                        # Bound their combined expanded bytes, including duplicates.
+                        if (len(path.parts) != 2 or path.parts[0] != "BinData"
+                                or path.suffix.lower() not in HWPX_RASTER_IMAGE_SUFFIXES
+                                or "\\" in info.filename):
+                            raise parser_error("PARSER_HWP_INVALID", detail="compression ratio limit exceeded")
+                        high_ratio_image_bytes += info.file_size
+                        if high_ratio_image_bytes > HWPX_HIGH_RATIO_IMAGE_BUDGET_BYTES:
+                            raise parser_error("PARSER_HWP_INVALID", detail="compression ratio limit exceeded")
         except (UnicodeDecodeError, KeyError, zipfile.BadZipFile) as error:
             raise parser_error("PARSER_HWP_INVALID", detail=str(error)) from error

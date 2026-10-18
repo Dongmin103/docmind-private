@@ -12,13 +12,14 @@ from api.db.db_models import (
     DocmindIngestionJob,
     DocmindProject,
     DocmindSource,
+    DocmindObservedFolder,
     DocmindSourceDocument,
     DocmindSourceVersion,
     Document,
     ParserRun,
 )
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from common.docmind_source_path import normalize_logical_relative_path
+from common.docmind_source_path import logical_path_identity, normalize_logical_relative_path
 
 
 @dataclass(frozen=True)
@@ -180,6 +181,35 @@ def load(tenant_id: str) -> SourceProjection | None:
         )
         .order_by(DocmindSourceDocument.source_id, DocmindSourceDocument.relative_path, DocmindSourceDocument.id)
     ) if by_source else []
+    observed_folders = list(DocmindObservedFolder.select().where(
+        (DocmindObservedFolder.project_id == project.id)
+        & DocmindObservedFolder.source_id.in_(list(by_source))
+    ).order_by(DocmindObservedFolder.source_id, DocmindObservedFolder.relative_path)) if by_source else []
+    tombstones = {(row.source_id, logical_path_identity(row.relative_path)) for row in observed_folders if row.deleted_at is not None}
+    absences = {(row.source_id, logical_path_identity(row.relative_path)): (row.absence_epoch, row.absence_generation)
+                for row in observed_folders if row.absence_epoch > 0}
+
+    def hidden(source_id, path, mapping=None):
+        parts = path.split('/')
+        for i in range(1, len(parts) + 1):
+            key = (source_id, logical_path_identity('/'.join(parts[:i])))
+            if key in tombstones:
+                return True
+            if mapping is not None and key in absences and (
+                (mapping.observation_epoch, mapping.observation_generation) <= absences[key]
+                or mapping.source_dirty or mapping.stable_observation_count < 2
+            ):
+                return True
+        return False
+
+    # Retain existing document-derived folder IDs and spelling while merging
+    # case/Unicode-equivalent metadata observations into the same visible node.
+    canonical_folders = {}
+    for mapping in mappings:
+        parts = normalize_logical_relative_path(mapping.relative_path).split('/')
+        for i in range(1, len(parts)):
+            path = '/'.join(parts[:i])
+            canonical_folders.setdefault((mapping.source_id, logical_path_identity(path)), path)
     versions = _records_by_id(
         DocmindSourceVersion,
         {row.active_source_version_id for row in mappings if row.active_source_version_id},
@@ -296,6 +326,20 @@ def load(tenant_id: str) -> SourceProjection | None:
             }
             nodes[root_id]["child_count"] += 1
 
+    def add_path(source, path):
+        parent_id = _id('docmind-source-folder', project.id, source.id, '')
+        parts = path.split('/')
+        for i in range(1, len(parts) + 1):
+            relative = canonical_folders.setdefault((source.id, logical_path_identity('/'.join(parts[:i]))), '/'.join(parts[:i]))
+            folder_id = _id('docmind-source-folder', project.id, source.id, relative)
+            add_folder(folder_id, parent_id, relative.rsplit('/', 1)[-1], _display_path(source.display_name, relative), i + 1)
+            parent_id = folder_id
+        return parent_id
+
+    for observed in observed_folders:
+        if observed.deleted_at is None and not hidden(observed.source_id, observed.relative_path):
+            add_path(by_source[observed.source_id], observed.relative_path)
+
     for mapping in mappings:
         source = by_source[mapping.source_id]
         try:
@@ -303,6 +347,8 @@ def load(tenant_id: str) -> SourceProjection | None:
         except ValueError as error:
             raise RuntimeError("DOCMIND_SOURCE_PATH_INVALID") from error
         parts = PurePosixPath(path).parts
+        if len(parts) > 1 and hidden(mapping.source_id, '/'.join(parts[:-1]), mapping):
+            continue
         version = versions.get(mapping.active_source_version_id)
         job = jobs.get(version.id) if version is not None else None
         run = runs.get(version.parser_run_id) if version is not None else None
@@ -336,12 +382,8 @@ def load(tenant_id: str) -> SourceProjection | None:
                 pdf_ocr_option = "partial_images"
 
         parent_id = _id("docmind-source-folder", project.id, source.id, "")
-        for depth, index in enumerate(range(1, len(parts)), start=2):
-            relative_folder = "/".join(parts[:index])
-            folder_id = _id("docmind-source-folder", project.id, source.id, relative_folder)
-            display_path = _display_path(source.display_name, relative_folder)
-            add_folder(folder_id, parent_id, parts[index - 1], display_path, depth)
-            parent_id = folder_id
+        if len(parts) > 1:
+            parent_id = add_path(source, '/'.join(parts[:-1]))
 
         display_path = _display_path(source.display_name, path)
         ocr_history = []
@@ -389,7 +431,8 @@ def load(tenant_id: str) -> SourceProjection | None:
 
     fingerprint = hashlib.sha256(
         json.dumps(
-            [project.id, [(source.id, source.display_name, source.enabled) for source in sources], version_members],
+            [project.id, [(source.id, source.display_name, source.enabled) for source in sources], version_members,
+             [(row.source_id, row.relative_path, row.deleted_at is not None) for row in observed_folders]],
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")

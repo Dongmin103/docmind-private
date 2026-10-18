@@ -9,6 +9,8 @@ from typing import Any
 from rag.parser_platform.canonical import canonical_sha256
 from rag.parser_platform.errors import parser_error
 
+HWPX_HIGH_RATIO_IMAGE_BUDGET_BYTES = 1024 * 1024
+
 def _strict_bool(env: Mapping[str, str], name: str, default: bool) -> bool:
     raw = env.get(name)
     if raw is None:
@@ -191,6 +193,8 @@ class ParserPlatformConfig:
                 "max_zip_expanded_bytes": self.max_zip_expanded_bytes,
                 "max_zip_compression_ratio": self.max_zip_compression_ratio,
             })
+        if source_format == "hwpx":
+            settings["high_ratio_raster_image_budget_bytes"] = HWPX_HIGH_RATIO_IMAGE_BUDGET_BYTES
         if source_format == "pdf":
             settings["max_pdf_pages"] = self.max_pdf_pages
             settings["geometry_policy"] = "page-with-optional-bbox-v1"

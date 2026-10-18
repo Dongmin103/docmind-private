@@ -39,6 +39,25 @@ def _path_and_query():
     return request.path + ("?" + query if query else "")
 
 
+@manager.route("/cloud-sync/host-worker/folders", methods=["POST"])  # noqa: F821
+async def folder_metadata():
+    key_id = None
+    try:
+        key_id, failure, body = await _authenticate()
+        if failure is not None:
+            return failure
+        from api.apps.services import docmind_folder_sync_service
+
+        return _signed(docmind_folder_sync_service.receive(_json_body(body)), key_id)
+    except docmind_worker_auth.WorkerAuthenticationError:
+        return Response(b'{"error":"WORKER_AUTH_FAILED"}', status=401, content_type="application/json")
+    except docmind_change_service.ChangeConflict as error:
+        return _signed({"error": error.code}, key_id, 400 if error.code == "REQUEST_INVALID" else 409)
+    except Exception:
+        logger.exception("DocMind folder metadata failed")
+        return _signed({"error": "INTERNAL_ERROR"}, key_id, 500) if key_id else Response(status=401)
+
+
 def _signed(payload, key_id, status=200):
     body, headers = docmind_worker_auth.signed_json_body(payload, method=request.method, path_and_query=_path_and_query(), key_id=key_id)
     return Response(body, status=status, content_type="application/json", headers=headers)

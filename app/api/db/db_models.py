@@ -995,6 +995,65 @@ class DocmindSourceSyncSession(DataBaseModel):
         db_table = "docmind_source_sync_session"
 
 
+class DocmindObservedFolder(DataBaseModel):
+    """Read-only host observations, never source-write authority."""
+
+    id = CharField(max_length=32, primary_key=True)
+    project_id = CharField(max_length=32, index=True)
+    source_id = CharField(max_length=64, index=True)
+    relative_path = CharField(max_length=1024)
+    relative_path_hash = CharField(max_length=64)
+    observation_epoch = BigIntegerField(default=0)
+    observation_generation = BigIntegerField(default=0)
+    absence_epoch = BigIntegerField(default=0)
+    absence_generation = BigIntegerField(default=0)
+    last_sequence = BigIntegerField(default=0)
+    last_snapshot_id = CharField(max_length=32, null=True)
+    deleted_at = DateTimeField(null=True)
+
+    class Meta:
+        db_table = "docmind_observed_folder"
+        indexes = ((("source_id", "relative_path_hash"), True),)
+
+
+class DocmindFolderSyncCursor(DataBaseModel):
+    source_id = CharField(max_length=64, primary_key=True)
+    epoch = BigIntegerField()
+    last_sequence = BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "docmind_folder_sync_cursor"
+
+
+class DocmindFolderSyncReceipt(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    source_id = CharField(max_length=64)
+    epoch = BigIntegerField()
+    sequence = BigIntegerField()
+    request_id = CharField(max_length=128)
+    payload_sha256 = CharField(max_length=64)
+    result_json = LongTextField()
+
+    class Meta:
+        db_table = "docmind_folder_sync_receipt"
+        indexes = ((("source_id", "epoch", "request_id"), True), (("source_id", "epoch", "sequence"), True))
+
+
+class DocmindFolderSyncSnapshot(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    source_id = CharField(max_length=64, index=True)
+    epoch = BigIntegerField()
+    snapshot_id = CharField(max_length=128)
+    relative_path = CharField(max_length=1024)
+    start_sequence = BigIntegerField()
+    complete = BooleanField(default=False)
+    failed = BooleanField(default=False)
+
+    class Meta:
+        db_table = "docmind_folder_sync_snapshot"
+        indexes = ((("source_id", "epoch", "snapshot_id"), True),)
+
+
 class DocmindSourceChangeReceipt(DataBaseModel):
     """Durable result committed in the same transaction as document mutations."""
 
