@@ -28,6 +28,7 @@ from api.db.services.task_service import TaskService
 from common import settings
 from common.constants import MAXIMUM_TASK_PAGE_NUMBER
 from common.doc_store.doc_store_base import OrderByExpr
+from common.docmind_features import ocr_enabled
 from rag.parser_platform import ChunkSetActivationCoordinator, ChunkSetFinalizationRequest
 from rag.parser_platform.config import ParserPlatformConfig
 from rag.parser_platform.pdf_source import normalize_pdf_source
@@ -118,6 +119,8 @@ class ProductionTemporaryParserInputRunner:
         max_pdf_pages: int | None = None,
         pdf_ocr_requested: bool = False,
     ) -> ParserStageResult:
+        if pdf_ocr_requested and not ocr_enabled():
+            raise DocmindIngestionError("DOCMIND_OCR_DISABLED")
         remaining = (deadline_at - _now()).total_seconds()
         if remaining <= 0:
             raise DocmindIngestionError("DOCMIND_INGESTION_PIPELINE_TIMEOUT")

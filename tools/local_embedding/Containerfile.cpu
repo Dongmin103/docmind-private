@@ -1,0 +1,11 @@
+FROM python:3.11-slim
+WORKDIR /opt/gte
+RUN pip install --no-cache-dir torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+COPY requirements.cpu.txt .
+RUN pip install --no-cache-dir -r requirements.cpu.txt
+COPY service.py download_model.py ./
+ENV HF_HOME=/models/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1
+USER 10001:10001
+EXPOSE 18882
+HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=20 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18882/health',timeout=3).close()"
+ENTRYPOINT ["python", "/opt/gte/service.py", "--config", "/run/config/service.json"]

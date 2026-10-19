@@ -171,9 +171,8 @@ COPY web/package.json web/package-lock.json web/.npmrc ./web/
 RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
     cd web && NODE_OPTIONS="--max-old-space-size=8192" npm install
 
-# Copy full web source and docs for the frontend build.
+# Copy the DocMind frontend source for the production build.
 COPY web web
-COPY docs docs
 ARG WEB_BUILD_HEAP_MB=8192
 RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
     cd web && NODE_OPTIONS="--max-old-space-size=${WEB_BUILD_HEAP_MB}" VITE_BUILD_SOURCEMAP=false VITE_MINIFY=esbuild npm run build
@@ -213,6 +212,7 @@ COPY rag rag
 COPY --from=builder /ragflow/rag/res/paddleocr/ /ragflow/rag/res/paddleocr/
 COPY scripts scripts
 COPY pyproject.toml uv.lock ./
+COPY LICENSE THIRD_PARTY_NOTICES.md ./
 COPY common common
 COPY tools/scripts tools/scripts
 

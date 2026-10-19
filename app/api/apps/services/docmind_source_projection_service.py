@@ -19,6 +19,7 @@ from api.db.db_models import (
     ParserRun,
 )
 from api.db.services.knowledgebase_service import KnowledgebaseService
+from common.docmind_features import ocr_enabled
 from common.docmind_source_path import logical_path_identity, normalize_logical_relative_path
 
 
@@ -118,6 +119,7 @@ def _index_status(job, *, searchable: bool, run=None, pdf_ocr_option=None, pdf_o
             "DOCMIND_INGESTION_SOURCE_CHANGED", "DOCMIND_INGESTION_RETRY_EXHAUSTED",
             "EPHEMERAL_CLEANUP_FAILED", "EPHEMERAL_CLEANUP_STATE_FAILED",
             "PARSER_PDF_NO_SEARCHABLE_TEXT", "PARSER_PDF_OCR_NO_TEXT",
+            "DOCMIND_OCR_DISABLED",
         }
         if error_code not in allowed_errors:
             error_code = "DOCMIND_INGESTION_FAILED"
@@ -361,7 +363,7 @@ def load(tenant_id: str) -> SourceProjection | None:
         latest_version = latest_versions.get(latest_job.version_id) if latest_job is not None else None
         pdf_ocr_option = None
         if (
-            latest_job is not None and latest_version is not None
+            ocr_enabled() and latest_job is not None and latest_version is not None
             and path.lower().endswith(".pdf") and not latest_job.pdf_ocr_requested
             and latest_job.cleanup_state == "COMPLETE" and latest_job.host_cleanup_state == "COMPLETE"
             and latest_version.source_document_id == mapping.id

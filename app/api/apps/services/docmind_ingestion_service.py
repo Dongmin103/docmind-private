@@ -29,6 +29,7 @@ from api.db.db_models import (
     Document,
     ParserRun,
 )
+from common.docmind_features import ocr_enabled
 from common.docmind_source_path import (
     logical_path_identity,
     logical_path_identity_hash,
@@ -912,6 +913,8 @@ def request_pdf_ocr_consent(
     actor_id: str, idempotency_key: str,
 ) -> dict[str, str | int]:
     """Queue OCR for one verified PDF source version after explicit user consent."""
+    if not ocr_enabled():
+        raise DocmindIngestionError("DOCMIND_OCR_DISABLED")
     tenant_id = _valid_identifier(tenant_id, max_length=32)
     document_id = _valid_identifier(document_id, max_length=32)
     expected_source_version_id = _valid_identifier(expected_source_version_id, max_length=32)
@@ -1361,6 +1364,8 @@ def process_decrypted_artifact(
     receipt = receipt_holder[0]
 
     def run_and_activate(workspace: TemporaryParserWorkspace):
+        if leased_job.pdf_ocr_requested and not ocr_enabled():
+            raise DocmindIngestionError("DOCMIND_OCR_DISABLED")
         if _now() >= deadline_at:
             raise DocmindIngestionError("DOCMIND_INGESTION_PIPELINE_TIMEOUT")
         run_args = dict(

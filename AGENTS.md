@@ -1,26 +1,11 @@
-# DocMind Windows 개발 인수인계
+# DOCMIND product repository
 
-먼저 PRD.md, WINDOWS_DEVELOPMENT.md, docs/CURRENT-ARCHITECTURE.md, docs/HANDOFF-STATUS.md를 읽는다. 기능 요구사항은 최신 PRD가 기준이다. app/AGENTS.md와 프런트 변경 시 app/web/CLAUDE.md도 따른다.
+Read README.md for the Windows/WSL CPU deployment contract. Keep the product package allowlist synchronized with runtime/build dependencies.
 
-- app/는 커스텀 소스 스냅샷에서 시작했으며 현재 제품 경로의 OpenViking 호출·서비스는 제거됐다. 새 변경은 자동 제거 검사를 통과해야 하고, 그 밖의 PRD 기능은 코드와 검증 결과를 확인한 범위에서만 구현됐다고 판단한다.
-- 원본 PDF, 운영 청크/벡터/DB/객체, 기존 환경설정과 복호화 키를 가져올 필요가 없다. 기존 암호화 복구 릴리스는 새 개발 환경의 입력이 아니다.
-- Windows 호스트에서 uEncryptor2를 실행하고 Docker에서 DocMind를 실행한다. exe를 Linux 컨테이너에서 직접 실행하지 않는다.
-- 기존 클라우드 서비스/원본 폴더와 분리된 개발 디렉터리 및 Docker 프로젝트/볼륨에서 시작한다. 임시 평문 정리와 로그인/source 경계는 처음부터 구현한다.
-- C128, 청크별 prefix 2400자, Jina reranker v3.5 및 기존 청킹 계약을 유지한다. 2026-10-12 사용자 승인으로 임베딩은 로컬 GTE multilingual base(768차원)로 전환했다. 배포/복구 계약은 docs/LOCAL-GTE-DEPLOYMENT-2026-10-12.md를 따른다. 제거된 자동 route나 v3 fallback을 다시 추가하지 않는다.
-- 전체 세 source를 초기 공용 검색 범위로 사용하되 대화 기록은 실제 로그인 사용자별로 30일 보관한다.
-- 사용자 시험 규모/성능 기준은 추후 제공된다. 이 답변을 기다리며 다른 구현을 멈추지 않는다. 비민감 합성 문서로 독립 검증한다.
-- 조회·검색·동기화를 먼저 검증하고, 파일 쓰기는 원본 제품에서 실제 반영이 검증된 기능부터 공개한다. 평문 파일을 암호화 저장 폴더에 직접 쓰는 대체 구현을 하지 않는다.
-- 클릭 기반 임시 복호화 원문 미리보기는 구현 중 시험 과제다. 무인 실행 가능이라고 가정하거나 실패 시 영구 MinIO 사본으로 자동 전환하지 않는다.
-- Git에는 비밀값·원문·운영 청크·색인·평문 출력·실제 .env·개인키를 올리지 않는다. 생성 설정은 .local/ 또는 무시되는 경로에 둔다. 검사 결과의 원문/키도 로그에 남기지 않는다.
-- 작업은 기능별로 작은 커밋과 적절한 회귀 검증으로 기록한다. 운영 서비스 중지·원본 삭제·운영 배포는 이 인수인계 자체의 작업에 포함하지 않는다.
-## 프로젝트 기억: 문서 병렬 처리 (2026-10-13)
-
-- 사용자 화면에서 모델 선택·설정 메뉴를 노출하지 않는다. 2026-10-08 승인 사항이며 2026-10-15 재확인했다. `/docmind?view=settings`, `/user-setting/*`, `/profile-setting/*`는 검색 화면으로 연결한다. 서버의 고정 모델·검색 설정과 관련 API는 유지한다. 기능 통합 시 화면 노출과 서버 설정 보존을 혼동하지 않는다.
-- 문서 상세 보기는 `문서 내용` / `검색과 AI 답변에 사용되는 문서 내용입니다.`로 표시한다. Artifact·Full text/Ellipse·깔때기는 노출하지 않으며 원문 보기·전체 문서 내용·상세 검색은 유지한다. 2026-10-08 UI 결정을 2026-10-15 사용자가 그대로 반영하도록 재확인했다.
-- 2026-10-15 사용자 승인: OCR 대시보드는 검색 가능한 텍스트가 없는 PDF(`zero_text`)만 대상으로 한다. 모든 사용자 화면에서 이미지 존재/OCR 미실행에 따른 검토 문구·건수·필터와 `partial_images` 실행 버튼을 숨긴다. 내부 진단·실제 인덱싱 오류와 이미 요청한 OCR 진행/완료 기록은 유지한다.
-- OCR 요청 문서는 진행 단계와 실패/완료 결과를 대시보드에 유지한다. 완료는 사용자가 확인한 뒤 제외하며 확인 기록은 현재 브라우저에 저장한다. 원본 새 버전이 생겨도 이전 OCR 결과를 조용히 버리지 않는다.
-
-- Kordoc 파서의 기본값은 1개이며, CPU 풀 후보는 `KORDOC_WORKERS=2`로 독립 파서 프로세스 2개를 허용한다. 클라이언트의 `KORDOC_CLIENT_CONCURRENCY`도 같이 맞춘다. `/v1/parse`는 용량 초과 시 업로드 버퍼링 전에 HTTP 503 `PARSER_BUSY`, 정리 실패 시 별도 `PARSER_CLEANUP_FAILED`로 차단한다. 문서 슬롯은 기본 1, 배포 후보에서 최대 4이다. 설정 전환은 진행 작업과 모든 슬롯의 정리/ACK를 drain한 뒤 한다.
-- 문서 병렬화 시 파서 앞의 대기·동시성 제어를 반드시 포함한다. 목표는 앞 문서의 임베딩/색인과 다음 문서의 파싱을 겹치는 것이다. 파서 내부 병렬화는 별도 검증 없이 가정하지 않는다. 여러 API 프로세스/호출자가 같은 파서를 공유할 때는 프로세스 내부 락만으로 전체 상한이 보장되지 않는다.
-- 2026-10-13 전체 파이프라인 시험에서 이 제약을 놓쳐 병렬 실행의 파싱 실패가 발생했다. 당시 실패 포함 실행 시간은 성능 개선 근거로 사용하지 않는다. 동일 입력·성공 문서/청크 수·정리 완료를 확인한 순차/병렬 실행으로 시간과 GPU 평균/최대 사용률·저사용 시간·VRAM을 비교한다.
-- CPU 풀 후보의 다섯 구성별 1회 비교는 `docs/CPU-PARSER-324-RESULTS-2026-10-13.md`와 연결 JSON에 기록했다. 324(문서 3/파서 2/CPU 한도 4)는 112 대비 38.8% 단축, GPU 평균 56.9%였다. 같은 14개 비OCR 표본의 단회 결과이며 상시 배포·검색 혼합 부하 합격을 뜻하지 않는다.
+- Do not modify or restart existing deployments or operational document/index data without explicit authorization.
+- Never commit credentials, plaintext documents, indexed data, model weights, generated settings, installed runtimes, or logs. Generated settings belong in ignored .local/. Transfer credentials with the encrypted settings archive and separately supplied key.
+- New CPU deployment disables OCR. CPU inference must not require CUDA. Preserve 768-dimensional GTE embeddings and existing chunking/reranking behavior.
+- Windows workers run the approved uEncryptor2 executable. Preserve signed executable verification, source boundaries, cleanup receipts and plaintext cleanup. Do not execute it inside Linux containers.
+- Source roots are explicit configuration. Do not assume old Windows paths or claim VDI REST login/folder authorization is implemented.
+- Keep model settings out of user navigation. Preserve document search, synchronization and previews. Keep necessary RAGFlow-derived runtime and licenses, without generic SDKs/examples/Helm/upstream documentation.
+- Test with isolated synthetic data. Do not claim a complete target-server deployment from unit tests or a frontend build alone.

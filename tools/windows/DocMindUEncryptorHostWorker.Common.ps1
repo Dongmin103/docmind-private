@@ -1,6 +1,38 @@
 Set-StrictMode -Version Latest
 Add-Type -AssemblyName System.Net.Http
 
+function Get-DocMindWorkerRolePaths {
+    param($Config, [ValidateSet('ingest', 'preview')][string]$Purpose, [ValidateRange(-1,3)][int]$IngestionSlot = -1)
+    $work = [IO.Path]::GetFullPath([string]$Config.work_root)
+    $receipts = if ($Config.PSObject.Properties.Name -contains 'cleanup_receipt_root') { [IO.Path]::GetFullPath([string]$Config.cleanup_receipt_root) } else { $work + '-cleanup-receipts' }
+    $control = if ($Config.PSObject.Properties.Name -contains 'decrypt_control_root') { [IO.Path]::GetFullPath([string]$Config.decrypt_control_root) } else { Join-Path (Split-Path $work -Parent) 'decrypt-control' }
+    if ($IngestionSlot -ge 0) {
+        if ($Purpose -ne 'ingest') { throw 'SLOT_REQUIRES_INGEST' }
+        $work = Join-Path $work ('slot-' + $IngestionSlot)
+        $receipts = Join-Path $receipts ('slot-' + $IngestionSlot)
+    }
+    $roots = @($work, $receipts, $control)
+    for ($i = 0; $i -lt $roots.Count; $i++) {
+        for ($j = $i + 1; $j -lt $roots.Count; $j++) {
+            $a = $roots[$i].TrimEnd('\', '/'); $b = $roots[$j].TrimEnd('\', '/')
+            if ($a.Equals($b, [StringComparison]::OrdinalIgnoreCase) -or $a.StartsWith($b + '\', [StringComparison]::OrdinalIgnoreCase) -or $b.StartsWith($a + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'WORKER_ROOTS_OVERLAP' }
+        }
+    }
+    return [pscustomobject]@{ WorkRoot = $work; ReceiptRoot = $receipts; ControlRoot = $control }
+}
+
+function Enter-DocMindWorkerSingleton {
+    param([ValidateSet('ingest', 'preview')][string]$Purpose, [ValidateRange(-1,3)][int]$IngestionSlot = -1)
+    if ($IngestionSlot -ge 0 -and $Purpose -ne 'ingest') { throw 'SLOT_REQUIRES_INGEST' }
+    $suffix = if ($IngestionSlot -ge 0) { '-slot-' + $IngestionSlot } else { '' }
+    $mutex = [Threading.Mutex]::new($false, ('Global\DocMind-HostWorker-' + $Purpose.ToLowerInvariant() + $suffix))
+    try {
+        try { $acquired = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $acquired = $true }
+        if (-not $acquired) { throw 'WORKER_ALREADY_RUNNING' }
+        return $mutex
+    } catch { $mutex.Dispose(); throw }
+}
+
 function New-DocMindRandomBytes {
     param([ValidateRange(1, 1024)][int]$Count)
     $bytes = [byte[]]::new($Count)

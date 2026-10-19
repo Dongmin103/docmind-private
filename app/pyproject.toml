@@ -200,7 +200,6 @@ packages = [
     'api',
     'deepdoc',
     'rag',
-    'sdk.python.ragflow_sdk',
 ]
 
 [tool.ruff]

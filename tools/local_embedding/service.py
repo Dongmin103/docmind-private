@@ -1,4 +1,4 @@
-"""Authenticated GPU-only GTE OpenAI embeddings endpoint. Never logs payloads."""
+"""Authenticated CPU/CUDA GTE OpenAI embeddings endpoint. Never logs payloads."""
 import argparse
 import gc
 import hmac
@@ -24,36 +24,63 @@ class EmbeddingService:
         texts=payload.get('input')
         if isinstance(texts,str):texts=[texts]
         if not isinstance(texts,list) or not 1<=len(texts)<=64 or any(not isinstance(t,str) or not t.strip() for t in texts):raise RequestError('Expected 1 to 64 nonempty strings')
-        if not self.lock.acquire(timeout=180):raise RequestError('GPU queue busy',503)
+        if not self.lock.acquire(timeout=180):raise RequestError('Embedding queue busy',503)
         try:vectors,tokens=self.engine.encode(texts)
         finally:self.lock.release()
         return {'object':'list','model':MODEL,'data':[{'object':'embedding','index':i,'embedding':v} for i,v in enumerate(vectors)],'usage':{'prompt_tokens':tokens,'total_tokens':tokens}}
 
 class GTEEngine:
+    device = 'cuda'
     short_batch = 16
     min_token_fill = 85
 
     def __init__(self,config):
+        self.device = config.get('device', 'cuda')
+        if self.device not in ('cpu', 'cuda'):
+            raise ValueError('device must be cpu or cuda')
+        cpu_threads = config.get('cpu_threads', 2 if self.device == 'cpu' else 6)
+        self.short_batch = config.get('short_batch', 1 if self.device == 'cpu' else 16)
+        for name, value, maximum in [('cpu_threads', cpu_threads, 256), ('short_batch', self.short_batch, 64)]:
+            if type(value) is not int or not 1 <= value <= maximum:
+                raise ValueError(f'{name} must be an integer from 1 to {maximum}')
         import torch
         from transformers import AutoModel,AutoTokenizer
-        if not torch.cuda.is_available():raise RuntimeError('CUDA required; CPU fallback is disabled')
-        torch.set_num_threads(6)
+        if self.device == 'cuda' and not torch.cuda.is_available():raise RuntimeError('CUDA required; set device=cpu explicitly to use CPU')
+        torch.set_num_threads(cpu_threads)
         self.torch=torch
         self.tokenizer=AutoTokenizer.from_pretrained(config['model_path'],local_files_only=True)
-        self.model=AutoModel.from_pretrained(config['model_path'],local_files_only=True,trust_remote_code=True,code_revision=config['code_revision'],dtype=torch.float32,attn_implementation='eager').cuda().eval()
+        self.model=AutoModel.from_pretrained(config['model_path'],local_files_only=True,trust_remote_code=True,code_revision=config['code_revision'],dtype=torch.float32,attn_implementation='eager').to(self.device).eval()
         if next(self.model.parameters()).dtype!=torch.float32:raise RuntimeError('FP32 required')
     def _batch(self,texts):
         t=self.torch
-        x=self.tokenizer(texts,padding=True,truncation=False,return_tensors='pt').to('cuda')
+        x=self.tokenizer(texts,padding=True,truncation=False,return_tensors='pt').to(self.device)
         with t.inference_mode():
             vectors=t.nn.functional.normalize(self.model(**x).last_hidden_state[:,0],p=2,dim=1).cpu()
         if vectors.shape!=(len(texts),768) or not t.isfinite(vectors).all():raise RuntimeError('Invalid embedding output')
         return vectors.tolist()
     def _retry(self,texts):
         try:return self._batch(texts)
-        except self.torch.cuda.OutOfMemoryError:pass
-        gc.collect();self.torch.cuda.empty_cache()
-        if len(texts)==1:raise RequestError('Input cannot fit available GPU memory',503)
+        except Exception as error:
+            if self.device == 'cuda':
+                memory_error = isinstance(error, self.torch.cuda.OutOfMemoryError)
+            else:
+                memory_error = isinstance(error, MemoryError)
+                torch_oom = getattr(self.torch, 'OutOfMemoryError', None)
+                if torch_oom is not None:
+                    memory_error = memory_error or isinstance(error, torch_oom)
+                # PyTorch CPU allocation failures can use RuntimeError instead of OOM.
+                if isinstance(error, RuntimeError):
+                    message = str(error).lower()
+                    memory_error = memory_error or any(marker in message for marker in (
+                        'defaultcpuallocator: not enough memory',
+                        "defaultcpuallocator: can't allocate memory",
+                        'defaultcpuallocator: cannot allocate memory',
+                    ))
+            if not memory_error:
+                raise
+        gc.collect()
+        if self.device == 'cuda':self.torch.cuda.empty_cache()
+        if len(texts)==1:raise RequestError(f'Input cannot fit available {self.device.upper()} memory',503)
         mid=len(texts)//2
         return self._retry(texts[:mid])+self._retry(texts[mid:])
     def encode(self, texts):
@@ -65,7 +92,7 @@ class GTEEngine:
         offset = 0
         while offset < len(order):
             n = lengths[order[offset]]
-            size = 1 if n > 2048 else 2 if n > 1024 else self.short_batch
+            size = 1 if n > 2048 else min(2, self.short_batch) if n > 1024 else self.short_batch
             ids = order[offset:offset + size]
             if n <= 1024 and self.min_token_fill:
                 # Sorted lengths make the average fill decrease as this group grows.
@@ -91,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
         data=json.dumps(payload,separators=(',',':'),allow_nan=False).encode()
         self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
     def do_GET(self):
-        if self.path=='/health':self.reply(200,{'status':'ok','model':MODEL,'dimensions':768,'device':'cuda'})
+        if self.path=='/health':self.reply(200,{'status':'ok','model':MODEL,'dimensions':768,'device':self.server.service.engine.device})
         else:self.reply(404,{'error':'Not found'})
     def do_POST(self):
         if self.path!='/v1/embeddings':self.reply(404,{'error':'Not found'});return
