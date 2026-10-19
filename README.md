@@ -2,7 +2,7 @@
 
 배포 AGENT는 먼저 **[배포 인수인계 문서](deployment/AGENT-HANDOFF.md)**를 읽으세요. 사용자의 목적과 확정된 결정, 유지할 제품 동작, 실제 구현·검증 범위 및 현장 완료 기준을 설명합니다.
 
-현재 배포된 DOCMIND를 기준으로 정리한 제품 소스입니다. **GPU 없이 CPU로 인덱싱하며 OCR은 사용하지 않습니다.** 기존 문서·청크·벡터 DB·대화 기록은 가져오지 않습니다. 사용자가 수정할 DOCMIND 설정은 `deployment/source-folders.txt`의 문서 폴더 주소뿐입니다. 나머지 제품 설정은 설치기가 자동 적용합니다. 기존 API 키와 서버 인증 키는 별도의 암호화 설정에서 이어받습니다.
+현재 배포된 DOCMIND를 기준으로 정리한 제품 소스입니다. **GPU 없이 CPU로 인덱싱하며 OCR은 사용하지 않습니다.** 기존 문서·청크·벡터 DB·대화 기록은 가져오지 않습니다. 사용자가 수정할 DOCMIND 설정은 `deployment/source-folders.txt`의 문서 폴더 주소뿐입니다. 나머지 제품 설정은 설치기가 자동 적용합니다. 기존 API 키와 서버 인증 키는 이 PRIVATE 저장소에 포함된 암호화 설정과 복호화 키에서 이어받습니다.
 
 ## 구조 한눈에 보기
 
@@ -81,7 +81,7 @@ flowchart TB
     check["AGENT · 대상 서버 확인<br/>OS · Docker · 복호화 프로그램<br/>문서 접근 권한 · 네트워크"]
     ready{"실행 환경이 준비됐나요?"}
     prepare["AGENT · 부족한 프로그램·권한·연결 준비"]
-    inputs["AGENT · PRIVATE 소스 받기<br/>관리자가 전달한 암호화 설정과 recovery.key를<br/>.local/install-inputs에 배치"]
+    inputs["AGENT · PRIVATE 저장소 전체 받기<br/>암호화 설정과 recovery.key는<br/>deployment/install-inputs에 포함"]
     folders["사용자 · 폴더 주소 한 곳만 수정<br/>deployment/source-folders.txt"]
     install["AGENT · 관리자 권한으로<br/>Install-DocMind.cmd 실행"]
     automatic["설치기 자동 처리<br/>CPU · OCR OFF · 기존 API 설정<br/>모델 다운로드 · 새 DB·색인 볼륨 시작<br/>공용 작업공간 · 수집·감시·미리보기 작업 준비"]
@@ -100,7 +100,7 @@ flowchart TB
     success -->|"완료"| open --> accept
 ```
 
-소스만 내려받아서는 기존 API 키를 사용할 수 없습니다. 관리자가 **암호화 설정 파일과 별도 복호화 키**를 전달해야 하며, 사용자가 키를 다시 입력하는 과정은 없습니다. 최초 설치는 새 DB·색인으로 시작하고, 재실행은 생성된 설정과 볼륨을 유지하며 설치를 재개합니다.
+사용자 승인으로 **암호화 설정과 복호화 키를 PRIVATE 저장소에 함께 포함**했습니다. 최신 `main` 전체를 받으면 별도 파일 전달이나 API 키 입력 없이 설치기가 읽습니다. 최초 설치는 새 DB·색인으로 시작하고, 재실행은 생성된 설정과 볼륨을 유지하며 설치를 재개합니다.
 
 ## 설치하는 AGENT가 먼저 읽을 내용
 
@@ -141,15 +141,15 @@ Set-Location C:\DocMind
 
 설치 폴더는 로컬 Windows 드라이브에 둡니다. `C:\DocMind`는 예시이며 다른 설치 경로에서도 내부 임시 경로는 자동 계산됩니다.
 
-기존 API/서버 인증 설정을 그대로 쓰기 위해 AGENT가 다음 두 파일을 정해진 위치에 배치합니다. **사용자가 API 키를 다시 입력하거나 JSON 설정을 수정하는 단계는 없습니다.** 저장소 접근 권한과 운영 비밀값 전달 권한은 별도입니다.
+기존 API/서버 인증 설정을 그대로 사용하도록 다음 두 파일이 **이미 저장소에 포함되어 있습니다.** 설치기가 기본 경로에서 자동으로 읽으므로 복사·별도 전달·API 키 재입력은 필요하지 않습니다.
 
 ```text
-C:\DocMind\.local\install-inputs\
+C:\DocMind\deployment\install-inputs\
   docmind-deployed-20261019-settings.tar.enc
   recovery.key
 ```
 
-암호화 파일은 [기존 설정 릴리스](https://github.com/Dongmin103/docmind-private/releases/tag/deployed-baseline-20261019)에서 받습니다. 32바이트 `recovery.key`는 관리자가 별도 전달하며 Git/릴리스에 올리지 않습니다. 설치 계정과 SYSTEM만 접근하도록 파일/디렉터리 권한을 제한합니다. 암호화 파일 SHA256:
+32바이트 `recovery.key`와 암호화 파일은 사용자 요청으로 이 PRIVATE 저장소와 최신 설치 패키지에 함께 포함합니다. **저장소 접근자는 운영 API/인증 설정을 복원할 수 있습니다.** 저장소·복제본·설치 패키지를 비공개로 유지하고 키나 복호화한 값을 로그에 출력하지 않습니다. 암호화 파일 SHA256:
 
 ```text
 01625db5b2ea5ea0808e9db77fa5f22580e394ffe4d0675c41f2c1e69e9b069b
@@ -181,6 +181,17 @@ pwsh -NoProfile -File .\tools\deployment\Install-DocMindCpuServer.ps1
 설치기는 Python 의존성을 격리된 가상환경에 준비하고, Linux Docker 탐색 → 설정 생성 → 제품 이미지 빌드 → 고정 버전 CPU 모델 다운로드 → 새 볼륨/서비스 시작 → 내부 작업공간/문서 소스 초기화 → 수집·변경 감시·미리보기 작업 등록 순서로 진행합니다. 기존 준비 디렉터리가 있으면 키를 덮어쓰지 않고 해당 설치를 재개합니다.
 
 **`http://127.0.0.1:18080`을 열면 기존처럼 공용 DOCMIND 작업공간에 바로 접속합니다. 이메일·비밀번호 입력은 필요하지 않으며 사용자용 초기 비밀번호/비밀번호 파일도 만들지 않습니다.** 이 주소는 서버 자체에서 접속할 때의 주소입니다. 다른 PC의 접속 주소는 배포팀이 연결한 도메인/리버스 프록시를 사용합니다.
+
+### UI 사용 방법
+
+웹 UI는 `app/web`의 기존 DOCMIND 화면을 이미지 빌드 시 포함하고 같은 API 컨테이너의 NGINX가 제공합니다. 별도 데스크톱 앱이나 프런트엔드 개발 서버를 실행하지 않습니다.
+
+1. 서버에서 위 주소를 열어 로그인 화면 없이 공용 작업공간에 들어갑니다.
+2. 등록한 원본 폴더의 수집·인덱싱이 진행되면 폴더/문서 목록에서 검색 범위를 선택합니다. 새 설치는 빈 색인이므로 최초 수집 전에는 기존 운영 문서가 보이지 않습니다.
+3. 문서를 검색하거나 질문해 답변과 근거 문서를 확인합니다.
+4. 문서를 선택해 검색에 사용되는 내용과 원문 미리보기를 확인합니다. 원문은 필요할 때 임시 복호화하며 OCR 기능은 사용하지 않습니다.
+
+다른 PC에서는 `127.0.0.1`이 자기 PC를 가리키므로 사용할 수 없습니다. 배포 AGENT가 TLS 리버스 프록시/접속 도메인을 연결하고 실제 사용자 PC에서 접속을 검증해 주소를 전달해야 합니다. 내부 DB나 파서 포트를 외부에 공개하지 않습니다.
 
 `.local/cpu-server`의 `server.json`, `compose.json`, `worker.json` 등은 설치기가 만든 내부 설정입니다. 일반 설치 시 사용자가 편집하지 않습니다. API 키 등이 포함되므로 Git/지원 게시물에 올리지 않습니다.
 
@@ -218,11 +229,23 @@ pwsh -File .\tools\deployment\Register-DocMindCpuWorkers.ps1 -StartNow
 
 범용 RAGFlow SDK·Helm·예제·다국어 문서·개발 스냅샷은 제외했습니다. DOCMIND에 필요한 내부 런타임과 Apache 라이선스/제3자 고지는 유지하며 내부 모듈/의존 이미지 이름에 `ragflow`가 남을 수 있습니다.
 
-검증: CPU 서비스 단위 테스트 21개, OCR 비활성화 회귀 219개, 공용 세션·실제 SQLite 초기화 11개, 설정 생성·단일 폴더 목록 설정 검사, 패키지 검사 7개. CPU Linux 이미지 빌드/인증 HTTP 임베딩(768차원), 실제 암호화 설정 복원/Compose 구문, 비밀값의 소스 미포함과 별도 깨끗한 Vite production build도 확인했습니다. 기존 전체 TypeScript 검사 오류는 남아 있습니다. 위 결과는 다른 대상 서버의 전체 신규 설치와 실문서 인덱싱 인수 시험을 대신하지 않습니다.
+검증: CPU 서비스 단위 테스트 21개, OCR 비활성화 회귀 219개, 공용 세션·실제 SQLite 초기화 11개, 설정 생성·단일 폴더 목록 설정 검사, 패키지 검사 8개. CPU Linux 이미지 빌드/인증 HTTP 임베딩(768차원), 저장소에 포함한 실제 암호화 설정 복원/Compose 구문, 승인된 두 입력 외 소스에 평문 운영 비밀값을 넣지 않은 것과 별도 깨끗한 Vite production build도 확인했습니다. 기존 전체 TypeScript 검사 오류는 남아 있습니다. 위 결과는 다른 대상 서버의 전체 신규 설치와 실문서 인덱싱 인수 시험을 대신하지 않습니다.
 
 제품 소스 ZIP 생성/검증:
 
 ```powershell
 python tools/deployment/build_product_package.py --output .local/docmind-product.zip --format zip
 python tools/deployment/build_product_package.py --verify .local/docmind-product.zip
+```
+
+## 배포 AGENT에게 전달할 지시문
+
+```text
+PRIVATE 저장소 https://github.com/Dongmin103/docmind-private 의 최신 main 전체를 받아 이 서버에 배포해줘.
+AGENTS.md, README.md, deployment/AGENT-HANDOFF.md를 먼저 읽고 실제 서버 환경을 조사해 필요한 실행 환경을 준비해줘.
+암호화 설정과 recovery.key는 deployment/install-inputs에 이미 포함되어 있으니 별도 전달을 요청하거나 API 키를 다시 입력받지 마.
+사용자가 수정하는 제품 설정은 deployment/source-folders.txt의 문서 폴더 주소 한 곳뿐이야.
+Install-DocMind.cmd로 설치하고 CPU 인덱싱·OCR OFF·기존 API·비밀번호 없는 공용 자동 접속을 유지해줘.
+작은 문서로 수집·검색·답변·원문 미리보기·임시 정리를 검증하고, 실제 사용자 PC의 접속 주소와 남은 확인 항목을 보고해줘.
+저장소/패키지와 포함된 비밀값은 외부에 공개하거나 로그에 출력하지 마.
 ```

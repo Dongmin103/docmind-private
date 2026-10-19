@@ -1,4 +1,4 @@
-# Private recovery inputs and authentication material must stay outside Git.
+# Authentication material stays outside Git except the two explicitly approved PRIVATE deployment inputs below.
 *.key
 *.pem
 *.p12
@@ -14,7 +14,9 @@
 __pycache__/
 restore-test/
 
-# Encrypted archives are distributed as release assets, not Git blobs.
+# User-authorized deployment bundle in this PRIVATE repository only.
+!deployment/install-inputs/docmind-deployed-20261019-settings.tar.enc
+!deployment/install-inputs/recovery.key
 
 # Development handoff: no local secrets or data
 .local/

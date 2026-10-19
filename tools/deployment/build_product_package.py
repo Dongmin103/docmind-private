@@ -2,8 +2,9 @@
 """Build a DocMind product source archive from Git-tracked working-tree files.
 
 The allowlist below is deliberately narrower than the development repository.
-Secrets, installed runtimes, model weights and indexed documents are separate
-deployment inputs. No repository, service, Git index or remote is modified.
+Two user-authorized credential input files are bundled for PRIVATE deployment.
+Other secrets, installed runtimes, weights and indexed documents are excluded.
+No repository, service, Git index or remote is modified.
 Run ``python tools/deployment/build_product_package.py --self-test`` to test
 the selection and archive integrity checks without building the application.
 """
@@ -25,6 +26,10 @@ import zipfile
 
 
 SCHEMA_VERSION = 1
+INSTALL_INPUT_FILES = {
+    'deployment/install-inputs/docmind-deployed-20261019-settings.tar.enc',
+    'deployment/install-inputs/recovery.key',
+}
 MANIFEST_NAME = "PRODUCT-MANIFEST.json"
 ROOT_FILES = {"README.md", "AGENTS.md", "Install-DocMind.cmd", "LICENSE", "NOTICE", "NOTICE.txt", "THIRD_PARTY_NOTICES.md", ".gitignore", ".gitattributes"}
 APP_FILES = {"Dockerfile", ".dockerignore", "pyproject.toml", "uv.lock", "LICENSE", "NOTICE", "NOTICE.txt", "THIRD_PARTY_NOTICES.md", "README.md"}
@@ -66,6 +71,7 @@ REQUIRED_FILES = {
     "tools/deployment/Install-DocMindCpuServer.ps1", "tools/deployment/Register-DocMindCpuWorkers.ps1",
     "deployment/source-folders.txt", "deployment/AGENT-HANDOFF.md", "Install-DocMind.cmd",
 }
+REQUIRED_FILES |= INSTALL_INPUT_FILES
 DOCKER_CONTEXTS = {
     "app/Dockerfile": "app",
     "app/parser_services/kordoc/Containerfile": "app/parser_services/kordoc",
@@ -89,6 +95,8 @@ def exclusion_reason(name: str) -> str | None:
     parts = path.parts
     lower = tuple(p.lower() for p in parts)
     base = path.name.lower()
+    if name in INSTALL_INPUT_FILES:
+        return None  # Explicit user authorization; this package must remain PRIVATE.
     blocked_parts = FORBIDDEN_PARTS - {"models"} if parts[:3] == ("app", "conf", "models") else FORBIDDEN_PARTS
     if set(lower) & blocked_parts or path.suffix.lower() in FORBIDDEN_SUFFIXES:
         return "runtime data, secrets, weights, generated files or tests"
@@ -215,8 +223,8 @@ def make_archive(root: Path, output: Path, archive_format: str) -> dict:
         "product": "DOCMIND CPU source package",
         "source_revision": revision,
         "tracked_worktree_modified": bool(changes),
-        "source_policy": "Git-tracked working-tree bytes; explicit product allowlist; no Git history",
-        "runtime_inputs": "Credentials, models, decryptor executable and new source roots are configured separately. No database or vector index is bundled.",
+        "source_policy": "PRIVATE deployment package; Git-tracked working-tree bytes; exact authorized credential inputs; no Git history",
+        "runtime_inputs": "PRIVATE package includes the authorized encrypted settings and recovery key. Model weights and decryptor executable are prepared separately; only source folder paths are user configuration. No database or vector index is bundled.",
         "docker_contexts": DOCKER_CONTEXTS,
         "files": [{"path": name, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()} for name, data in sorted(selected.items())],
         "excluded": excluded,
@@ -279,6 +287,13 @@ def verify_archive(path: Path, archive_format: str) -> None:
 
 
 class PackagePolicyTests(unittest.TestCase):
+    def test_only_explicitly_authorized_install_credentials_are_bundled(self):
+        for name in INSTALL_INPUT_FILES:
+            self.assertIsNone(exclusion_reason(name))
+        for name in {'deployment/install-inputs/other.key','deployment/install-inputs/other.tar.enc',
+                     'deployment/install-inputs/private.pem','deployment/install-inputs/recovery.key.bak'}:
+            self.assertIsNotNone(exclusion_reason(name))
+
     def test_product_inputs_retained(self):
         for name in REQUIRED_FILES | {"app/rag/prompts/citation.md", "app/conf/models/llm_factory.json", "app/web/public/tokenizer.json", "app/parser_services/kordoc/patches/kordoc@4.15.7.patch"}:
             self.assertIsNone(exclusion_reason(name), name)

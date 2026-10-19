@@ -11,8 +11,8 @@ if(-not $IsWindows){throw 'This launcher requires Windows. The deployment agent 
 $repoRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $prepared=Join-Path $repoRoot '.local/cpu-server'
 if(-not $SourceFolders){$SourceFolders=Join-Path $repoRoot 'deployment/source-folders.txt'}
-if(-not $SettingsArchive){$SettingsArchive=Join-Path $repoRoot '.local/install-inputs/docmind-deployed-20261019-settings.tar.enc'}
-if(-not $RecoveryKey){$RecoveryKey=Join-Path $repoRoot '.local/install-inputs/recovery.key'}
+if(-not $SettingsArchive){$SettingsArchive=Join-Path $repoRoot 'deployment/install-inputs/docmind-deployed-20261019-settings.tar.enc'}
+if(-not $RecoveryKey){$RecoveryKey=Join-Path $repoRoot 'deployment/install-inputs/recovery.key'}
 if(-not (Get-Command $Python -ErrorAction SilentlyContinue)){throw 'Deployment agent: install Python 3.11+ as described in README.md.'}
 & $Python -c 'import sys; assert sys.version_info >= (3,11)'
 if($LASTEXITCODE -ne 0){throw 'Python 3.11+ is required.'}

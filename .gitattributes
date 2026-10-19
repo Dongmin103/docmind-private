@@ -1,2 +1,4 @@
 * -text
+deployment/install-inputs/recovery.key binary
+deployment/install-inputs/docmind-deployed-20261019-settings.tar.enc binary
 *.sh text eol=lf
