@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import re
-import secrets
 import tarfile
 from urllib.parse import urlsplit
 
@@ -15,6 +14,19 @@ ROOT=Path(__file__).resolve().parents[2]
 MODEL_REVISION='9bbca17d9273fd0d03d5725c7a4b0f6b45142062'
 CODE_REVISION='40ced75c3017eb27626c9d4ea981bde21a2662f4'
 MAGIC=b'DOCMIND-RECOVERY-AES256GCM-V1\n'
+
+def default_config(entries:dict[str,bytes],folders_file:Path)->dict:
+    """The deployment team edits only this list of encrypted document roots."""
+    roots=[line.strip() for line in folders_file.read_text(encoding='utf-8-sig').splitlines() if line.strip() and not line.lstrip().startswith('#')]
+    if not roots:raise ValueError('Enter at least one document folder in '+str(folders_file))
+    seed=json.loads(entries['host-config/ingest.json'])
+    return {'project_name':'docmind-cpu','docker_mode':'wsl','wsl_distribution':'Ubuntu',
+        'web_port':18080,'api_port':19380,'workspace_email':'docmind@internal.invalid',
+        'decrypt_executable':seed['executable_path'],'plaintext_root':str(ROOT/'.local/plaintext-jobs'),
+        'require_bitlocker':seed.get('require_bitlocker',True),
+        'backup_exclusion_acknowledged':seed.get('backup_exclusion_acknowledged',False),
+        'answer_base_url':'','cpu_threads':2,
+        'sources':[{'source_id':'source-'+str(i),'display_name':Path(path).name or '문서 '+str(i),'root':path} for i,path in enumerate(roots,1)]}
 
 def decrypt_entries(archive: Path,key_path: Path)->dict[str,bytes]:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -168,8 +180,7 @@ def prepare(config:dict,entries:dict[str,bytes],output:Path):
     (output/'secrets/jina-api.key').write_bytes(jina);(output/'secrets/worker-hmac.key').write_bytes(hmac)
     for name in ['private.pem','public.pem','system_settings.json']:(output/'secrets'/name).write_bytes(entries['api/conf/'+name])
     write_json('gte.json',gte)
-    password=secrets.token_urlsafe(24);(output/'admin-password.txt').write_text(password,encoding='utf-8')
-    write_json('bootstrap.json',{'email':config['workspace_email'],'password':password,'gte_api_key':gte['api_key'],'sources':config['sources']})
+    write_json('bootstrap.json',{'email':config['workspace_email'],'gte_api_key':gte['api_key'],'sources':config['sources']})
     overrides=dict(api_base_uri=f"http://127.0.0.1:{config['api_port']}",shared_secret_file=str(output/'secrets/worker-hmac.key'),
         executable_path=str(Path(config['decrypt_executable']).resolve()),executable_sha256=hashlib.sha256(Path(config['decrypt_executable']).read_bytes()).hexdigest(),
         work_root=str(Path(config['plaintext_root']).resolve()),cleanup_receipt_root=str(output/'cleanup-receipts'),decrypt_control_root=str(output/'decrypt-control'),
@@ -186,12 +197,18 @@ def prepare(config:dict,entries:dict[str,bytes],output:Path):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config',type=Path,required=True);parser.add_argument('--settings-archive',type=Path,required=True);parser.add_argument('--recovery-key',type=Path,required=True)
+    parser.add_argument('--config',type=Path);parser.add_argument('--source-folders',type=Path,default=ROOT/'deployment/source-folders.txt')
+    parser.add_argument('--docker-mode',choices=['wsl','desktop']);parser.add_argument('--wsl-distribution')
+    parser.add_argument('--settings-archive',type=Path,required=True);parser.add_argument('--recovery-key',type=Path,required=True)
     parser.add_argument('--output',type=Path,default=ROOT/'.local/cpu-server')
     args=parser.parse_args();output=args.output.resolve()
     if not output.is_relative_to(ROOT/'.local'):raise ValueError('Output must stay inside this checkout .local directory')
-    config=json.loads(args.config.read_text(encoding='utf-8-sig'));validate_config(config)
-    prepare(config,decrypt_entries(args.settings_archive,args.recovery_key),output)
+    entries=decrypt_entries(args.settings_archive,args.recovery_key)
+    config=json.loads(args.config.read_text(encoding='utf-8-sig')) if args.config else default_config(entries,args.source_folders)
+    if args.docker_mode:config['docker_mode']=args.docker_mode
+    if args.wsl_distribution:config['wsl_distribution']=args.wsl_distribution
+    validate_config(config)
+    prepare(config,entries,output)
 
 if __name__=='__main__':
     try:main()

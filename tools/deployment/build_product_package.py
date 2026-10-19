@@ -26,7 +26,7 @@ import zipfile
 
 SCHEMA_VERSION = 1
 MANIFEST_NAME = "PRODUCT-MANIFEST.json"
-ROOT_FILES = {"README.md", "AGENTS.md", "LICENSE", "NOTICE", "NOTICE.txt", "THIRD_PARTY_NOTICES.md", ".gitignore", ".gitattributes"}
+ROOT_FILES = {"README.md", "AGENTS.md", "Install-DocMind.cmd", "LICENSE", "NOTICE", "NOTICE.txt", "THIRD_PARTY_NOTICES.md", ".gitignore", ".gitattributes"}
 APP_FILES = {"Dockerfile", ".dockerignore", "pyproject.toml", "uv.lock", "LICENSE", "NOTICE", "NOTICE.txt", "THIRD_PARTY_NOTICES.md", "README.md"}
 DEPLOYMENT_FILES = {"prepare_cpu_server.py", "bootstrap_cpu_workspace.py", "Start-DocMindCpuServer.ps1", "Install-DocMindCpuServer.ps1", "Register-DocMindCpuWorkers.ps1", "build_product_package.py"}
 RUNTIME_DIRECTORIES = {"api", "common", "rag", "deepdoc", "conf"}
@@ -64,7 +64,7 @@ REQUIRED_FILES = {
     "tools/deployment/build_product_package.py", "tools/deployment/prepare_cpu_server.py",
     "tools/deployment/bootstrap_cpu_workspace.py", "tools/deployment/Start-DocMindCpuServer.ps1",
     "tools/deployment/Install-DocMindCpuServer.ps1", "tools/deployment/Register-DocMindCpuWorkers.ps1",
-    "deployment/cpu/server.example.json",
+    "deployment/source-folders.txt", "Install-DocMind.cmd",
 }
 DOCKER_CONTEXTS = {
     "app/Dockerfile": "app",
@@ -98,8 +98,8 @@ def exclusion_reason(name: str) -> str | None:
         return "development tests or stories"
     if name in ROOT_FILES:
         return None
-    if parts[:2] == ("deployment", "cpu"):
-        return None if path.name in {"server.example.json", "README.md"} else "deployment runtime configuration"
+    if name == 'deployment/source-folders.txt':
+        return None
     if parts[:2] == ("tools", "deployment"):
         return None if path.name in DEPLOYMENT_FILES else "outside product deployment tool allowlist"
     if parts[:2] == ("tools", "local_embedding"):

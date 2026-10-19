@@ -9,32 +9,34 @@ from uuid import uuid4
 def stable(*parts):return hashlib.sha256('\x1f'.join(parts).encode()).hexdigest()[:32]
 
 def initialize(config):
-    from werkzeug.security import generate_password_hash
     from api.db.db_models import (DB,User,Tenant,UserTenant,File,DocmindFolder,DocmindSource,DocmindProject,Knowledgebase,
         TenantModelProvider,TenantModelInstance,TenantModel)
     from api.apps.services.docmind_bootstrap_service import bootstrap_shared_workspace
     email=config['email'].strip().lower()
+    shared_channel='internal-shared-workspace'
     with DB.connection_context(),DB.atomic():
         # Refuse to adopt an existing installation or anyone else's tenant.
         if User.select().where(User.email!=email).exists():raise ValueError('Fresh-server bootstrap refuses a database containing other users')
         user=User.get_or_none(User.email==email)
         if user is None:
-            user=User.create(id=uuid4().hex,email=email,nickname='DOCMIND',password=generate_password_hash(config['password']),
-                access_token=uuid4().hex,login_channel='password',is_superuser=False,last_login_time=datetime.now(),language='Korean')
+            user=User.create(id=uuid4().hex,email=email,nickname='DOCMIND',password=None,
+                access_token=uuid4().hex,login_channel=shared_channel,is_superuser=False,last_login_time=datetime.now(),language='Korean')
             Tenant.create(id=user.id,name='DOCMIND',llm_id='',embd_id='',img2txt_id='',rerank_id='',parser_ids='')
             UserTenant.create(id=uuid4().hex,user_id=user.id,tenant_id=user.id,invited_by=user.id,role='owner')
             file_id=uuid4().hex
             File.create(id=file_id,parent_id=file_id,tenant_id=user.id,created_by=user.id,name='/',type='folder',size=0,location='')
-        elif user.login_channel=='internal-shared-workspace':
-            # API startup creates an internal identity before this bootstrap.
-            # Adopt only that unused workspace once; retries never reset a login.
+        else:
+            # Keep the API's shared identity internal. Also accept an earlier
+            # CPU bootstrap's own model binding so it can drop its login password.
+            own_model=TenantModel.get_or_none(TenantModel.id==stable('docmind-cpu-model',user.id))
+            if user.login_channel!=shared_channel and own_model is None:
+                raise ValueError('Expected an internal shared workspace identity')
             if (DocmindProject.select().where(DocmindProject.tenant_id==user.id).exists()
-                    or Knowledgebase.select().where(Knowledgebase.tenant_id==user.id).exists()):
+                    or Knowledgebase.select().where(Knowledgebase.tenant_id==user.id).exists()) and own_model is None:
                 raise ValueError('Refusing to adopt an internal account with an existing workspace')
             memberships=list(UserTenant.select().where(UserTenant.user_id==user.id))
             if len(memberships)!=1 or memberships[0].tenant_id!=user.id or memberships[0].role!='owner':
                 raise ValueError('Internal account ownership differs from bootstrap')
-            User.update(password=generate_password_hash(config['password']),login_channel='password',is_superuser=False).where(User.id==user.id).execute()
         tenant=Tenant.get_by_id(user.id)
         provider_id=stable('docmind-cpu-provider',user.id);instance_id=stable('docmind-cpu-instance',user.id);model_id=stable('docmind-cpu-model',user.id)
         provider,_=TenantModelProvider.get_or_create(id=provider_id,defaults={'tenant_id':user.id,'provider_name':'OpenAI-API-Compatible'})
@@ -47,6 +49,8 @@ def initialize(config):
         if (model.provider_id,model.instance_id,model.model_name,model.model_type)!=(provider_id,instance_id,'gte-multilingual-base',2):
             raise ValueError('Existing embedding model configuration differs')
         if tenant.tenant_embd_id and tenant.tenant_embd_id!=model_id:raise ValueError('Existing embedding binding differs')
+        if user.login_channel!=shared_channel:
+            User.update(password=None,login_channel=shared_channel,is_superuser=False).where(User.id==user.id).execute()
         Tenant.update(embd_id=model_id,tenant_embd_id=model_id).where(Tenant.id==user.id).execute()
     # Service facades own their connection contexts. Do not call them inside an
     # outer transaction; stable IDs let each completed phase be retried safely.
