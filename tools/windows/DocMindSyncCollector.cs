@@ -65,6 +65,8 @@ namespace DocMind
             Faulted = true;
             try { queue.EnqueueScope(source, "", null, "recovery"); }
             catch { /* Faulted stays set so the owning loop can persist recovery. */ }
+            try { queue.EnqueueFolderScope(source, "", null, "recovery", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()); }
+            catch { }
         }
 
         private void Changed(object sender, FileSystemEventArgs args)
@@ -79,14 +81,18 @@ namespace DocMind
                     {
                         // Directory mtime changes accompany ordinary edits. They
                         // must never expand a full folder for each changed file.
-                        if (args.ChangeType == WatcherChangeTypes.Created) queue.EnqueueScope(source, path, null, "create");
+                        if (args.ChangeType == WatcherChangeTypes.Created) {
+                            queue.RememberFolder(source,path,true);
+                            queue.EnqueueFolderScope(source, path, null, "create", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                        }
                         return;
                     }
                     string kind = args.ChangeType == WatcherChangeTypes.Deleted ? "delete" : args.ChangeType == WatcherChangeTypes.Created ? "create" : "upsert";
                     queue.Enqueue(source, path, kind, null, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-                    // Deleted events carry no file/directory discriminator. A
-                    // deleted directory is recovered by the scheduled scan;
-                    // ordinary file deletion must not expand the whole source.
+                    if ((args.ChangeType == WatcherChangeTypes.Deleted || args.ChangeType == WatcherChangeTypes.Created) && queue.KnownFolder(source,path))
+                        queue.EnqueueFolderScope(source, path, null, "delete", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                    // Deleted events have no type discriminator; the durable
+                    // metadata cache identifies folders without traversing files.
                 }
                 catch { Recovery(); }
             }
@@ -100,7 +106,10 @@ namespace DocMind
                 try
                 {
                     string path = Relative(args.FullPath), old = Relative(args.OldFullPath);
-                    if (Directory.Exists(args.FullPath)) queue.EnqueueScope(source, path, old, "move");
+                    if (Directory.Exists(args.FullPath)) {
+                        queue.RememberFolder(source,path,true);
+                        queue.EnqueueFolderScope(source, path, old, "move", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                    }
                     else queue.Enqueue(source, path, "move", old, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                 }
                 catch { Recovery(); }

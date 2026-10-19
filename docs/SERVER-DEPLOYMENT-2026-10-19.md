@@ -1,9 +1,9 @@
 # GitHub 기반 다른 서버 배포
 
-2026-10-19 현재 실행 중인 검색 개선과 비동기 답변 코드는 **`feat/answer-jobs` 브랜치**에 있다. 저장소 기본 브랜치 `main`이나 초기 `windows-development-handoff` 대신 이 브랜치를 받는다. 검색 구현 커밋은 `59a3005`, 평가·기존 색인 보강 도구는 `d5cac9b`에 포함된다.
+2026-10-19 현재 실행 중인 배포본은 **비공개 저장소 `Dongmin103/docmind-private`의 `main`**에 보존한다. 공개 저장소의 `feat/answer-jobs` 커밋 `d1815f6`과 서버 Python 289개가 바이트 단위로 같음을 확인하고, Windows 실행 역할별 사본과 실제 감시기 파일을 추가했다. [대조 기록](DEPLOYED-SOURCE-BASELINE-2026-10-19.md)과 [기존 설정 가져오기](CONFIGURATION-TRANSFER-2026-10-19.md)를 먼저 읽는다. 검색 구현 커밋은 `59a3005`, 평가·기존 색인 보강 도구는 `d5cac9b`에 포함된다.
 
 ```bash
-git clone --branch feat/answer-jobs --single-branch https://github.com/Dongmin103/docmind-recovery.git docmind
+git clone --branch main --single-branch https://github.com/Dongmin103/docmind-private.git docmind
 cd docmind
 git rev-parse HEAD
 ```
@@ -12,7 +12,7 @@ git rev-parse HEAD
 
 ## 서버 구성과 이미지
 
-Git에는 애플리케이션 소스, Dockerfile, 설정 예제, 호스트 워커 도구 및 검증 코드가 들어 있다. Docker 이미지·모델 가중치·상용 uEncryptor2·실제 설정과 키·원본·DB·벡터·객체 저장소 데이터는 별도로 준비해야 한다. 현재 PC의 `.local` 디렉터리를 다른 서버의 설정으로 복사하지 않는다.
+Git에는 애플리케이션 소스, Dockerfile, 설정 예제, 호스트 워커 도구 및 검증 코드가 들어 있다. 현재 실제 설정과 API 키는 비공개 릴리스의 암호화 첨부파일에 따로 보관한다. Docker 이미지·모델 가중치·상용 uEncryptor2·원본·DB·벡터·객체 저장소 데이터는 별도로 준비해야 한다. `.local` 전체를 새 서버 설정으로 복사하지 않고, 복호화한 설정의 서버 경로·주소·작업 실행 계정을 대상 환경에 맞춘다.
 
 새 Windows 서버의 기초 구성은 [Windows 개발 안내](../WINDOWS_DEVELOPMENT.md), [Docker 구성](WINDOWS-DEVELOPMENT-DOCKER.md), [GTE 구성](LOCAL-GTE-DEPLOYMENT-2026-10-12.md)을 참고한다. Windows 복호화 실행부와 Docker Linux 서비스의 역할을 유지한다. 기존 개발 Compose의 합성 데이터 보안 경계를 임의로 해제해 운영 구성으로 사용하지 않는다. 서버별 원본 경로, 계정, 비밀값, 모델 주소, 도메인과 TLS를 그 서버에서 설정한다.
 

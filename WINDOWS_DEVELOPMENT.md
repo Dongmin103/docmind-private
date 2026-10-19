@@ -1,5 +1,7 @@
 # Windows 서버에서 개발 시작
 
+2026-10-19 비공개 이전: 현재 배포본은 `Dongmin103/docmind-private`의 `main`을 받는다. 아래 초기 인수인계 설명보다 [현재 시작 안내](START_HERE.md)와 [기존 설정 이전 안내](docs/CONFIGURATION-TRANSFER-2026-10-19.md)가 우선한다.
+
 이 브랜치는 **Windows 개발 기준선과 C 검색 구현을 바탕으로 후속 단계를 진행하는 checkout**이다. OpenViking 제품 의존을 제거하고 재발 방지 검사를 추가했으며, 독립된 Windows/WSL2 개발 Compose와 빈 인프라 기동을 검증했다. 다만 운영 배포판은 아니며 실제 Jina/답변 모델 자격증명, uEncryptor2 연동, 사용자 시험 문서 검증은 후속 단계다. 원본 PDF·운영 청크·DB·MinIO 데이터는 이동하지 않는다.
 
 ## 받기
@@ -7,7 +9,7 @@
 Windows PowerShell에서 Git이 설치된 상태로 실행한다. 대상 폴더는 새 개발용 경로를 사용한다.
 
 ```powershell
-git clone --branch windows-development-handoff --single-branch https://github.com/Dongmin103/docmind-recovery.git C:\DocMindDev\docmind
+git clone --branch main --single-branch https://github.com/Dongmin103/docmind-private.git C:\DocMindDev\docmind
 Set-Location C:\DocMindDev\docmind
 Get-Content .\START_HERE.md
 powershell -NoProfile -File .\tools\windows\Test-DevelopmentEnvironment.ps1

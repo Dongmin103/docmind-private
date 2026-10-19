@@ -1,12 +1,18 @@
-# Windows 개발 인수인계
+# DOCMIND — 현재 배포본 소스
 
-**새 개발은 [START_HERE.md](START_HERE.md)에서 시작하세요.** 소스는 app/, 최신 요구사항은 PRD.md에 있습니다. Windows 서버에서 이 브랜치만 clone하면 개발을 시작할 수 있습니다. 기존 PDF·운영 청크·암호화 복구 파일은 필요하지 않습니다.
+이 비공개 저장소의 `main`은 2026-10-19에 실행 중인 DOCMIND를 기준으로 구성했습니다. **[START_HERE.md](START_HERE.md)**와 **[배포본 대조 기록](docs/DEPLOYED-SOURCE-BASELINE-2026-10-19.md)**을 먼저 읽으세요.
 
 ```powershell
-git clone --branch windows-development-handoff --single-branch https://github.com/Dongmin103/docmind-recovery.git
+git clone --branch main --single-branch https://github.com/Dongmin103/docmind-private.git
 ```
 
-아래는 변경 전 복구 기록이며, 새 개발용 데이터 준비 절차가 아닙니다.
+소스는 `app/`, 공통 Windows 도구는 `tools/windows/`, 실제 실행 역할별 사본은 `deployment/host-roles/`입니다. 서버 Python 소스 289개는 공개 저장소의 `d1815f6`과 모두 같았고, Windows 감시기는 실행 중인 파일에서 직접 가져왔습니다.
+
+기존 API 키·모델 연결 정보·실행 설정과 컴파일된 웹 자산은 이 비공개 저장소의 `deployed-baseline-20261019` 릴리스에 암호화 첨부파일로 보관합니다. **[기존 설정 가져오기](docs/CONFIGURATION-TRANSFER-2026-10-19.md)**를 따르세요. 복호화 키는 GitHub에 포함하지 않습니다. 원본 문서·검색 색인·대화 데이터·모델 가중치·Docker 이미지·상용 복호화 프로그램은 별도로 준비합니다.
+
+이 기준본은 현재 배포와 같은 GPU 임베딩 및 OCR 코드를 보존합니다. 다음 배포 대상의 CPU 실행·OCR 제외·VDI 로그인/권한 연동은 아직 구현하지 않았으며 [후속 작업](docs/CONFIGURATION-TRANSFER-2026-10-19.md#다음-서버에-맞출-작업)에 정리했습니다.
+
+아래는 기존 공개 저장소의 변경 전 복구 기록입니다. 현재 배포본을 받는 절차와 구분하세요.
 
 ---
 

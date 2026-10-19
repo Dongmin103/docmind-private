@@ -3,7 +3,7 @@ param([string]$ConfigPath=$env:DOCMIND_HOST_WORKER_CONFIG,[switch]$Once,[string]
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'DocMindUEncryptorHostWorker.Common.ps1')
-Add-Type -Path @((Join-Path $PSScriptRoot 'DocMindSyncQueue.cs'),(Join-Path $PSScriptRoot 'DocMindUnicodeCaseFold.cs'),(Join-Path $PSScriptRoot 'DocMindSyncCollector.cs'))
+Add-Type -Path @((Join-Path $PSScriptRoot 'DocMindSyncQueue.cs'),(Join-Path $PSScriptRoot 'DocMindUnicodeCaseFold.cs'),(Join-Path $PSScriptRoot 'DocMindSyncCollector.cs'),(Join-Path $PSScriptRoot 'DocMindFolderSupervisor.cs'))
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { throw 'HOST_CONFIG_REQUIRED' }
 $configFile=[IO.Path]::GetFullPath($ConfigPath)
 $config=Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -25,34 +25,27 @@ foreach($source in @(Select-DocMindConfiguredSources -Sources @($config.sources)
 $queue=[DocMind.SyncQueue]::new((Join-Path $stateRoot 'sync.sqlite'))
 $sessionUri='/api/v1/cloud-sync/host-worker/changes/session'
 $changesUri='/api/v1/cloud-sync/host-worker/changes'
+$folderHelper=$null
+$folderControls=Join-Path $stateRoot 'folder-owners'
+[IO.Directory]::CreateDirectory($folderControls)|Out-Null
+$folderControl=Join-Path $folderControls ($ownerId+'.json')
+$folderControlJson=''
 
-function Send-SignedJson {
-    param([string]$Path,[string]$Json)
-    $uri=[Uri]::new($base,$Path)
-    if(-not $uri.IsLoopback -or $uri.Authority -ne $base.Authority) { throw 'SYNC_ENDPOINT_ESCAPED' }
-    $bytes=[Text.Encoding]::UTF8.GetBytes($Json);$hash=Get-DocMindBytesSha256 -Bytes $bytes
-    $stamp=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds().ToString();$nonce=ConvertTo-DocMindHex -Bytes (New-DocMindRandomBytes -Count 16)
-    $sig=Get-DocMindHmacSignature -Key $secret -Method POST -PathAndQuery $uri.PathAndQuery -Timestamp $stamp -Nonce $nonce -ContentSha256 $hash
-    $request=[Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post,$uri)
-    $request.Content=[Net.Http.ByteArrayContent]::new($bytes)
-    $request.Content.Headers.ContentType=[Net.Http.Headers.MediaTypeHeaderValue]::new('application/json')
-    foreach($pair in @{'X-DocMind-Key-Id'=[string]$config.key_id;'X-DocMind-Timestamp'=$stamp;'X-DocMind-Nonce'=$nonce;'X-DocMind-Content-SHA256'=$hash;'X-DocMind-Signature'=$sig}.GetEnumerator()) { [void]$request.Headers.TryAddWithoutValidation($pair.Key,$pair.Value) }
-    $client=[Net.Http.HttpClient]::new();$client.Timeout=[TimeSpan]::FromSeconds(30)
-    try {
-        $reply=$client.SendAsync($request).GetAwaiter().GetResult()
-        try {
-            $data=$reply.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();$headers=@{}
-            foreach($name in @('X-DocMind-Key-Id','X-DocMind-Timestamp','X-DocMind-Nonce','X-DocMind-Content-SHA256','X-DocMind-Signature')) {
-                $values=$null;if(-not $reply.Headers.TryGetValues($name,[ref]$values)) { throw 'SYNC_RESPONSE_UNSIGNED' };$headers[$name]=[string]@($values)[0]
-            }
-            if($headers['X-DocMind-Key-Id'] -ne [string]$config.key_id -or $nonces.ContainsKey($headers['X-DocMind-Nonce']) -or -not (Test-DocMindSignedMessage -Key $secret -Method POST -PathAndQuery $uri.PathAndQuery -Timestamp $headers['X-DocMind-Timestamp'] -Nonce $headers['X-DocMind-Nonce'] -ContentSha256 $headers['X-DocMind-Content-SHA256'] -Signature $headers['X-DocMind-Signature'] -BodyBytes $data)) { throw 'SYNC_RESPONSE_AUTH_FAILED' }
-            $nonces[$headers['X-DocMind-Nonce']]=[DateTimeOffset]::UtcNow
-            foreach($seen in @($nonces.GetEnumerator())) { if($seen.Value -lt [DateTimeOffset]::UtcNow.AddMinutes(-5)) { $nonces.Remove($seen.Key) } }
-            $body=if($data.Length) { [Text.Encoding]::UTF8.GetString($data)|ConvertFrom-Json } else { $null }
-            return [pscustomobject]@{Status=[int]$reply.StatusCode;Body=$body}
-        } finally { $reply.Dispose() }
-    } finally { $request.Dispose();$client.Dispose() }
+function Supervise-FolderHelper {
+    $body=@{pid=$PID;started_ticks=(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks;owner_id=$ownerId;sources=@($sessions.Keys|ForEach-Object{@{source_id=$_;epoch=[long]$sessions[$_].epoch}})}
+    $json=$body|ConvertTo-Json -Depth 5 -Compress
+    if($json -ne $script:folderControlJson){
+        $temporary=$folderControl+'.tmp'
+        [IO.File]::WriteAllText($temporary,$json,[Text.UTF8Encoding]::new($false))
+        if([IO.File]::Exists($folderControl)){[IO.File]::Replace($temporary,$folderControl,$null)}else{[IO.File]::Move($temporary,$folderControl)}
+        $script:folderControlJson=$json
+    }
+    if($sessions.Count -and $null -eq $script:folderHelper){
+        $script:folderHelper=[DocMind.FolderSupervisor]::new((Get-Process -Id $PID).Path,(Join-Path $PSScriptRoot 'Sync-DocMindSourceFolders.ps1'),$configFile,$stateRoot)
+    }
 }
+
+. (Join-Path $PSScriptRoot 'DocMindSyncTransport.ps1')
 function Open-Session {
     param([string]$Id,[switch]$Renew)
     $body=[ordered]@{protocol_version=2;source_id=$Id;worker_id=[string]$config.worker_id;owner_id=$ownerId;action=$(if($Renew){'renew'}else{'acquire'})}
@@ -77,20 +70,8 @@ function Process-Scope {
     param([string]$Id)
     foreach($scope in @($queue.Scopes($Id,1))){
         if($scope.Kind -eq 'recovery' -or $scope.Kind -eq 'delete'){if(Launch-Scan -Id $Id -Reason watcher_error){$queue.CompleteScope($scope)};return}
-        $relative=[string]$scope.RelativePath
-        $directory=[IO.Path]::GetFullPath((Join-Path $roots[$Id] ($relative.Replace('/',[IO.Path]::DirectorySeparatorChar))))
-        if(-not $directory.StartsWith($roots[$Id]+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'SCOPE_ESCAPED'}
-        if(-not (Test-Path -LiteralPath $directory -PathType Container)){$queue.CompleteScope($scope);return}
-        Assert-DocMindNoReparsePoint -LiteralPath $directory -Boundary $roots[$Id] -Name 'Scope directory'
-        $prefix=$roots[$Id]+'\'
-        foreach($file in [IO.Directory]::EnumerateFiles($directory,'*',[IO.SearchOption]::AllDirectories)){
-            Assert-DocMindNoReparsePoint -LiteralPath $file -Boundary $roots[$Id] -Name 'Scope file'
-            $path=$file.Substring($prefix.Length).Replace('\','/')
-            $old=$null
-            if($scope.Kind -eq 'move' -and $scope.OldRelativePath){$old=[string]$scope.OldRelativePath+$path.Substring($relative.Length)}
-            $kind=if($old){'move'}else{'upsert'}
-            $null=$queue.Enqueue($Id,$path,$kind,$old,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
-        }
+        # Recover pending scopes written by the previous watcher release.
+        $queue.EnqueueFolderScope($Id,[string]$scope.RelativePath,[string]$scope.OldRelativePath,[string]$scope.Kind,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
         $queue.CompleteScope($scope)
     }
 }
@@ -113,9 +94,9 @@ function Send-Outbox {
             if([string]$item.observation_id -ne [string]$result.observation_id){throw 'SYNC_ACK_MISMATCH'}
             if($item.kind -eq 'dirty'){$outcomes.Add(0)}
             elseif($item.kind -eq 'delete'){$outcomes.Add(2)}
-            elseif($item.kind -eq 'move' -and $result.reason -eq 'MOVE_IDENTITY_UNCONFIRMED'){
+            elseif($item.kind -eq 'move' -and $result.PSObject.Properties.Name -contains 'reason' -and $result.reason -eq 'MOVE_IDENTITY_UNCONFIRMED'){
                 $outcomes.Add(2);$now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-                $null=$queue.Enqueue($Id,[string]$item.relative_path,'upsert',$null,$now)
+                $queue.ResetRejectedMove($Id,[string]$item.relative_path,$now,[long]$item.generation,[string]$item.old_relative_path)
                 $null=$queue.Enqueue($Id,[string]$item.old_relative_path,'delete',$null,$now)
             }
             elseif($result.state -eq 'DEFERRED_PREVIOUS_CLEANUP' -or $result.state -eq 'WAITING_SOURCE_STABLE'){$outcomes.Add(1)}
@@ -150,6 +131,18 @@ function Read-Fingerprint {
     $fingerprint=Get-DocMindBytesSha256 -Bytes ([Text.Encoding]::UTF8.GetBytes(('{0}:{1}:{2}:{3}' -f $hash2,[long]$after.Length,$mtime,$identity2)))
     return [pscustomobject]@{Hash=$hash2;Size=[long]$after.Length;Mtime=$mtime;Identity=$identity2;Fingerprint=$fingerprint}
 }
+function Resolve-CurrentMoveOrigin {
+    param([string]$Id,[DocMind.SyncEntry]$Entry,[string]$Identity)
+    $body=@{protocol_version=1;source_id=$Id;worker_id=[string]$config.worker_id;owner_id=$ownerId;epoch=[long]$sessions[$Id].epoch;action='identity';host_file_id=$Identity}
+    $response=Send-SignedJson -Path '/api/v1/cloud-sync/host-worker/folders' -Json ($body|ConvertTo-Json -Compress)
+    if($response.Status -ne 200){
+        if($response.Status -eq 409 -and [string]$response.Body.error -match '^SESSION_(FENCED|EXPIRED)$'){$sessions.Remove($Id)}
+        throw 'MOVE_ORIGIN_LOOKUP_FAILED'
+    }
+    $origin=[string]$response.Body.relative_path
+    if($origin -eq $Entry.RelativePath){$origin=$null}
+    if(-not $queue.SetMoveOrigin($Entry,$origin)){throw 'MOVE_OBSERVATION_SUPERSEDED'}
+}
 function Process-Due {
     param([string]$Id)
     foreach($entry in @($queue.Due($Id,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(),1))){
@@ -159,7 +152,11 @@ function Process-Due {
                 if($entry.StableCount -eq 0){$queue.Delay($entry,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(),2000,1);return $true}
                 $item=[ordered]@{kind='delete';relative_path=$entry.RelativePath;generation=$entry.Generation;observation_id=('obs-'+[Guid]::NewGuid().ToString('n'));root_access_confirmed=$true;absence_confirmed=$true}
             } else {
+                # A create notification may be one half of a cloud move.
+                # Metadata discovery must finish before the first content read.
+                if($queue.NeedsMoveIdentityProbe($entry)){return $false}
                 $snapshot=Read-Fingerprint -Id $Id -Entry $entry
+                if($entry.Kind -eq 'move' -and $snapshot.Identity){Resolve-CurrentMoveOrigin -Id $Id -Entry $entry -Identity $snapshot.Identity}
                 if($entry.StableCount -gt 0 -and $entry.Fingerprint -ne $snapshot.Fingerprint){$null=$queue.Enqueue($Id,$entry.RelativePath,'upsert',$entry.OldRelativePath,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds());return $true}
                 if($entry.StableCount -eq 0 -and -not $queue.RememberFingerprint($entry,$snapshot.Fingerprint)){return $false}
                 $stage=if($entry.StableCount -eq 0){'first'}else{'second'}
@@ -180,6 +177,31 @@ function Process-Due {
     }
     return $false
 }
+function Probe-MoveIdentities {
+    param([string]$Id)
+    $clock=[Diagnostics.Stopwatch]::StartNew()
+    foreach($entry in @($queue.MoveIdentityProbes($Id,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(),32))){
+        if($clock.ElapsedMilliseconds -ge 1000){break}
+        $metadataRead=$false
+        try {
+            if(Test-DocMindConfirmedSourceFileAbsence -Root $roots[$Id] -RelativePath $entry.RelativePath){
+                # Retain the existing two-observation deletion procedure.
+                $null=$queue.EnqueueAbsentMoveProbe($entry,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+                continue
+            }
+            $path=Resolve-DocMindSourceFile -Root $roots[$Id] -RelativePath $entry.RelativePath
+            $identity=Get-DocMindHostFileIdentity -LiteralPath $path
+            if(-not $identity){throw 'MOVE_IDENTITY_UNAVAILABLE'}
+            $metadataRead=$true
+            Resolve-CurrentMoveOrigin -Id $Id -Entry $entry -Identity $identity
+            $queue.CompleteMoveIdentityProbe($entry)
+        } catch {
+            if($metadataRead){$queue.Delay($entry,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(),5000,$entry.StableCount)}
+            else{$queue.FailMoveIdentityProbe($entry,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())}
+            Write-Warning ('SYNC_IDENTITY_RETRY '+$_.Exception.GetType().Name)
+        }
+    }
+}
 function Process-SourceChanges {
     param([string]$Id)
     $progress=$false
@@ -190,6 +212,7 @@ function Process-SourceChanges {
     }
     # Send one dirty batch, then give due stability checks a turn even when
     # more dirty events arrive. Each iteration selects a fresh generation.
+    Probe-MoveIdentities -Id $Id
     $dirty=@($queue.Dirty($Id,250))
     if($dirty.Count){
         $items=@($dirty|ForEach-Object{[ordered]@{kind='dirty';relative_path=$_.RelativePath;generation=$_.Generation;observation_id=('obs-dirty-'+[Guid]::NewGuid().ToString('n'))}})
@@ -214,6 +237,7 @@ try {
         try{Open-Session -Id $id;if(-not $Once -and -not $SkipStartupScan){$null=Launch-Scan -Id $id -Reason startup}}catch{$sourceRetryAt[$id]=[DateTimeOffset]::UtcNow.AddSeconds($PollSeconds);Write-Warning ('SYNC_SESSION_RETRY '+$_.Exception.GetType().Name)}
     }
     $lastMidnight=''
+    Supervise-FolderHelper
     do {
         $progress=$false
         foreach($id in @($roots.Keys)){
@@ -225,6 +249,7 @@ try {
                 }
                 if(-not $sessions.ContainsKey($id)){Open-Session -Id $id}
                 elseif([DateTimeOffset]::UtcNow -ge $renewed[$id].AddSeconds(30)){Open-Session -Id $id -Renew}
+                Supervise-FolderHelper
                 Process-Scope -Id $id
                 if(Process-SourceChanges -Id $id){$progress=$true}
                 if(-not $sessions.ContainsKey($id)){$sourceRetryAt[$id]=[DateTimeOffset]::UtcNow.AddSeconds($PollSeconds)}
@@ -242,7 +267,9 @@ try {
         if(-not $Once -and -not $progress){Start-Sleep -Seconds $PollSeconds}
     } while(-not $Once)
 } finally {
+    if([IO.File]::Exists($folderControl)){[IO.File]::Delete($folderControl)}
     foreach($watcher in @($watchers.Values)){$watcher.Dispose()}
     foreach($scan in @($scans.Values)){$scan.Dispose()}
     $queue.Dispose()
+    if($null -ne $folderHelper){$folderHelper.Dispose()}
 }
