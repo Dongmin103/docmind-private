@@ -616,6 +616,7 @@ $lastReceiptReplayAt = [DateTimeOffset]::UtcNow
 Write-Output ('Host worker ready; role: {0}; removed: {1}; receipts acknowledged: {2}.' -f $Purpose, $removed, $receiptReplay.acknowledged)
 
 do {
+    if ($StopFile -and (Test-Path -LiteralPath $StopFile)) { break }
     if ($IngestionSlot -ge 0 -and ((Test-Path -LiteralPath $StopFile) -or
         -not (Test-DocMindPoolParent -ParentProcessId $ParentProcessId -ParentStartedUtc $ParentStartedUtc))) { break }
     $processedJob = $false

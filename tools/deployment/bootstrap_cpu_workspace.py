@@ -59,14 +59,26 @@ def initialize(config):
         dataset=Knowledgebase.get_by_id(workspace['dataset_id'])
         if dataset.tenant_embd_id and dataset.tenant_embd_id!=model_id:raise ValueError('Existing dataset embedding differs')
         Knowledgebase.update(name='DOCMIND',embd_id=model_id,tenant_embd_id=model_id).where(Knowledgebase.id==dataset.id).execute()
+        next_ordinal=max((folder.ordinal for folder in DocmindFolder.select(DocmindFolder.ordinal).where(
+            DocmindFolder.project_id==workspace['project_id'])),default=-1)+1
         for source in config['sources']:
             folder_id=stable('docmind-cpu-source-folder',workspace['project_id'],source['source_id'])
-            folder,_=DocmindFolder.get_or_create(id=folder_id,defaults={'project_id':workspace['project_id'],
-                'slug':'source-'+source['source_id'],'display_name':source.get('display_name',source['source_id']),'ordinal':0})
+            folder,created=DocmindFolder.get_or_create(id=folder_id,defaults={'project_id':workspace['project_id'],
+                'slug':'source-'+source['source_id'],'display_name':source.get('display_name',source['source_id']),'ordinal':next_ordinal})
+            if created:next_ordinal+=1
             if folder.project_id!=workspace['project_id']:raise ValueError('Folder ownership conflict')
+            DocmindFolder.update(display_name=source.get('display_name',source['source_id'])).where(DocmindFolder.id==folder.id).execute()
             record,_=DocmindSource.get_or_create(id=source['source_id'],defaults={'project_id':workspace['project_id'],
                 'display_name':source.get('display_name',source['source_id']),'default_folder_id':folder_id})
             if record.project_id!=workspace['project_id'] or record.default_folder_id!=folder_id:raise ValueError('Source ownership conflict')
+            DocmindSource.update(enabled=True,display_name=source.get('display_name',source['source_id'])).where(DocmindSource.id==record.id).execute()
+        active={source['source_id'] for source in config['sources']}
+        for source_id in config.get('disable_source_ids',[]):
+            if source_id in active:raise ValueError('A source cannot be active and paused at the same time')
+            record=DocmindSource.get_or_none(DocmindSource.id==source_id)
+            if record is None:continue
+            if record.project_id!=workspace['project_id']:raise ValueError('Paused source ownership conflict')
+            DocmindSource.update(enabled=False).where(DocmindSource.id==source_id).execute()
     return {'ready':True,'sources':len(config['sources']),'embedding_dimensions':768,'old_documents_imported':False}
 
 def main():

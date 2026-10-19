@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "repository": "Dongmin103/docmind-private",
+  "release_tag": "cpu-images-20261019",
+  "platform": "linux/amd64",
+  "images": [
+    {
+      "service": "api",
+      "tag": "docmind-private-api:cpu-20261019",
+      "id": "sha256:ecd2d6022eb11f26e329851df86e77d1fc11bb5d63e271ff3ee5829f3508a156",
+      "docker_reported_bytes": 3404008643
+    },
+    {
+      "service": "gte",
+      "tag": "docmind-private-gte:cpu-20261019",
+      "id": "sha256:59528295fb93a9dabbd581d3d5824c858633fe8987e97e372a12c6c17e3657a1",
+      "docker_reported_bytes": 908896118
+    },
+    {
+      "service": "kordoc-parser",
+      "tag": "docmind-kordoc-parser:2026.10.19",
+      "id": "sha256:53fc3d95238e2bc0f8dc35676440213b2a36d59a904c7d051bdcf35166475d2d",
+      "docker_reported_bytes": 576813575
+    },
+    {
+      "service": "preview-processor",
+      "tag": "docmind-preview:2026.10.19",
+      "id": "sha256:9cf6168534fb253c035a46e70f10e15a0e258e65e01311e8fce4045bf2832708",
+      "docker_reported_bytes": 137090563
+    },
+    {
+      "service": "mysql",
+      "tag": "mysql:8.0.40",
+      "id": "sha256:d58ac93387f644e4e040c636b8f50494e78e5afc27ca0a87348b2f577da2b7ff",
+      "docker_reported_bytes": 170979582
+    },
+    {
+      "service": "es01",
+      "tag": "elasticsearch:8.11.3",
+      "id": "sha256:58a3a280935d830215802322e9a0373faaacdfd646477aa7e718939c2f29292a",
+      "docker_reported_bytes": 673297231
+    },
+    {
+      "service": "redis",
+      "tag": "valkey/valkey:8",
+      "id": "sha256:640c5e62cea04b6d6f2084232651d0cc70362d31f4f805e7be94dbed6855e8f2",
+      "docker_reported_bytes": 43455717
+    },
+    {
+      "service": "minio",
+      "tag": "pgsty/silo:RELEASE.2026-08-06T00-00-00Z",
+      "id": "sha256:29a498b24669cae1fed11c1a2fb2b3d73c68829a0a9c0b14e71b386671d38fac",
+      "docker_reported_bytes": 54546911
+    }
+  ],
+  "parts": [
+    {
+      "name": "docmind-images-20261019.part-000",
+      "bytes": 943718400,
+      "sha256": "2e562c0ccbf2bbcffa270c6a2875dfb098c2bda3ecab7c102044c8ad9c13fe6e"
+    },
+    {
+      "name": "docmind-images-20261019.part-001",
+      "bytes": 943718400,
+      "sha256": "b9694432622a96ed6fa5f973c0bdfecb600df6b5d7058287ecdbd8b20a2d4d81"
+    },
+    {
+      "name": "docmind-images-20261019.part-002",
+      "bytes": 943718400,
+      "sha256": "819b306a927fe9710fc1c1670d850192c911015ceb56c9eb5a88cb834f0a5e7a"
+    },
+    {
+      "name": "docmind-images-20261019.part-003",
+      "bytes": 943718400,
+      "sha256": "e2fca24c24ec8fe79c2c12b50e5d7d2f0a89b5699b0b373ad751c4848ea547a5"
+    },
+    {
+      "name": "docmind-images-20261019.part-004",
+      "bytes": 943718400,
+      "sha256": "a42818583f8c0c3ea6aa68acbaac4508ffb4cfcea3a5b110e296fb2767a77ea8"
+    },
+    {
+      "name": "docmind-images-20261019.part-005",
+      "bytes": 943718400,
+      "sha256": "81d2bb4d354f43d9193e10fc888107eff8d77f60bd80583f510e6beb499fc213"
+    },
+    {
+      "name": "docmind-images-20261019.part-006",
+      "bytes": 281466715,
+      "sha256": "8b5ee77d91f8c61bff8f7168cf1dbfbe777040ead2b61a7e871068b2d5382665"
+    }
+  ],
+  "compressed_bytes": 5943777115,
+  "includes_model_weights": true,
+  "includes_operational_data": false,
+  "source_snapshot": "f52cc9cf7e7097dfb3301523068d4ff8f3c5e63e"
+}

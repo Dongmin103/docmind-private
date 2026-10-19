@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import ntpath
 from pathlib import Path
 import re
 import tarfile
@@ -14,11 +15,32 @@ ROOT=Path(__file__).resolve().parents[2]
 MODEL_REVISION='9bbca17d9273fd0d03d5725c7a4b0f6b45142062'
 CODE_REVISION='40ced75c3017eb27626c9d4ea981bde21a2662f4'
 MAGIC=b'DOCMIND-RECOVERY-AES256GCM-V1\n'
+RUNTIME_IMAGES={
+    'api':'docmind-private-api:cpu-20261019','gte':'docmind-private-gte:cpu-20261019',
+    'kordoc-parser':'docmind-kordoc-parser:2026.10.19','preview-processor':'docmind-preview:2026.10.19',
+}
+
+def canonical_root(value:str)->str:
+    return ntpath.normpath(value.strip().replace('/','\\')).casefold()
+
+def read_sources(folders_file:Path,known_sources=())->list[dict]:
+    roots=[line.strip() for line in folders_file.read_text(encoding='utf-8-sig').splitlines() if line.strip() and not line.lstrip().startswith('#')]
+    if not roots:raise ValueError('Enter at least one document folder in '+str(folders_file))
+    old={canonical_root(s['root']):s['source_id'] for s in known_sources}
+    seen=set();sources=[]
+    for path in roots:
+        canonical=canonical_root(path)
+        if canonical in seen:raise ValueError('같은 문서 폴더가 두 번 등록되어 있습니다: '+path)
+        seen.add(canonical)
+        identifier=old.get(canonical,'source-'+hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:20])
+        label=path.replace('\\','/').rstrip('/')
+        if len(label)>128:label=label[:105]+'… ['+identifier[-16:]+']'
+        sources.append({'source_id':identifier,'display_name':label,'root':path})
+    return sources
 
 def default_config(entries:dict[str,bytes],folders_file:Path)->dict:
     """The deployment team edits only this list of encrypted document roots."""
-    roots=[line.strip() for line in folders_file.read_text(encoding='utf-8-sig').splitlines() if line.strip() and not line.lstrip().startswith('#')]
-    if not roots:raise ValueError('Enter at least one document folder in '+str(folders_file))
+    sources=read_sources(folders_file)
     seed=json.loads(entries['host-config/ingest.json'])
     return {'project_name':'docmind-cpu','docker_mode':'wsl','wsl_distribution':'Ubuntu',
         'web_port':18080,'api_port':19380,'workspace_email':'docmind@internal.invalid',
@@ -26,7 +48,7 @@ def default_config(entries:dict[str,bytes],folders_file:Path)->dict:
         'require_bitlocker':seed.get('require_bitlocker',True),
         'backup_exclusion_acknowledged':seed.get('backup_exclusion_acknowledged',False),
         'answer_base_url':'','cpu_threads':2,
-        'sources':[{'source_id':'source-'+str(i),'display_name':Path(path).name or '문서 '+str(i),'root':path} for i,path in enumerate(roots,1)]}
+        'sources':sources,'known_sources':sources}
 
 def decrypt_entries(archive: Path,key_path: Path)->dict[str,bytes]:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -85,6 +107,14 @@ def docker_path(path:Path,config:dict)->str:
         return '/mnt/'+value[0].lower()+value[2:]
     return value
 
+def configuration_revision(config:dict)->str:
+    # A bind-mounted file replaced on Windows may otherwise remain on its old
+    # inode inside an existing container. Recreate only this project's API when
+    # its generated configuration or bootstrap implementation changes.
+    payload=json.dumps(config,ensure_ascii=False,sort_keys=True).encode('utf-8')
+    helper=(ROOT/'tools/deployment/bootstrap_cpu_workspace.py').read_bytes()
+    return hashlib.sha256(payload+b'\0'+helper).hexdigest()
+
 def build_compose(config:dict,output:Path,environment:dict)->dict:
     def mount(source,target,readonly=True):
         return {'type':'bind','source':docker_path(Path(source),config),'target':target,'read_only':readonly}
@@ -106,19 +136,20 @@ def build_compose(config:dict,output:Path,environment:dict)->dict:
     services['minio']=base('pgsty/silo:RELEASE.2026-08-06T00-00-00Z','512m')|{'environment':{'MINIO_ROOT_USER':env['MINIO_USER'],'MINIO_ROOT_PASSWORD':env['MINIO_PASSWORD']},
         'command':['server','/data'],'volumes':['minio-data:/data'],
         'healthcheck':health(['CMD','curl','-fsS','http://127.0.0.1:9000/minio/health/live'])}
-    services['gte']=base('docmind-gte:cpu','6g')|{'build':{'context':docker_path(ROOT/'tools/local_embedding',config),'dockerfile':'Containerfile.cpu'},
-        'volumes':[mount(output/'gte.json','/run/config/service.json'),'gte-models:/models'],
-        'cpus':config.get('cpu_threads',2)}
-    services['kordoc-parser']=base('docmind-kordoc:cpu','2g')|{'build':{'context':docker_path(ROOT/'app/parser_services/kordoc',config),'dockerfile':'Containerfile'},
+    services['gte']=base(RUNTIME_IMAGES['gte'],'6g')|{
+        'volumes':[mount(output/'gte.json','/run/config/service.json')],
+        'tmpfs':['/tmp:rw,nosuid,nodev,mode=1777,size=256m'],'cpus':config.get('cpu_threads',2)}
+    services['kordoc-parser']=base(RUNTIME_IMAGES['kordoc-parser'],'2g')|{
         'environment':{'KORDOC_OFFLINE':'1','KORDOC_REQUIRE_OCR':'0','KORDOC_WORKERS':'1'},
         'read_only':True,'tmpfs':['/tmp:rw,nosuid,nodev,size=1g']}
-    services['preview-processor']=base('docmind-preview:cpu','512m')|{'build':{'context':docker_path(ROOT/'app/parser_services',config),'dockerfile':'preview/Containerfile'},
+    services['preview-processor']=base(RUNTIME_IMAGES['preview-processor'],'512m')|{
         'environment':{'DOCMIND_PREVIEW_ROOT':'/run/docmind-previews','HOME':'/run/docmind-previews/processor-home','TMPDIR':'/run/docmind-previews/processor-tmp'},
         'volumes':['preview-memory:/run/docmind-previews'],'read_only':True,'tmpfs':['/tmp:rw,nosuid,size=64m']}
     api_env=env|{'MYSQL_DBNAME':'docmind','MYSQL_HOST':'mysql','MYSQL_PORT':'3306','ES_HOST':'es01','ES_PORT':'9200',
         'REDIS_HOST':'redis','REDIS_PORT':'6379','MINIO_HOST':'minio','MINIO_PORT':'9000','DB_TYPE':'mysql','DOC_ENGINE':'elasticsearch','STORAGE_IMPL':'MINIO',
         'DEVICE':'cpu','API_PROXY_SCHEME':'python','DOCMIND_OCR_ENABLED':'0','EMBEDDING_BATCH_SIZE':'1','EMBEDDING_BATCH_CONCURRENCY':'1',
         'DOCMIND_SHARED_WORKSPACE_ENABLED':'1','DOCMIND_SHARED_USER_EMAIL':config['workspace_email'],'DOCMIND_CATALOG_DB_PRIMARY_ENABLED':'1',
+        'DOCMIND_DEPLOYMENT_CONFIGURATION_REVISION':configuration_revision(config),
         'DOCMIND_GENERATIONLESS_E2E_ENABLED':'1','DOCMIND_E2E_BOOTSTRAP_ONLY':'0',
         'PARSER_PLATFORM_ENABLED':'1','PARSER_PLATFORM_INTEGRATION_READY':'1','PARSER_PLATFORM_KORDOC_URL':'http://kordoc-parser:8095',
         'PARSER_PLATFORM_OFFICE_ENABLED':'1','PARSER_PLATFORM_HWP_ENABLED':'1','KORDOC_CLIENT_CONCURRENCY':'1','DOCMIND_INGESTION_DOCUMENT_CONCURRENCY':'1',
@@ -129,7 +160,7 @@ def build_compose(config:dict,output:Path,environment:dict)->dict:
     api_env.pop('DOCMIND_SHARED_USER_ID',None)
     if config.get('answer_base_url'):api_env['DOCMIND_ANSWER_BASE_URL']=config['answer_base_url'].replace('$','$$')
     if api_env.get('DOCMIND_ANSWER_PIPELINE')=='reviewed_v1':api_env['DOCMIND_REVIEWED_ALLOWED_BASE_URL']=api_env.get('DOCMIND_ANSWER_BASE_URL','').rstrip('/')
-    services['api']=base('docmind:cpu','4g')|{'build':{'context':docker_path(ROOT/'app',config),'dockerfile':'Dockerfile'},
+    services['api']=base(RUNTIME_IMAGES['api'],'4g')|{
         'environment':api_env,'depends_on':{name:{'condition':'service_healthy'} for name in ['mysql','es01','redis','minio','gte','kordoc-parser']},
         'ports':[f"127.0.0.1:{config['web_port']}:80",f"127.0.0.1:{config['api_port']}:9380"],
         'volumes':[mount(output/'secrets/jina-api.key','/run/secrets/jina-api-key'),mount(output/'secrets/worker-hmac.key','/run/secrets/docmind-host-worker-hmac'),
@@ -138,8 +169,9 @@ def build_compose(config:dict,output:Path,environment:dict)->dict:
             mount(ROOT/'tools/deployment/bootstrap_cpu_workspace.py','/opt/docmind/bootstrap_cpu_workspace.py'),'api-logs:/ragflow/logs','preview-memory:/run/docmind-previews'],
         'tmpfs':['/run/docmind-ephemeral-parser:rw,nosuid,nodev,mode=0700,size=512m'],
         'healthcheck':health(['CMD','python','-c','import socket; socket.create_connection(("127.0.0.1",9380),3).close()'])}
+    for service in services.values():service['pull_policy']='never'
     return {'name':config['project_name'],'services':services,'networks':{'docmind':{}},
-        'volumes':{name:{} for name in ['mysql-data','es-data','redis-data','minio-data','gte-models','api-logs']}|{
+        'volumes':{name:{} for name in ['mysql-data','es-data','redis-data','minio-data','api-logs']}|{
             'preview-memory':{'driver_opts':{'type':'tmpfs','device':'tmpfs','o':'size=134217728,mode=1777'}}}}
 
 def prepare(config:dict,entries:dict[str,bytes],output:Path):
@@ -153,7 +185,7 @@ def prepare(config:dict,entries:dict[str,bytes],output:Path):
         if not env.get(k):raise ValueError('Required archived setting missing: '+k)
     gte=json.loads(entries['host-config/gte.json'])
     gte.update(device='cpu',cpu_threads=config.get('cpu_threads',2),short_batch=1,bind='0.0.0.0',port=18882,
-        model_path=f'/models/huggingface/hub/models--Alibaba-NLP--gte-multilingual-base/snapshots/{MODEL_REVISION}',code_revision=CODE_REVISION)
+        model_path='/opt/docmind/model',code_revision=CODE_REVISION)
     def find_suffix(name):
         found=[content for path,content in entries.items() if path.startswith('docker/bind-files/') and Path(path).name.endswith(name)]
         if len(found)!=1:raise ValueError('Required secret mount missing or ambiguous: '+name)
@@ -195,14 +227,56 @@ def prepare(config:dict,entries:dict[str,bytes],output:Path):
     write_json('server.json',config)
     print(json.dumps({'prepared':True,'output':str(output),'device':'cpu','ocr_enabled':False,'sources':len(config['sources']),'old_index_data_imported':False}))
 
+def refresh_sources(folders_file:Path,output:Path):
+    if not (output/'stop-workers').is_file():raise ValueError('설치 실행 파일을 통해 수집기를 먼저 정지한 후 폴더 설정을 적용해 주십시오.')
+    config=json.loads((output/'server.json').read_text(encoding='utf-8-sig'))
+    known=config.get('known_sources',config['sources'])
+    sources=read_sources(folders_file,known)
+    updated=config|{'sources':sources}
+    validate_config(updated)
+    settings=output.resolve()
+    for source in sources:
+        root=Path(source['root']).resolve()
+        if settings==root or settings.is_relative_to(root) or root.is_relative_to(settings):
+            raise ValueError('Deployment settings and source roots must be separate')
+    registry={canonical_root(s['root']):s for s in known}
+    registry.update({canonical_root(s['root']):s for s in sources})
+    updated['known_sources']=list(registry.values())
+    active={s['source_id'] for s in sources}
+    bootstrap=json.loads((output/'bootstrap.json').read_text(encoding='utf-8-sig'))
+    bootstrap.update(sources=sources,disable_source_ids=[s['source_id'] for s in registry.values() if s['source_id'] not in active])
+    changes={'server.json':updated,'bootstrap.json':bootstrap}
+    # Upgrade previously generated source-build deployments as well. Preserve
+    # their credentials and named data volumes; only runtime/configuration
+    # references change. Compose stores literal dollar signs doubled.
+    previous=json.loads((output/'compose.json').read_text(encoding='utf-8-sig'))
+    environment={k:str(v).replace('$$','$') for k,v in previous['services']['api']['environment'].items()}
+    changes['compose.json']=build_compose(updated,output,environment)
+    gte=json.loads((output/'gte.json').read_text(encoding='utf-8-sig'))
+    gte.update(device='cpu',cpu_threads=updated.get('cpu_threads',2),short_batch=1,
+        bind='0.0.0.0',port=18882,model_path='/opt/docmind/model',code_revision=CODE_REVISION)
+    changes['gte.json']=gte
+    for name in ['worker.json','preview-worker.json']:
+        worker=json.loads((output/name).read_text(encoding='utf-8-sig'))
+        worker['sources']=[{'source_id':s['source_id'],'root':str(Path(s['root']).resolve())} for s in sources]
+        changes[name]=worker
+    # Write all temporary files before changing any active configuration.
+    for name,value in changes.items():(output/(name+'.new')).write_text(json.dumps(value,ensure_ascii=False,indent=2),encoding='utf-8')
+    for name in changes:(output/(name+'.new')).replace(output/name)
+    print(json.dumps({'sources_applied':len(sources),'paused_sources':len(bootstrap['disable_source_ids']),'original_documents_deleted':False}))
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path);parser.add_argument('--source-folders',type=Path,default=ROOT/'deployment/source-folders.txt')
     parser.add_argument('--docker-mode',choices=['wsl','desktop']);parser.add_argument('--wsl-distribution')
-    parser.add_argument('--settings-archive',type=Path,required=True);parser.add_argument('--recovery-key',type=Path,required=True)
+    parser.add_argument('--settings-archive',type=Path);parser.add_argument('--recovery-key',type=Path)
+    parser.add_argument('--refresh-sources',action='store_true')
     parser.add_argument('--output',type=Path,default=ROOT/'.local/cpu-server')
     args=parser.parse_args();output=args.output.resolve()
     if not output.is_relative_to(ROOT/'.local'):raise ValueError('Output must stay inside this checkout .local directory')
+    if args.refresh_sources:
+        refresh_sources(args.source_folders,output);return
+    if not args.settings_archive or not args.recovery_key:raise ValueError('Bundled settings archive and recovery key are required')
     entries=decrypt_entries(args.settings_archive,args.recovery_key)
     config=json.loads(args.config.read_text(encoding='utf-8-sig')) if args.config else default_config(entries,args.source_folders)
     if args.docker_mode:config['docker_mode']=args.docker_mode

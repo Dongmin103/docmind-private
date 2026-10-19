@@ -31,9 +31,9 @@ INSTALL_INPUT_FILES = {
     'deployment/install-inputs/recovery.key',
 }
 MANIFEST_NAME = "PRODUCT-MANIFEST.json"
-ROOT_FILES = {"README.md", "AGENTS.md", "Install-DocMind.cmd", "LICENSE", "NOTICE", "NOTICE.txt", "THIRD_PARTY_NOTICES.md", ".gitignore", ".gitattributes"}
+ROOT_FILES = {"README.md", "AGENTS.md", "Install-DocMind.cmd", "Open-SourceFolders.cmd", "시작안내.html", "LICENSE", "NOTICE", "NOTICE.txt", "THIRD_PARTY_NOTICES.md", ".gitignore", ".gitattributes"}
 APP_FILES = {"Dockerfile", ".dockerignore", "pyproject.toml", "uv.lock", "LICENSE", "NOTICE", "NOTICE.txt", "THIRD_PARTY_NOTICES.md", "README.md"}
-DEPLOYMENT_FILES = {"prepare_cpu_server.py", "bootstrap_cpu_workspace.py", "Start-DocMindCpuServer.ps1", "Install-DocMindCpuServer.ps1", "Register-DocMindCpuWorkers.ps1", "build_product_package.py"}
+DEPLOYMENT_FILES = {"prepare_cpu_server.py", "bootstrap_cpu_workspace.py", "runtime_images.py", "Start-DocMindCpuServer.ps1", "Install-DocMindCpuServer.ps1", "Register-DocMindCpuWorkers.ps1", "build_product_package.py"}
 RUNTIME_DIRECTORIES = {"api", "common", "rag", "deepdoc", "conf"}
 DOCKER_FILES = {"entrypoint.sh", "service_conf.yaml.template", "init.sql"}
 PRODUCT_SCRIPTS = {"verify_removed_runtime.py"}
@@ -70,6 +70,8 @@ REQUIRED_FILES = {
     "tools/deployment/bootstrap_cpu_workspace.py", "tools/deployment/Start-DocMindCpuServer.ps1",
     "tools/deployment/Install-DocMindCpuServer.ps1", "tools/deployment/Register-DocMindCpuWorkers.ps1",
     "deployment/source-folders.txt", "deployment/AGENT-HANDOFF.md", "Install-DocMind.cmd",
+    "deployment/runtime-images.json", "tools/deployment/runtime_images.py", "deployment/START-HERE.md",
+    "deployment/source-folders.examples.txt", "시작안내.html", "Open-SourceFolders.cmd",
 }
 REQUIRED_FILES |= INSTALL_INPUT_FILES
 DOCKER_CONTEXTS = {
@@ -106,7 +108,8 @@ def exclusion_reason(name: str) -> str | None:
         return "development tests or stories"
     if name in ROOT_FILES:
         return None
-    if name in {'deployment/source-folders.txt', 'deployment/AGENT-HANDOFF.md'}:
+    if name in {'deployment/source-folders.txt', 'deployment/AGENT-HANDOFF.md', 'deployment/runtime-images.json',
+                'deployment/START-HERE.md','deployment/source-folders.examples.txt','deployment/GTE-MODEL-CARD.md'}:
         return None
     if parts[:2] == ("tools", "deployment"):
         return None if path.name in DEPLOYMENT_FILES else "outside product deployment tool allowlist"
@@ -224,7 +227,7 @@ def make_archive(root: Path, output: Path, archive_format: str) -> dict:
         "source_revision": revision,
         "tracked_worktree_modified": bool(changes),
         "source_policy": "PRIVATE deployment package; Git-tracked working-tree bytes; exact authorized credential inputs; no Git history",
-        "runtime_inputs": "PRIVATE package includes the authorized encrypted settings and recovery key. Model weights and decryptor executable are prepared separately; only source folder paths are user configuration. No database or vector index is bundled.",
+        "runtime_inputs": "PRIVATE package includes the authorized encrypted settings and recovery key. Pinned prebuilt images, including CPU model weights, are delivered through the PRIVATE Release named in deployment/runtime-images.json. Prepare the approved Windows decryptor on the host. Only source folder paths are user configuration. No operational database or vector index is bundled.",
         "docker_contexts": DOCKER_CONTEXTS,
         "files": [{"path": name, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()} for name, data in sorted(selected.items())],
         "excluded": excluded,

@@ -15,6 +15,7 @@
 | 결정 | 의미와 이유 |
 | --- | --- |
 | 실제 배포된 소스가 기준 | 오래된 공개 저장소 기본 브랜치나 별도 개발 브랜치를 임의로 합쳐 운영 동작을 바꾸면 안 됩니다. 현재 PRIVATE `main`은 운영 기준에서 CPU 배포에 필요한 변경을 반영한 제품 소스입니다. |
+| 준비된 이미지로 실행 | 대상 서버에서 API/UI/파서를 빌드하거나 Hugging Face 모델을 받지 않습니다. PRIVATE Release의 이미지 분할 파일을 검증해 `docker load`하며 CPU GTE 모델은 이미지에 들어 있습니다. |
 | PRIVATE에서 배포 | 배포팀은 `Dongmin103/docmind-private`의 최신 `main` 또는 최신 제품 릴리스를 사용합니다. 공개 `docmind-recovery`의 과거 `main`을 설치 기준으로 삼지 않습니다. |
 | 필요한 DOCMIND 파일만 | 범용 RAGFlow SDK·Helm·예제·다국어 문서·실험/개발 스냅샷을 제외했습니다. 필요한 내부 검색 런타임과 라이선스는 유지합니다. `app/api`, `app/common`, `app/rag`, `app/deepdoc`나 내부 `ragflow` 이름을 보고 전부 불필요하다고 삭제하지 마세요. |
 | CPU 인덱싱 / OCR OFF | CPU GTE를 사용하며 CUDA 장치가 없어도 실행해야 합니다. OCR 요청도 서버에서 차단합니다. 스캔 이미지 문자를 읽지 못하는 것은 이번 배포의 의도된 제약입니다. |
@@ -44,9 +45,13 @@ Windows 수집기가 등록한 원본 루트를 감시하고, 승인된 `uEncryp
 
 ## 설치 전에 현장에서 판단할 사항
 
-README의 환경 조사 표를 실제 서버에서 수행합니다. OS/아키텍처, PowerShell/Python, Docker 실행 위치·플러그인, 자원, 포트, 공유 폴더 권한, 복호화 프로그램·서명·인증서·라이선스, 임시 평문 보호/백업 제외, 외부 API와 패키지/모델 다운로드 네트워크를 확인합니다.
+README의 준비 사항 표를 실제 서버에서 수행합니다. OS/아키텍처, PowerShell/Python, Docker 실행 위치·Compose, 자원, 포트, 공유 폴더 권한, 복호화 프로그램·서명·인증서·라이선스, 임시 평문 보호/백업 제외, 외부 API와 PRIVATE 이미지·설치용 Python 패키지 다운로드 네트워크를 확인합니다.
 
-현재 기본 실행기는 Windows에서 접근 가능한 WSL Linux Docker를 찾고, Windows Docker CLI의 Linux engine도 확인합니다. 설치기는 Docker daemon이나 다른 운영 서비스를 초기화하지 않습니다. Compose/Buildx 등 환경이 부족하면 AGENT가 조직의 설치 정책에 맞게 준비합니다. 폐쇄망이면 승인된 이미지·모델·wheel을 반입합니다.
+현재 기본 실행기는 Windows에서 접근 가능한 WSL Linux Docker를 찾고, Windows Docker CLI의 Linux engine도 확인합니다. 설치기는 Docker daemon이나 다른 운영 서비스를 초기화하지 않습니다. Compose v2 등 환경이 부족하면 AGENT가 조직의 설치 정책에 맞게 준비합니다. Buildx·Node/npm·빌드용 도구·Hugging Face 접속은 이번 설치에 필요하지 않습니다.
+
+`deployment/runtime-images.json`이 배포할 8개 이미지의 태그·이미지 ID와 PRIVATE Release의 분할 파일명·크기·SHA256을 고정합니다. `runtime_images.py`가 파일 해시를 확인하고 순서대로 이어 `docker load`에 전달하며, 로드된 이미지 ID를 다시 검사합니다. 기동은 `compose up --no-build --pull never`입니다. 태그가 같아도 ID가 다르면 승인된 이미지를 불러옵니다. DB·색인 볼륨을 이미지 파일에 넣는 `docker export`/volume 백업 방식이 아닙니다.
+
+온라인 설치는 저장소를 받은 GitHub 계정의 Git credential 또는 환경변수 `GH_TOKEN`/`GITHUB_TOKEN`을 메모리에서만 사용해 PRIVATE Release에 접근합니다. ZIP으로 받았어도 이미지 다운로드에는 PRIVATE 접근 권한이 필요합니다. 권한을 생성 설정이나 README에 써 넣지 않습니다. 폐쇄망은 manifest에 적힌 모든 `docmind-images-*.part-*` 파일을 그대로 `.local/images`에 반입하고, 승인된 cryptography wheel을 설치용 가상환경에 준비합니다. 모델은 이미지에 포함되어 별도 반입하지 않습니다. 설치기는 검증된 캐시가 있으면 GitHub 인증·다운로드 없이 불러옵니다.
 
 복호화 프로그램의 현재 캡처 경로는 `D:/uEncryptor2/uEncryptor2.exe`입니다. 새 서버 설치가 다르면 AGENT가 실제 승인된 설치를 찾아 내부 배포 구성을 맞춰야 합니다. 사용자에게 새 모델/API/로그인 설정 항목을 추가하지 않습니다. `prepare_cpu_server.py`의 `default_config()`가 사용자 폴더 목록에서 기본 구성을 만들며, 필요할 때 AGENT가 검증한 내부 구성을 `--config`로 전달할 수 있습니다. 이는 사용자가 편집하는 공개 설치 설정을 늘리라는 뜻이 아닙니다.
 
@@ -56,11 +61,19 @@ Windows 작업은 현재 계정 로그인 시 실행됩니다. 로그인 전/로
 
 ## 설정과 비밀값 전달
 
-사용자 입력은 `deployment/source-folders.txt`의 폴더 주소뿐입니다. 한 줄에 한 폴더이며 로컬 절대 경로나 UNC 경로를 사용합니다. 소스 ID는 줄 순서에서 결정하므로 최초 설치 후 기존 항목 순서를 유지합니다. 설치된 소스 구성을 바꿀 때는 기존 문서/소스 식별자와 동기화 상태를 검토하세요. 현재 설치기는 기존 생성 설정을 덮어쓰지 않고 재사용하므로 목록 편집만으로 이미 초기화한 소스가 자동 재설정된다고 안내하면 안 됩니다.
+사용자 입력은 이미지 밖의 `deployment/source-folders.txt` 폴더 주소뿐입니다. `Open-SourceFolders.cmd`로 열고 한 줄에 한 폴더씩 로컬 절대 경로나 UNC 경로를 입력합니다. 서로 다른 드라이브·공유 서버의 여러 루트를 함께 지원합니다. Windows 수집기가 이 목록에서 생성된 외부 설정을 읽으므로 원본 문서 폴더를 Linux 컨테이너에 직접 마운트하지 않습니다. 프로그램 이미지를 수정하거나 다시 빌드할 필요가 없습니다.
+
+소스 ID는 정규화한 주소에서 결정하며 기존 ID 이력은 보존합니다. 순서를 바꾸거나 주소의 대소문자·슬래시 표기를 바꾸어도 같은 루트에 연결합니다. 이름이 같은 `D:/dept2`, `E:/dept2`는 다른 소스이며 UI에도 전체 주소로 구분합니다. 같은 실제 폴더의 별도 UNC 별칭까지 자동으로 판별하지는 않습니다. 중복·상하위 중첩·접근 불가 루트는 거부합니다.
+
+추가·제외는 같은 파일을 저장한 뒤 `Install-DocMind.cmd` 재실행으로 적용합니다. 설치기는 이 설치의 수집·감시·미리보기 예약 작업에 정지 신호를 보내고 현재 문서와 정리가 끝난 후 설정을 갱신합니다. 원본과 DB/색인은 삭제하지 않습니다. 제외한 소스는 비활성화하고 다시 추가하면 보존한 ID를 사용합니다. 생성 Compose도 기존 빌드 방식에서 이미지 방식으로 갱신하며 기존 비밀값·볼륨 이름을 유지합니다. API에는 설정 revision을 주어 변경된 bind 파일과 bootstrap을 실제 새 컨테이너에서 읽게 합니다. 실패 시 정지 신호를 남기므로 원인 해결 후 설치기를 다시 실행합니다.
+
+기본 운영은 설치기가 등록한 세 예약 작업을 사용합니다. 같은 설치의 수집기를 별도 PowerShell 창에서 직접 실행해 두었다면 담당자가 그 작업의 현재 문서 처리·정리와 정상 종료를 확인한 후 적용해야 합니다. 설치기는 다른 운영 배포의 프로세스를 강제 종료하지 않습니다. 기존 계정의 로그인 시 실행 방식과 UNC 접근 권한을 함께 확인합니다. 실제 주소를 다른 주소로 바꾸면 새로운 소스입니다. 이전 주소 제거는 기존 색인의 삭제나 파일 이동 처리가 아닙니다.
 
 2026-10-19 사용자 요청으로 암호화 설정 파일과 `recovery.key`를 **PRIVATE 저장소의 `deployment/install-inputs`에 함께 포함**하도록 변경했습니다. 이전의 별도 전달 지침은 더 이상 기본 설치 절차가 아닙니다. 최신 `main` 전체를 받으면 설치기가 기존 API/인증 설정을 자동 복원하며, AGENT가 관리자에게 두 파일을 다시 요청하거나 사용자에게 API 키를 입력받지 않습니다. 파일이 없다면 오래된 릴리스/불완전한 복제본인지 먼저 확인합니다.
 
 이 두 파일만 Git/제품 패키지에 포함하도록 명시적으로 승인되었습니다. 그 외 평문 키·생성 설정·원문을 추가하는 일반 허용이 아닙니다. 저장소와 패키지는 비공개로 유지하고 복호화 키/비밀값을 출력하지 않습니다. 암호문과 복호화 키가 함께 있으므로 이 저장소 읽기 권한은 기존 운영 API/인증 설정에 대한 접근 권한도 의미합니다.
+
+2026-10-19 이미지 배포 준비 중 이 저장소가 PUBLIC인 상태를 확인했고 PRIVATE로 복원했습니다. 기존 커밋의 암호화 설정과 recovery.key가 함께 공개되었을 가능성이 있으므로, 운영 책임자는 포함된 API/인증 비밀값의 교체·폐기 범위를 확인해야 합니다. 비공개 복원만으로 기존 노출 가능성이 사라지는 것은 아닙니다. 이번 배포 패키징 작업에서 운영 키를 임의로 교체하거나 운영 서비스를 재시작하지 않았습니다. 담당자 승인 없이 운영 설정을 변경하지 않습니다.
 
 생성되는 `.local/cpu-server`에는 `compose.json`, `bootstrap.json`, `gte.json`, worker 설정과 API/인증 키가 있습니다. 비밀 설정은 기존 값을 사용하고 새 DB·색인·객체 볼륨은 비어 있는 상태로 시작합니다. 설치 폴더 이동 시 생성된 절대 경로를 함께 검토합니다.
 
@@ -77,15 +90,18 @@ Windows 작업은 현재 계정 로그인 시 실행됩니다. 로그인 전/로
 | 위치 | 역할 |
 | --- | --- |
 | `README.md` | 구성·검색 흐름·배포 절차 그림, 환경 판단, 설치/인수 절차 |
+| `시작안내.html` / `deployment/START-HERE.md` | 처음 설치하는 담당자용 화면 안내와 짧은 순서. HTML은 외부 리소스 없이 열림. |
+| `Open-SourceFolders.cmd` / `deployment/source-folders.examples.txt` | 실제 목록을 메모장으로 열기 / 여러 루트 작성 참고 예시 |
 | `Install-DocMind.cmd` | 기본 Windows 설치 진입점 |
 | `deployment/source-folders.txt` | 사용자가 바꾸는 문서 루트 목록 |
 | `deployment/install-inputs/` | 사용자 승인으로 함께 포함된 기존 암호화 설정과 recovery.key. 설치기가 자동으로 읽음. |
-| `tools/deployment/Install-DocMindCpuServer.ps1` | 격리 Python 의존성, Docker 탐색/검사, 빌드·기동·초기화·작업 등록 |
+| `tools/deployment/Install-DocMindCpuServer.ps1` | 격리 Python 의존성, Docker 탐색/검사, 정상 정지·폴더 갱신·이미지 불러오기·기동·초기화·작업 등록 |
+| `deployment/runtime-images.json` / `tools/deployment/runtime_images.py` | PRIVATE 이미지 Release의 ID·분할 파일 해시 / 다운로드·검증·로드 |
 | `tools/deployment/prepare_cpu_server.py` | 암호화 설정 무결성 확인, 폴더 목록→내부 설정/Compose 생성 |
 | `tools/deployment/bootstrap_cpu_workspace.py` | 빈 DB의 내부 계정/작업공간·임베딩·문서 소스 초기화와 안전한 재실행 |
-| `tools/deployment/Start-DocMindCpuServer.ps1` | Build/DownloadModels/Up/Bootstrap/Status, Windows 역할 실행, Stop |
+| `tools/deployment/Start-DocMindCpuServer.ps1` | LoadImages/Up/Bootstrap/Status, Windows 역할 실행, Stop |
 | `tools/deployment/Register-DocMindCpuWorkers.ps1` | Windows 수집·감시·미리보기 작업 등록 |
-| `tools/local_embedding/` | CPU GTE 컨테이너·서비스·고정 모델 다운로드 |
+| `tools/local_embedding/` / `deployment/GTE-MODEL-CARD.md` | 이미지에 들어간 CPU GTE 서비스 소스·유지보수용 모델 준비 도구 / 모델 카드·라이선스. 대상 서버에서 모델 준비 도구를 실행하지 않음. |
 | `tools/windows/` | 실제 운영 수집기 기반 Windows 복호화·동기화 코드 |
 | `app/common/docmind_features.py` | OCR 실행 허용 여부의 서버 플래그 |
 | `app/api/apps/services/docmind_shared_workspace_service.py` | 내부 공용 계정 조회 |
@@ -95,11 +111,13 @@ Windows 작업은 현재 계정 로그인 시 실행됩니다. 로그인 전/로
 
 CPU 서비스 단위 21개와 OCR 비활성화 회귀 219개를 검증했습니다. 실제 CPU 전용 Linux 이미지도 빌드했고 네트워크 차단·읽기 전용 모델 캐시 상태에서 HTTP 임베딩, CUDA 사용 불가, 한글/영문 768차원 정규화 벡터, 인증 누락 401을 확인했습니다.
 
-이번 공용 세션/단일 경로 설치 변경은 실제 SQLite 모델 초기화와 세션 쿠키 발급 등을 포함한 11개, 폴더 목록/설정 생성 9개를 통과했습니다. 실제 암호화 운영 설정으로 테스트용 빈 폴더의 설정을 생성하고 Compose 구문을 확인했습니다. 원본/worker는 실행하지 않았습니다. 제품 ZIP의 파일 해시, Docker COPY 입력과 Windows 보조 파일 의존성도 검사했습니다. 현재 패키지는 승인된 두 비밀 입력 파일을 포함하며, 그 밖의 소스에는 복호화한 운영 비밀값을 추가하지 않습니다. README Mermaid 그림은 문법 검증했습니다.
+공용 세션은 실제 SQLite 모델 초기화와 세션 쿠키 발급으로 확인했습니다. 여러 소스의 폴더 ordinal 고유성, 같은 파일명 분리, 순서 변경·제외·재등록 시 ID/데이터 보존, 접근 불가 주소 거부와 기존 설정 보존을 검사합니다. 실제 암호화 운영 설정으로 테스트용 빈 폴더의 설정을 생성하고 Compose 구문을 확인했습니다. 이미지 로더는 인증 리다이렉트·해시 오류 거부·오프라인 분할 연결·기존 이미지 재사용을 검사합니다. 원본/Windows worker를 운영 문서에 실행하지 않습니다. 제품 ZIP의 파일 해시, 승인된 두 입력 외의 비밀값 부재, Docker COPY 입력과 Windows 보조 파일 의존성도 검사합니다. README Mermaid 그림은 문법 검증했으며 HTML은 DOM·복사 기능·외부 의존성 부재를 확인했습니다. 실제 브라우저 화면 캡처 검증은 수행하지 않았습니다.
+
+최종 이미지 방식 변경은 위 폴더/세션/로더 검사 27개와 subtest 3개, 제품 패키지 검사 8개를 통과했습니다. 실제 Docker에서 gzip 분할 파일 7개를 이어 읽는 로드와 이미지 ID 검사를 확인했습니다. 배포용 GTE 이미지에서는 GPU·외부 네트워크 없이 읽기 전용 루트 파일시스템으로 한글/영문 768차원 정규화 임베딩과 인증 누락 401을 확인했습니다. 별도 빈 MySQL·Elasticsearch·Redis·객체 볼륨으로 API를 띄워 운영에서 캡처한 UI 바이트 일치, 비밀번호 없는 세션 쿠키, 3개 소스 등록과 bootstrap 재실행을 확인한 뒤 해당 시험용 컨테이너·볼륨만 정리했습니다. 운영 컨테이너나 Windows 수집기는 변경하지 않았습니다. 이미지 컨텍스트·메타데이터·기본 설정에 기존 운영 비밀값을 복사하지 않았는지도 검사했습니다.
 
 프런트엔드는 별도 깨끗한 의존성 설치 후 Vite production build를 통과했지만 전체 TypeScript 검사에는 기존 오류가 남아 있습니다. 모든 타입 검사가 통과했다고 보고하지 않습니다.
 
-이 검증은 **대상 서버에서 모든 이미지를 신규 빌드하고 실제 암호화 문서를 인덱싱하는 전체 인수 시험은 아닙니다.** 새 Windows 계정의 복호화/공유폴더 권한, 실제 네트워크, 자원과 무인 실행 조건은 현지에서 확인해야 합니다. CPU 컨테이너만 성공했다고 전체 설치 완료라고 결론 내리지 않습니다.
+이 검증은 **대상 서버에서 이미지를 불러오고 실제 암호화 문서를 인덱싱하는 전체 인수 시험은 아닙니다.** 새 Windows 계정의 복호화/공유폴더 권한, 실제 네트워크, 자원과 무인 실행 조건은 현지에서 확인해야 합니다. CPU 컨테이너만 성공했다고 전체 설치 완료라고 결론 내리지 않습니다.
 
 ## 현지 AGENT의 완료 기준과 보고
 
