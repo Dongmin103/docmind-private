@@ -1,5 +1,7 @@
 # 여기서 시작하세요
 
+2026-10-19 현재 배포 소스는 `feat/answer-jobs` 브랜치입니다. 다른 서버에 배포할 때는 [GitHub 기반 배포 안내](docs/SERVER-DEPLOYMENT-2026-10-19.md)를 먼저 읽으세요. 아래 Windows 개발 안내의 clone 예시는 초기 인수인계 브랜치를 기준으로 합니다.
+
 1. [PRD.md](PRD.md): 최종 요구사항과 사용자 결정
 2. [WINDOWS_DEVELOPMENT.md](WINDOWS_DEVELOPMENT.md): 받기·설정·서버 Codex 인수인계 문구
 3. [현재 구조](docs/CURRENT-ARCHITECTURE.md): 코드와 서비스 연결
