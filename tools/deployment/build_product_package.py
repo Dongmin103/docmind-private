@@ -64,7 +64,7 @@ REQUIRED_FILES = {
     "tools/deployment/build_product_package.py", "tools/deployment/prepare_cpu_server.py",
     "tools/deployment/bootstrap_cpu_workspace.py", "tools/deployment/Start-DocMindCpuServer.ps1",
     "tools/deployment/Install-DocMindCpuServer.ps1", "tools/deployment/Register-DocMindCpuWorkers.ps1",
-    "deployment/source-folders.txt", "Install-DocMind.cmd",
+    "deployment/source-folders.txt", "deployment/AGENT-HANDOFF.md", "Install-DocMind.cmd",
 }
 DOCKER_CONTEXTS = {
     "app/Dockerfile": "app",
@@ -98,7 +98,7 @@ def exclusion_reason(name: str) -> str | None:
         return "development tests or stories"
     if name in ROOT_FILES:
         return None
-    if name == 'deployment/source-folders.txt':
+    if name in {'deployment/source-folders.txt', 'deployment/AGENT-HANDOFF.md'}:
         return None
     if parts[:2] == ("tools", "deployment"):
         return None if path.name in DEPLOYMENT_FILES else "outside product deployment tool allowlist"

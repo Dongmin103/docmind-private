@@ -1,5 +1,7 @@
 # DOCMIND — CPU 서버 설치
 
+배포 AGENT는 먼저 **[배포 인수인계 문서](deployment/AGENT-HANDOFF.md)**를 읽으세요. 사용자의 목적과 확정된 결정, 유지할 제품 동작, 실제 구현·검증 범위 및 현장 완료 기준을 설명합니다.
+
 현재 배포된 DOCMIND를 기준으로 정리한 제품 소스입니다. **GPU 없이 CPU로 인덱싱하며 OCR은 사용하지 않습니다.** 기존 문서·청크·벡터 DB·대화 기록은 가져오지 않습니다. 사용자가 수정할 DOCMIND 설정은 `deployment/source-folders.txt`의 문서 폴더 주소뿐입니다. 나머지 제품 설정은 설치기가 자동 적용합니다. 기존 API 키와 서버 인증 키는 별도의 암호화 설정에서 이어받습니다.
 
 ## 구조 한눈에 보기
@@ -69,6 +71,36 @@ sequenceDiagram
 ```
 
 원문을 클릭하면 Windows에서 별도로 임시 복호화하고 미리보기 처리기가 화면용 자료를 만듭니다. 미리보기는 tmpfs에 두고 사용 후 정리합니다. 원본 루트는 배포팀이 지정한 폴더 주소를 사용합니다. VDI REST API를 통한 루트 자동 등록은 아직 구현하지 않았습니다.
+
+## 배포 순서 한눈에 보기
+
+**사용자는 문서 폴더 주소만 입력합니다.** 배포 AGENT가 서버 환경 준비, 기존 설정 배치, 설치와 인수 확인을 맡습니다.
+
+```mermaid
+flowchart TB
+    check["AGENT · 대상 서버 확인<br/>OS · Docker · 복호화 프로그램<br/>문서 접근 권한 · 네트워크"]
+    ready{"실행 환경이 준비됐나요?"}
+    prepare["AGENT · 부족한 프로그램·권한·연결 준비"]
+    inputs["AGENT · PRIVATE 소스 받기<br/>관리자가 전달한 암호화 설정과 recovery.key를<br/>.local/install-inputs에 배치"]
+    folders["사용자 · 폴더 주소 한 곳만 수정<br/>deployment/source-folders.txt"]
+    install["AGENT · 관리자 권한으로<br/>Install-DocMind.cmd 실행"]
+    automatic["설치기 자동 처리<br/>CPU · OCR OFF · 기존 API 설정<br/>모델 다운로드 · 새 DB·색인 볼륨 시작<br/>공용 작업공간 · 수집·감시·미리보기 작업 준비"]
+    success{"설치가 정상 완료됐나요?"}
+    fix["AGENT · 환경·네트워크·권한 오류 해결<br/>기존 설정을 유지하고 설치 재실행"]
+    open["DOCMIND 웹 열기<br/>이메일·비밀번호 없이 공용 작업공간 접속"]
+    accept["AGENT · 텍스트 PDF 한 개로 인수 확인<br/>인덱싱 → 검색·답변 → 원문 미리보기<br/>임시 평문 정리 확인 후 사용 시작"]
+
+    check --> ready
+    ready -->|"부족함"| prepare
+    prepare --> check
+    ready -->|"준비 완료"| inputs
+    inputs --> folders --> install --> automatic --> success
+    success -->|"실패"| fix
+    fix --> install
+    success -->|"완료"| open --> accept
+```
+
+소스만 내려받아서는 기존 API 키를 사용할 수 없습니다. 관리자가 **암호화 설정 파일과 별도 복호화 키**를 전달해야 하며, 사용자가 키를 다시 입력하는 과정은 없습니다. 최초 설치는 새 DB·색인으로 시작하고, 재실행은 생성된 설정과 볼륨을 유지하며 설치를 재개합니다.
 
 ## 설치하는 AGENT가 먼저 읽을 내용
 

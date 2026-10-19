@@ -1,6 +1,6 @@
 # DOCMIND product repository
 
-Read README.md for the Windows/WSL CPU deployment contract. Keep the product package allowlist synchronized with runtime/build dependencies.
+Read README.md and deployment/AGENT-HANDOFF.md for the deployment intent, target-environment assessment and CPU/shared-session contract. Keep the product package allowlist synchronized with runtime/build dependencies.
 
 - Do not modify or restart existing deployments or operational document/index data without explicit authorization.
 - Never commit credentials, plaintext documents, indexed data, model weights, generated settings, installed runtimes, or logs. Generated settings belong in ignored .local/. Transfer credentials with the encrypted settings archive and separately supplied key.
