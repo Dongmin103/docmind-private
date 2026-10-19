@@ -19,14 +19,17 @@ flowchart TB
             parser["Kordoc<br/>문서에서 텍스트 추출"]
             gte["CPU GTE<br/>768차원 벡터 생성"]
             es[("Elasticsearch<br/>문서 청크·검색 벡터")]
-            state["MySQL · Redis · MinIO<br/>설정·상태·내부 객체"]
+            state["MySQL · Redis<br/>설정·상태 관리"]
+            minio["MinIO · 일반 파일 업로드용 기존 저장소<br/>폴더 감시·임시 미리보기 경로에서는 미사용"]
             preview["원문 미리보기 처리기<br/>임시 메모리 공간 tmpfs"]
 
             api <-->|"텍스트 추출"| parser
             api <-->|"문서·질문 임베딩"| gte
             api <-->|"색인 저장·검색"| es
             api --- state
+            api -. "별도 일반 업로드" .-> minio
             api <-->|"원문 보기"| preview
+            style minio stroke-dasharray: 5 5
         end
 
         worker <-->|"서명 인증 통신 · 문서 전달 · 정리 확인"| api
@@ -37,6 +40,8 @@ flowchart TB
     api <-->|"후보 문서 순위 조정"| jina["외부 Jina API"]
     api <-->|"근거로 답변 생성"| answer["외부 답변 모델 API"]
 ```
+
+현재 설치에는 MinIO가 있지만, 폴더 감시 인덱싱과 임시 미리보기는 MinIO에 원본을 보관하지 않습니다. 별도의 일반 파일 업로드 경로에 의존성이 남아 있어 설치 구성에서 유지합니다. MinIO 전체 제거를 검증한 상태는 아닙니다.
 
 **인덱싱은 문서가 바뀔 때 진행합니다.** 변경 감지 → Windows 임시 복호화 → Kordoc 텍스트 추출 → CPU GTE 벡터 생성 → Elasticsearch에 청크·벡터 저장 → 임시 평문 정리 순서입니다. 스캔 이미지의 글자는 OCR로 읽지 않습니다.
 
