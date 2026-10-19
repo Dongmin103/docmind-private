@@ -395,6 +395,9 @@ def tokenize(d, txt, eng, language="English"):
     t = re.sub(r"</?(table|td|caption|tr|th)( [^<>]{0,12})?>", " ", txt)
     d["content_ltks"] = rag_tokenizer.tokenize(t)
     d["content_sm_ltks"] = rag_tokenizer.fine_grained_tokenize(d["content_ltks"])
+    from .docmind_lexical import supplemental_fields
+
+    d.update(supplemental_fields(str(d.get("docnm_kwd") or ""), txt))
 
 
 def split_with_pattern(d, pattern: str, content: str, eng, language="English") -> list:

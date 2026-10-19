@@ -225,6 +225,10 @@ class Dealer:
             elif isinstance(highlight, list):
                 highlightFields = highlight
             matchText, keywords = self.qryr.question(qst, min_match=(0.3 if min_match else 0))
+            if candidate_mode == "bm25":
+                from rag.nlp.docmind_lexical import supplement_expression
+
+                matchText = supplement_expression(matchText, qst)
             if candidate_mode == "bm25" and not matchText:
                 # A non-empty question which produces no lexical expression
                 # is an empty BM25 lane, not permission to run a filter-only

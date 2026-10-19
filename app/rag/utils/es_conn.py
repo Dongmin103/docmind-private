@@ -270,7 +270,12 @@ class ESConnection(ESConnectionBase):
                 minimum_should_match = (m.extra_options or {}).get("minimum_should_match", 0.0)
                 if isinstance(minimum_should_match, float):
                     minimum_should_match = str(int(minimum_should_match * 100)) + "%"
-                bool_query.must.append(Q("query_string", fields=m.fields, type="best_fields", query=m.matching_text, minimum_should_match=minimum_should_match, boost=1))
+                lexical = []
+                if m.matching_text:
+                    lexical.append(Q("query_string", fields=m.fields, type="best_fields", query=m.matching_text, minimum_should_match=minimum_should_match, boost=1))
+                lexical.extend(Q(clause) for clause in (m.extra_options or {}).get("lexical_alternatives", []))
+                if lexical:
+                    bool_query.must.append(lexical[0] if len(lexical) == 1 else Q("dis_max", queries=lexical))
                 bool_query.boost = 1.0 - vector_similarity_weight
 
             elif isinstance(m, MatchDenseExpr):
